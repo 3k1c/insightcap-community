@@ -72,6 +72,8 @@ keyring = { version = "3", features = ["windows-native"] }
 bip39 = "2"
 zeroize = { version = "1", features = ["derive"] }
 hex = "0.4"
+axum = "0.8.8"
+tower-http = "0.6.8"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"

@@ -99,7 +99,7 @@ fn extract_images_as_markdown(html: &str, base_url: &Url) -> String {
 pub async fn scrape_and_ingest_url(
     pool: &SqlitePool,
     url_str: &str,
-    conversation_id: Option<String>,
+    _conversation_id: Option<String>,
 ) -> Result<(), String> {
     let parsed_url = Url::parse(url_str).map_err(|e| format!("Invalid URL: {}", e))?;
 
@@ -173,7 +173,7 @@ pub async fn scrape_and_ingest_url(
 
     // 1. Save Full Text to `sources`
     sqlx::query(
-        "INSERT INTO sources (id, url, file_path, title, clean_content, raw_html, content_hash, captured_at) VALUES (?, ?, '', ?, ?, ?, ?, ?)"
+        "INSERT INTO sources (id, type, url, file_path, title, clean_content, raw_html, content_hash, captured_at, updated_at) VALUES (?, 'url', ?, '', ?, ?, ?, ?, ?, ?)"
     )
     .bind(&source_id)
     .bind(url_str)
@@ -182,21 +182,21 @@ pub async fn scrape_and_ingest_url(
     .bind(&html)
     .bind(&content_hash)
     .bind(&now)
+    .bind(&now)
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to save source: {}", e))?;
 
-    // 2. Queue into `inbox` for processing, using `source_id` as the `session_id` so processor can map it!
+    // 2. Queue into `inbox` for processing
     let inbox_id = Uuid::now_v7().to_string();
     sqlx::query(
-        "INSERT INTO inbox (id, content, content_type, source_url, window_title, session_id, conversation_id, status, captured_at) VALUES (?, ?, 'text', ?, ?, ?, ?, 'pending', ?)"
+        "INSERT INTO inbox (id, content, content_type, source_url, window_title, session_id, status, captured_at) VALUES (?, ?, 'url', ?, ?, ?, 'pending', ?)"
     )
     .bind(&inbox_id)
     .bind(&clean_content)
     .bind(url_str)
     .bind(&title)
-    .bind(&source_id) // Pass source_id here!
-    .bind(&conversation_id)
+    .bind(&source_id) // Using source_id as session_id to link
     .bind(&now)
     .execute(pool)
     .await

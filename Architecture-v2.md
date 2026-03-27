@@ -477,12 +477,14 @@ CREATE TABLE captures (
   type             TEXT NOT NULL,
   raw_content      TEXT NOT NULL DEFAULT '',
   clean_content    TEXT NOT NULL DEFAULT '',
-  image_path       TEXT,
+  image_data       BLOB,
+  -- 影像 BLOB 直接儲 DB（不依賴磁碟路徑）
   capture_method   TEXT NOT NULL,
-  -- hotkey | import | mobile | editor_export | url
+  -- hotkey | import | mobile | editor_export | url | quick_capture
   tags             TEXT DEFAULT '[]',
   chunk_index      INTEGER DEFAULT 0,
   vector_id        INTEGER,
+  promoted_capture_id TEXT REFERENCES captures(id) ON DELETE SET NULL,
   status           TEXT DEFAULT 'inbox',
   -- inbox | processed | archived | pending_ocr
   created_at       TEXT NOT NULL,
@@ -509,6 +511,8 @@ CREATE TABLE memory_chunks (
   pending_confirm  INTEGER DEFAULT 0,
   promotion_count  INTEGER DEFAULT 0,
   vector_id        INTEGER,
+  promoted_capture_id TEXT REFERENCES captures(id) ON DELETE SET NULL,
+  -- 紀錄從哪一筆 capture 升格而來
   placed_by        TEXT DEFAULT 'ai',
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL
@@ -608,6 +612,27 @@ CREATE TABLE external_knowledge_bases (
 
 外部 KB（商業版）
   → 不寫入本地，查詢時直接讀外部 DB + 外部向量索引
+```
+
+**inbox 表（擷取佇列）**
+
+```sql
+CREATE TABLE inbox (
+  id             TEXT PRIMARY KEY,
+  content        TEXT NOT NULL DEFAULT '',
+  content_type   TEXT NOT NULL DEFAULT 'text',
+  -- text | image | file | url
+  source_exe     TEXT DEFAULT '',
+  window_title   TEXT DEFAULT '',
+  source_url     TEXT DEFAULT '',
+  source_pid     INTEGER,
+  image_data     BLOB,
+  file_path      TEXT,
+  session_id     TEXT DEFAULT '',
+  status         TEXT DEFAULT 'pending',
+  -- pending | processing | processed | failed
+  captured_at    TEXT NOT NULL
+);
 ```
 
 ---
@@ -735,8 +760,9 @@ pub trait Embedder: Send + Sync {
 | ConversationScheduler | 對話切換/關閉時生成摘要 | 對話狀態變化 |
 | PatternPromotion | 掃描新 memory_chunk，判斷升格 | memory_chunk 寫入後 |
 | SpaceRecluster | 重新計算聚類 | 新 Space 建立後 |
-| OCRWorker | 大型 PDF 背景 OCR | pending_ocr 狀態 |
+| OCRWorker | 影像 BLOB 撷取文字，完成後觸發 TagEngine/SpaceEngine | pending_ocr 狀態 |
 | CloudSyncWatcher | 偵測外部磁碟同步 | 30 秒輪詢 |
+| HTTPAPIServer | 本地 REST API（axum，127.0.0.1:3030，Phase 6） | 啟動時常駐 |
 
 ---
 
@@ -937,10 +963,86 @@ src-tauri/src/
 23. Knowledge Builder（獨立應用）
 
 **Phase 6：手機版**
-24. 本地 HTTP API（axum）
+24. 本地 HTTP API（axum）→ 路徑（已完成 skeleton）
+    - `GET /api/health`
+    - `POST /api/quick-capture`
+    - `GET /api/captures/recent`
 25. React Native 應用
 
 ---
 
-*版本：v2.2 | 日期：2026-03-28*
-（已更新 Phase 5：商業版 KnowledgeSource Trait 實作與外部索引掛載與混合 RAG 機制）
+## LLM 用戶設定與相容層
+
+所有 LLM 呼叫統一透過 `OpenAiProvider`，內部自動處理路徑轉換：
+
+| provider 設定 | 路徑处理 |
+|---|---|
+| `ollama` | 自動補齊 `/v1`，免 API Key |
+| `openai` | 使用原始 URL |
+| 其他公雱第三方 | 需填寫完整 base_url |
+
+**settings.ai_models 結構：**
+```json
+{
+  "chat_llm":              { "provider": "ollama", "model": "qwen2.5:7b",    "base_url": "http://localhost:11434" },
+  "content_processor_llm": { "provider": "ollama", "model": "qwen2.5:3b",    "base_url": "http://localhost:11434" },
+  "vision_model":          { "provider": "ollama", "model": "minicpm-v",     "base_url": "http://localhost:11434" },
+  "embedding_model":       { "provider": "local",  "model": "MultilingualE5Small" }
+}
+```
+
+**Ollama JSON 輸出穩健性：**
+本地模型回傳 JSON 時可能附帶 Markdown 代碼區塊（` ```json...``` `），`complete_json` 會自動脱殼再對析。
+
+---
+
+## 擷取系統設計
+
+### 擷取觸發方式
+
+| 方式 | 流程 |
+|------|------|
+| 全域熱鍵（預設 `Ctrl+Alt+F`）| 自動複製已選文字/影像 → inbox |
+| Quick Capture UI | 無選取內容時彈出浮動輸入框 → inbox |
+| 檔案擷取 | 將檔案復製至剪貼簿後按熱鍵 → 實時解析 |
+| URL 擷取 | 自動判斷內容為 URL → Scraper 處理 |
+| 影像擷取 | 剪幕畫後存 BLOB → Pending OCR → Vision LLM |
+
+### OCR 處理赁
+
+```
+熱鍵擨取剪幕畫
+  ↓
+影像 bytes 寫入 inbox（image_data BLOB）
+  ↓
+CaptureProcessor 發現 content_type = 'image'
+  ↓
+寫入 captures（status = 'pending_ocr'）
+  ↓
+OCRWorker 輪詢取出（每 30 秒）
+  ↓
+呼叫 Vision LLM（Ollama minicpm-v 或公雱 GPT-4o）
+  ↓
+寫回 clean_content，status = 'processed'
+  ↓
+觸發 TagEngine / SpaceEngine
+```
+
+### Quick Capture 視窗
+
+- Tauri label: `quick-capture`，700×80px，無邊框透明視窗
+- 按熱鍵且剪貼簿為空時自動彈出
+- **Enter** 送出寫入 inbox、**Esc** 关閉
+- 自動識別 URL 並設定 content_type
+
+---
+
+*版本：v2.3 | 日期：2026-03-28*
+本次更新：
+- 變Image 儲存策略 image_path → image_data BLOB，不依賴檔案系統
+- 變OCRWorker 剛接整，OCR 完成後主動觸發 TagEngine/SpaceEngine
+- 變全域熱鍵系統正式註冊，支援從 settings 讀取快捷鍵字串并解析
+- 變Quick Capture UI 建立，以浮動透明輸入框呼叫 quick_capture command
+- 變LLM 設定讀取統一改用 settings::store::get_settings，修正舍棄的 keys = 'models' 議題
+- 變memory_chunks 設計變：新増 promoted_capture_id，PatternEngine 改用 conversation_id 欄
+- 變Phase 6 HTTP API 骨架完成（axum，127.0.0.1:3030）

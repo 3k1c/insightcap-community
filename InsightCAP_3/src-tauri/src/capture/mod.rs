@@ -133,17 +133,17 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
 
     // 寫入 inbox 表（v2 Schema）
     sqlx::query(
-        "INSERT INTO inbox (id, content, content_type, image_data, source_exe, source_pid, source_url, window_title, session_id, status, captured_at)
+        "INSERT INTO inbox (id, content, content_type, source_exe, source_pid, source_url, window_title, image_data, session_id, status, captured_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)"
     )
     .bind(&id_str)
     .bind(&content_text)
     .bind(content_type)
-    .bind(&image_bytes)
     .bind(&window_meta.app_name)
     .bind(window_meta.pid as i64)
     .bind(&source_url)
     .bind(&window_meta.title)
+    .bind(&image_bytes)
     .bind(&session_id)
     .bind(&now_iso)
     .execute(pool.inner())
@@ -178,12 +178,13 @@ async fn process_clipboard_file(
         .join("\n\n");
 
     sqlx::query(
-        "INSERT INTO sources (id, title, file_path, clean_content, captured_at) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO sources (id, type, title, file_path, clean_content, captured_at, updated_at) VALUES (?, 'file', ?, ?, ?, ?, ?)"
     )
     .bind(&source_id)
     .bind(&parsed.title)
     .bind(&path_str)
     .bind(&full_content)
+    .bind(&now_iso)
     .bind(&now_iso)
     .execute(&pool)
     .await

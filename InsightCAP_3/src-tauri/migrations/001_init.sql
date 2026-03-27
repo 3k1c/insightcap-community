@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS captures (
   type             TEXT NOT NULL,
   raw_content      TEXT NOT NULL DEFAULT '',
   clean_content    TEXT NOT NULL DEFAULT '',
-  image_path       TEXT,
+  image_data       BLOB,
   capture_method   TEXT NOT NULL,
   -- hotkey | import | mobile | editor_export | url
   tags             TEXT DEFAULT '[]',
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS memory_chunks (
   pending_confirm  INTEGER DEFAULT 0,
   promotion_count  INTEGER DEFAULT 0,
   vector_id        INTEGER,
+  promoted_capture_id TEXT REFERENCES captures(id) ON DELETE SET NULL,
   placed_by        TEXT DEFAULT 'ai',
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL
@@ -130,12 +131,14 @@ CREATE TABLE IF NOT EXISTS inbox (
   -- text | image | file | url
   source_exe     TEXT DEFAULT '',
   window_title   TEXT DEFAULT '',
-  session_id     TEXT DEFAULT '',
-  image_path     TEXT,
+  source_url     TEXT DEFAULT '',
+  source_pid     INTEGER,
+  image_data     BLOB,
   file_path      TEXT,
   status         TEXT DEFAULT 'pending',
   -- pending | processing | processed | failed
-  captured_at    TEXT NOT NULL
+  captured_at    TEXT NOT NULL,
+  session_id     TEXT DEFAULT ''
 );
 
 -- settings 表

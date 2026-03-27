@@ -13,12 +13,14 @@ pub mod settings;
 pub mod utils;
 pub mod vector_store;
 pub mod error;
+pub mod http_server;
 
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use serde_json::json;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,6 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
@@ -153,6 +156,16 @@ pub fn run() {
                 background::capture_processor::start_capture_processor(processor_pool).await;
             });
             background::pattern_promotion::start_pattern_promotion_worker(app.handle().clone());
+            background::space_recluster::start_recluster_worker(app.handle().clone());
+            background::conversation_scheduler::start_scheduler(app.handle().clone());
+            background::ocr_worker::start_ocr_worker(app.handle().clone());
+            background::cloud_sync_watcher::start_cloud_sync_watcher(app.handle().clone(), effective_kb_path.clone());
+
+            // 啟動 HTTP 服務 (Phase 6 基礎)
+            let http_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                http_server::start_api_server(http_app).await;
+            });
 
             // 6. 系統托盤
             let show_i = MenuItemBuilder::with_id("show", "Show/Hide").build(app)?;
@@ -205,6 +218,33 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // 7. 註冊快捷鍵
+            let hotkey_settings = tauri::async_runtime::block_on(async {
+                let s = settings::store::get_settings(&pool).await.unwrap_or_default();
+                s.hotkeys
+            });
+
+            // 將設定字串解析為 Shortcut 物件（例如 "Ctrl+Alt+F"）
+            let shortcut_str = hotkey_settings.capture_clipboard;
+            match shortcut_str.parse::<Shortcut>() {
+                Ok(shortcut) => {
+                    app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            let handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(e) = capture::trigger_capture(handle).await {
+                                    eprintln!("[HOTKEY] Capture failed: {}", e);
+                                }
+                            });
+                        }
+                    })?;
+                    println!("[HOTKEY] Registered shortcut: {}", shortcut_str);
+                }
+                Err(e) => {
+                    eprintln!("[HOTKEY] Failed to parse shortcut '{}': {:?}", shortcut_str, e);
+                }
+            }
+
             println!("\n{}", "=".repeat(50));
             println!("🚀 InsightCAP v2 — Phase 1 READY!");
             println!("📅 Startup: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
@@ -237,6 +277,7 @@ pub fn run() {
             commands::knowledge_commands::get_captures,
             commands::knowledge_commands::get_pending_patterns,
             commands::knowledge_commands::confirm_pattern,
+            commands::knowledge_commands::quick_capture,
             // Conversation
             commands::conversation_commands::get_conversations,
             commands::conversation_commands::create_conversation,

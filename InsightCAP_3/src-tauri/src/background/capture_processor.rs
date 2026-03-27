@@ -17,7 +17,7 @@ pub async fn start_capture_processor(pool: SqlitePool) {
 async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
     // 1. 取得下一筆 pending 的擷取任務
     let row = match sqlx::query(
-        "SELECT id, content, content_type, source_exe, window_title, session_id, captured_at FROM inbox WHERE status = 'pending' ORDER BY captured_at ASC LIMIT 1"
+        "SELECT id, content, content_type, source_exe, source_url, window_title, image_data, captured_at FROM inbox WHERE status = 'pending' ORDER BY captured_at ASC LIMIT 1"
     )
     .fetch_optional(pool)
     .await {
@@ -30,9 +30,9 @@ async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
     let content: String = row.get("content");
     let content_type: String = row.get("content_type");
     let source_exe: String = row.try_get("source_exe").unwrap_or_default();
-    let source_url: String = if content_type == "url" { content.clone() } else { String::new() };
+    let source_url: String = row.try_get("source_url").unwrap_or_default();
     let window_title: String = row.try_get("window_title").unwrap_or_default();
-    let _session_id: String = row.try_get("session_id").unwrap_or_default();
+    let image_data: Option<Vec<u8>> = row.try_get("image_data").unwrap_or(None);
     let captured_at: String = row.get("captured_at");
 
     println!("[CaptureProcessor] 處理 inbox: {} (type: {})", id, content_type);
@@ -74,16 +74,20 @@ async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     // 寫入 captures (單一 chunk)
+    // 若為 image，我們將 bytes 儲存，之後 OCR worker 會處理
+    let final_status = if content_type == "image" { "pending_ocr" } else { "processed" };
+    
     sqlx::query(
-        "INSERT INTO captures (id, source_id, type, raw_content, clean_content, capture_method, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO captures (id, source_id, type, raw_content, clean_content, image_data, capture_method, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&capture_id)
     .bind(&source_id)
     .bind(&content_type)
     .bind(&content)
     .bind(&content)
+    .bind(&image_data)
     .bind("hotkey")
-    .bind("processed") // 因為我們跳過了 vectorize 暫時標記為 processed
+    .bind(final_status)
     .bind(&now)
     .bind(&now)
     .execute(pool)
@@ -97,12 +101,14 @@ async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    // 5. 非同步背景執行標籤與聚類
-    let tag_engine = crate::services::tag_engine::TagEngine::new(pool.clone());
-    let _ = tag_engine.process_new_capture(&capture_id, &content).await;
+    // 5. 非同步背景執行標籤與聚類 (僅限非影像或已處理過的內容)
+    if final_status == "processed" {
+        let tag_engine = crate::services::tag_engine::TagEngine::new(pool.clone());
+        let _ = tag_engine.process_new_capture(&capture_id, &content).await;
 
-    let space_engine = crate::services::space_engine::SpaceEngine::new(pool.clone());
-    let _ = space_engine.assign_to_space(&capture_id, &content).await;
+        let space_engine = crate::services::space_engine::SpaceEngine::new(pool.clone());
+        let _ = space_engine.assign_to_space(&capture_id, &content).await;
+    }
 
     println!("[CaptureProcessor] inbox {} 處理完成，已轉換為 source {} 和 capture {}", id, source_id, capture_id);
     Ok(())

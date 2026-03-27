@@ -4,6 +4,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { SetupPage } from './pages/SetupPage';
 import { LoginPage } from './pages/LoginPage';
 import { MainLayout } from './components/layout/MainLayout';
+import { QuickCapturePage } from './pages/QuickCapturePage';
+
+// 偵測當前視窗 label
+const windowLabel = (window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } }).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? '';
+
+// Quick Capture 視窗直接渲染，跳過認證
+if (windowLabel === 'quick-capture') {
+    import('./design-system/index.css');
+}
+
 
 interface AuthStatus {
     isSetup: boolean;
@@ -13,6 +23,11 @@ interface AuthStatus {
 type AppState = 'loading' | 'setup' | 'login' | 'main';
 
 export default function App() {
+    // Quick Capture 視窗直接渲染，跳過認證流程
+    if (windowLabel === 'quick-capture') {
+        return <QuickCapturePage />;
+    }
+
     const [appState, setAppState] = useState<AppState>('loading');
     const [kbPath, setKbPath] = useState('');
 

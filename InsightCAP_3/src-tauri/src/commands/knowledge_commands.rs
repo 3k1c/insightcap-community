@@ -154,3 +154,35 @@ pub async fn confirm_pattern(pool: State<'_, SqlitePool>, capture_id: String, ac
     Ok(())
 }
 
+/// Quick Capture：前端手動輸入框送出後寫入 inbox
+#[tauri::command]
+pub async fn quick_capture(
+    pool: State<'_, SqlitePool>,
+    content: String,
+) -> Result<(), String> {
+    let id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    
+    // 偵測是否為 URL
+    let trimmed = content.trim();
+    let content_type = if (trimmed.starts_with("http://") || trimmed.starts_with("https://")) 
+        && !trimmed.contains(' ') {
+        "url"
+    } else {
+        "text"
+    };
+
+    sqlx::query(
+        "INSERT INTO inbox (id, content, content_type, source_exe, window_title, session_id, status, captured_at) VALUES (?, ?, ?, 'QuickCapture', '快速擷取', '', 'pending', ?)"
+    )
+    .bind(&id)
+    .bind(trimmed)
+    .bind(content_type)
+    .bind(&now)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| format!("quick_capture DB error: {}", e))?;
+
+    println!("[QuickCapture] Saved to inbox: {} ({})", &id[..8], content_type);
+    Ok(())
+}

@@ -179,7 +179,11 @@ async fn call_openai_compat_vision(
     base: &str,
     api_key: &str,
 ) -> Result<String, String> {
-    let url = format!("{}/v1/chat/completions", base);
+    let url = if base.ends_with("/v1") {
+        format!("{}/chat/completions", base)
+    } else {
+        format!("{}/v1/chat/completions", base)
+    };
 
     let mut req = client.post(&url);
 

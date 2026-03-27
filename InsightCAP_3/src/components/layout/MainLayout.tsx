@@ -3,6 +3,7 @@ import { useUiStore } from '../../stores/uiStore';
 import { MessageSquare, Database, Settings } from 'lucide-react';
 import { ChatPage } from '../../pages/ChatPage';
 import { KnowledgePage } from '../../pages/KnowledgePage';
+import { SettingsPage } from '../../pages/SettingsPage';
 
 export const MainLayout: React.FC = () => {
     const { activePage, setActivePage } = useUiStore();
@@ -39,7 +40,7 @@ export const MainLayout: React.FC = () => {
             <div className="flex-1 flex overflow-hidden">
                 {activePage === 'chat' && <ChatPage />}
                 {activePage === 'knowledge' && <KnowledgePage />}
-                {activePage === 'settings' && <div className="p-8 w-full h-full flex items-center justify-center text-[var(--ic-text-muted)]">設定頁面 (建置中)</div>}
+                {activePage === 'settings' && <SettingsPage />}
             </div>
         </div>
     );

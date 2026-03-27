@@ -11,22 +11,15 @@ impl TagEngine {
 
     pub async fn process_new_capture(&self, capture_id: &str, content: &str) -> Result<Vec<String>, String> {
         // 1. 本地規則或簡單關鍵字擷取 (Phase 2 後續接入 LLM)
-        let settings_json: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'models'")
-            .fetch_optional(&self.pool).await.map_err(|e| e.to_string())?;
-
+        let settings = crate::settings::store::get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let cfg = settings.ai_models.content_processor_llm;
+        
         let mut opt_provider: Option<crate::providers::llm::openai::OpenAiProvider> = None;
-        if let Some(json_str) = settings_json {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                if let Some(active) = val["activeProvider"].as_str() {
-                    if active == "openai" {
-                         if let Some(api_key) = val["openai"]["apiKey"].as_str() {
-                             let base_url = val["openai"]["baseUrl"].as_str().map(|s| s.to_string());
-                             let model = val["openai"]["model"].as_str().unwrap_or("gpt-4o-mini").to_string();
-                             opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(api_key.to_string(), base_url, model));
-                         }
-                    }
-                }
-            }
+        let is_ollama = cfg.provider == "ollama";
+        let api_key = cfg.api_key.unwrap_or_default();
+
+        if !api_key.is_empty() || is_ollama {
+            opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(api_key, cfg.base_url, cfg.model));
         }
 
         use crate::providers::llm::LLMProvider;

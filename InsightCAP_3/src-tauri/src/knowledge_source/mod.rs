@@ -3,6 +3,7 @@
 /// Phase 1 只定義 trait，具體實現在 Phase 2 (personal.rs) 和 Phase 5 (enterprise.rs)
 
 pub mod enterprise;
+pub mod personal;
 
 #[derive(Debug, Clone)]
 pub struct QueryScope {

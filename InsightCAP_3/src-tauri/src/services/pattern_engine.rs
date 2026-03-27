@@ -24,9 +24,9 @@ impl PatternEngine {
         // 取得未被升格的 pattern
         let rows = sqlx::query(
             r#"
-            SELECT id, session_id, content, importance 
+            SELECT id, conversation_id, content 
             FROM memory_chunks 
-            WHERE type = 'pattern' AND promoted_capture_id IS NULL
+            WHERE knowledge_type = 'pattern' AND promoted_capture_id IS NULL
             ORDER BY created_at DESC LIMIT 50
             "#
         )
@@ -40,9 +40,9 @@ impl PatternEngine {
 
         let mut combined_text = String::new();
         for r in rows.iter() {
-            let session_id: String = r.get("session_id");
+            let conv_id: String = r.get("conversation_id");
             let content: String = r.get("content");
-            combined_text.push_str(&format!("- 對話 {}: {}\n", session_id, content));
+            combined_text.push_str(&format!("- 對話 {}: {}\n", conv_id, content));
         }
 
         let settings = get_settings(db).await.map_err(|e| e.to_string())?;
