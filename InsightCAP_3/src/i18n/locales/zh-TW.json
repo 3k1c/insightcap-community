@@ -1,0 +1,89 @@
+{
+    "common": {
+        "confirm": "確認",
+        "cancel": "取消",
+        "save": "儲存",
+        "delete": "刪除",
+        "edit": "編輯",
+        "close": "關閉",
+        "back": "返回",
+        "next": "下一步",
+        "loading": "載入中...",
+        "error": "發生錯誤",
+        "success": "成功",
+        "warning": "警告",
+        "search": "搜尋",
+        "clear": "清除",
+        "copy": "複製",
+        "copied": "已複製"
+    },
+    "auth": {
+        "setup": {
+            "title": "歡迎使用 InsightCAP",
+            "subtitle": "首次使用需要完成初始設定",
+            "step1_title": "選擇工作區",
+            "step2_title": "設定密碼",
+            "step3_title": "儲存恢復碼",
+            "workspace_label": "工作區路徑",
+            "workspace_placeholder": "選擇或輸入資料夾路徑...",
+            "workspace_hint": "所有知識庫資料將儲存於此資料夾",
+            "browse": "瀏覽",
+            "password_label": "設定密碼",
+            "password_placeholder": "輸入密碼（至少 8 個字元）",
+            "password_confirm_label": "確認密碼",
+            "password_confirm_placeholder": "再次輸入密碼",
+            "password_mismatch": "兩次密碼不一致",
+            "password_too_short": "密碼至少需要 8 個字元",
+            "recovery_title": "請妥善儲存恢復碼",
+            "recovery_hint": "忘記密碼時，可使用此恢復碼重新設定。此碼只會顯示一次，請立即記錄。",
+            "recovery_confirm": "我已安全儲存恢復碼",
+            "finish": "完成設定"
+        },
+        "login": {
+            "title": "InsightCAP",
+            "password_label": "密碼",
+            "password_placeholder": "輸入密碼",
+            "submit": "登入",
+            "wrong_password": "密碼錯誤",
+            "locked": "登入已暫時鎖定，請 {{seconds}} 秒後再試",
+            "permanently_locked": "登入嘗試次數過多，請使用恢復碼重設密碼",
+            "forgot_password": "忘記密碼？使用恢復碼"
+        },
+        "recovery": {
+            "title": "使用恢復碼重設密碼",
+            "mnemonic_label": "恢復碼（24 個英文單字）",
+            "new_password_label": "新密碼",
+            "submit": "重設密碼",
+            "invalid_mnemonic": "恢復碼不正確，請重新輸入"
+        }
+    },
+    "theme": {
+        "label": "介面主題",
+        "light": "淺色系",
+        "dark": "深黑系",
+        "casual": "休閒系",
+        "fresh": "清新系"
+    },
+    "language": {
+        "label": "介面語言",
+        "zh-TW": "繁體中文",
+        "zh-CN": "简体中文",
+        "en": "English"
+    },
+    "memory": {
+        "type": {
+            "data": "資料",
+            "pattern": "方法論",
+            "log": "風險記錄"
+        }
+    },
+    "settings": {
+        "title": "設定",
+        "general": "一般",
+        "appearance": "外觀",
+        "ai_models": "AI 模型",
+        "knowledge": "知識庫",
+        "hotkeys": "快捷鍵",
+        "security": "安全性"
+    }
+}

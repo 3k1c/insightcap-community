@@ -1,0 +1,87 @@
+[package]
+name = "insightcap"
+version = "0.1.0"
+description = "InsightCAP Local-First Knowledge Base"
+authors = ["you"]
+edition = "2021"
+default-run = "insightcap"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "insightcap_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "macros", "chrono", "uuid"] }
+libsqlite3-sys = { version = "0.30.1", features = ["bundled-sqlcipher"] }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v7"] }
+chrono = "0.4.43"
+enigo = "0.2.1"
+arboard = "3.6.1"
+active-win-pos-rs = "0.9.1"
+rand = "0.10.0"
+fastembed = "5.11.0"
+bincode = "1.3.3"
+rayon = "1.11.0"
+reqwest = { version = "0.13.2", features = ["json"] }
+readability = "0.3.0"
+url = "2.5.8"
+pdf-extract = "0.10.0"
+zip = "8.1.0"
+quick-xml = "0.39.2"
+screenshots = "0.8.10"
+tauri-plugin-dialog = "2.6.0"
+base64 = "0.22.1"
+magic-crypt = "4.0.1"
+regex = "1.12.3"
+yt-dlp = "1.4.12"
+thiserror = "2.0.18"
+sha2 = "0.10.9"
+md-5 = "0.10.6"
+lazy_static = "1.5.0"
+zhconv = { version = "0.4.1", features = ["opencc-tw", "opencc-cn", "mediawiki-tw", "mediawiki-cn"] }
+windows = { version = "0.58.0", features = ["Globalization"] }
+walkdir = "2.5.0"
+docx-rs = "0.4.19"
+calamine = "0.26.1"
+csv = "1.3.0"
+rtf-parser = "0.4.2"
+epub = "2.1.5"
+notify = "8.2.0"
+printpdf = "0.7"
+rust_xlsxwriter = "0.94.0"
+pdfium-render = { version = "0.8.37", features = ["thread_safe"] }
+image = { version = "0.25.9", features = ["png"] }
+tempfile = "3.26.0"
+sysinfo = "0.38.3"
+argon2 = { version = "0.5", features = ["std"] }
+chacha20poly1305 = "0.10"
+keyring = { version = "3", features = ["windows-native"] }
+bip39 = "2"
+zeroize = { version = "1", features = ["derive"] }
+hex = "0.4"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-window-state = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58.0", features = ["Graphics_Imaging", "Media_Ocr", "Storage_Streams", "Foundation", "Win32_Security_Cryptography", "Win32_System_DataExchange", "Win32_UI_Shell", "Win32_Foundation", "Win32_System_SystemServices", "Win32_System_Memory"] }
+
+[dev-dependencies]
+tempfile = "3.26.0"
+
+# // GLM-OCR 保留備用，待 Ollama bug 修復後可重新啟用
+# (無專屬依賴，原有 HTTP 請求基於 reqwest 保留共用)

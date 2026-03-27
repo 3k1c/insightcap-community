@@ -1,0 +1,28 @@
+# 忽略所有 build 目錄與依賴
+node_modules/
+target/
+dist/
+build/
+.next/
+
+# 忽略環境變數
+.env
+.env.local
+.env.*.local
+
+# 忽略編輯器配置與系統文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.db
+*.sqlite
+*.sqlite-*
+
+# 忽略我們建置的臨時快取與向量庫
+.insightcap/
+vectors/
+
+# 忽略 InsightCAP_ref 的 target (如果有的話)
+InsightCAP_ref/**/target/
+InsightCAP_3/**/target/

@@ -1,0 +1,89 @@
+{
+    "common": {
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "save": "Save",
+        "delete": "Delete",
+        "edit": "Edit",
+        "close": "Close",
+        "back": "Back",
+        "next": "Next",
+        "loading": "Loading...",
+        "error": "An error occurred",
+        "success": "Success",
+        "warning": "Warning",
+        "search": "Search",
+        "clear": "Clear",
+        "copy": "Copy",
+        "copied": "Copied"
+    },
+    "auth": {
+        "setup": {
+            "title": "Welcome to InsightCAP",
+            "subtitle": "Complete the initial setup to get started",
+            "step1_title": "Choose Workspace",
+            "step2_title": "Set Password",
+            "step3_title": "Save Recovery Phrase",
+            "workspace_label": "Workspace Path",
+            "workspace_placeholder": "Choose or enter a folder path...",
+            "workspace_hint": "All knowledge base data will be stored in this folder",
+            "browse": "Browse",
+            "password_label": "Set Password",
+            "password_placeholder": "Enter password (at least 8 characters)",
+            "password_confirm_label": "Confirm Password",
+            "password_confirm_placeholder": "Enter password again",
+            "password_mismatch": "Passwords do not match",
+            "password_too_short": "Password must be at least 8 characters",
+            "recovery_title": "Save Your Recovery Phrase",
+            "recovery_hint": "You can use this recovery phrase to reset your password if forgotten. It will only be shown once — save it now.",
+            "recovery_confirm": "I have safely saved my recovery phrase",
+            "finish": "Finish Setup"
+        },
+        "login": {
+            "title": "InsightCAP",
+            "password_label": "Password",
+            "password_placeholder": "Enter password",
+            "submit": "Login",
+            "wrong_password": "Incorrect password",
+            "locked": "Login locked. Try again in {{seconds}} seconds",
+            "permanently_locked": "Too many failed attempts. Use your recovery phrase to reset your password.",
+            "forgot_password": "Forgot password? Use recovery phrase"
+        },
+        "recovery": {
+            "title": "Reset Password with Recovery Phrase",
+            "mnemonic_label": "Recovery Phrase (24 words)",
+            "new_password_label": "New Password",
+            "submit": "Reset Password",
+            "invalid_mnemonic": "Invalid recovery phrase, please try again"
+        }
+    },
+    "theme": {
+        "label": "Theme",
+        "light": "Light",
+        "dark": "Dark",
+        "casual": "Casual",
+        "fresh": "Fresh"
+    },
+    "language": {
+        "label": "Language",
+        "zh-TW": "繁體中文",
+        "zh-CN": "简体中文",
+        "en": "English"
+    },
+    "memory": {
+        "type": {
+            "data": "Data",
+            "pattern": "Pattern",
+            "log": "Risk Log"
+        }
+    },
+    "settings": {
+        "title": "Settings",
+        "general": "General",
+        "appearance": "Appearance",
+        "ai_models": "AI Models",
+        "knowledge": "Knowledge Base",
+        "hotkeys": "Hotkeys",
+        "security": "Security"
+    }
+}

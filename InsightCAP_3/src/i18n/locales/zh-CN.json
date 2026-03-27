@@ -1,0 +1,89 @@
+{
+    "common": {
+        "confirm": "确认",
+        "cancel": "取消",
+        "save": "保存",
+        "delete": "删除",
+        "edit": "编辑",
+        "close": "关闭",
+        "back": "返回",
+        "next": "下一步",
+        "loading": "加载中...",
+        "error": "发生错误",
+        "success": "成功",
+        "warning": "警告",
+        "search": "搜索",
+        "clear": "清除",
+        "copy": "复制",
+        "copied": "已复制"
+    },
+    "auth": {
+        "setup": {
+            "title": "欢迎使用 InsightCAP",
+            "subtitle": "首次使用需要完成初始设置",
+            "step1_title": "选择工作区",
+            "step2_title": "设置密码",
+            "step3_title": "保存恢复码",
+            "workspace_label": "工作区路径",
+            "workspace_placeholder": "选择或输入文件夹路径...",
+            "workspace_hint": "所有知识库数据将存储于此文件夹",
+            "browse": "浏览",
+            "password_label": "设置密码",
+            "password_placeholder": "输入密码（至少 8 个字符）",
+            "password_confirm_label": "确认密码",
+            "password_confirm_placeholder": "再次输入密码",
+            "password_mismatch": "两次密码不一致",
+            "password_too_short": "密码至少需要 8 个字符",
+            "recovery_title": "请妥善保存恢复码",
+            "recovery_hint": "忘记密码时，可使用此恢复码重新设置。此码只会显示一次，请立即记录。",
+            "recovery_confirm": "我已安全保存恢复码",
+            "finish": "完成设置"
+        },
+        "login": {
+            "title": "InsightCAP",
+            "password_label": "密码",
+            "password_placeholder": "输入密码",
+            "submit": "登录",
+            "wrong_password": "密码错误",
+            "locked": "登录已暂时锁定，请 {{seconds}} 秒后再试",
+            "permanently_locked": "登录尝试次数过多，请使用恢复码重置密码",
+            "forgot_password": "忘记密码？使用恢复码"
+        },
+        "recovery": {
+            "title": "使用恢复码重置密码",
+            "mnemonic_label": "恢复码（24 个英文单词）",
+            "new_password_label": "新密码",
+            "submit": "重置密码",
+            "invalid_mnemonic": "恢复码不正确，请重新输入"
+        }
+    },
+    "theme": {
+        "label": "界面主题",
+        "light": "浅色系",
+        "dark": "深黑系",
+        "casual": "休闲系",
+        "fresh": "清新系"
+    },
+    "language": {
+        "label": "界面语言",
+        "zh-TW": "繁體中文",
+        "zh-CN": "简体中文",
+        "en": "English"
+    },
+    "memory": {
+        "type": {
+            "data": "数据",
+            "pattern": "方法论",
+            "log": "风险记录"
+        }
+    },
+    "settings": {
+        "title": "设置",
+        "general": "通用",
+        "appearance": "外观",
+        "ai_models": "AI 模型",
+        "knowledge": "知识库",
+        "hotkeys": "快捷键",
+        "security": "安全性"
+    }
+}

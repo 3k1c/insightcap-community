@@ -1,0 +1,242 @@
+/* =========================================================
+   IC Design Token — InsightCAP 四主題完整定義
+   套用方式：在 <html> 加上 .theme-light / .theme-dark / .theme-casual / .theme-fresh
+   ========================================================= */
+
+/* ── 固定值（不隨主題變化）─────────────────────────────── */
+:root {
+  /* Spacing */
+  --ic-space-1: 4px;
+  --ic-space-2: 8px;
+  --ic-space-3: 12px;
+  --ic-space-4: 16px;
+  --ic-space-6: 24px;
+  --ic-space-8: 32px;
+  --ic-space-10: 40px;
+  --ic-space-12: 48px;
+
+  /* Border Radius */
+  --ic-radius-sm: 4px;
+  --ic-radius-md: 8px;
+  --ic-radius-lg: 12px;
+  --ic-radius-xl: 16px;
+  --ic-radius-full: 9999px;
+
+  /* Font */
+  --ic-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --ic-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Font Sizes */
+  --ic-text-xs: 0.75rem;
+  --ic-text-sm: 0.875rem;
+  --ic-text-base: 1rem;
+  --ic-text-lg: 1.125rem;
+  --ic-text-xl: 1.25rem;
+  --ic-text-2xl: 1.5rem;
+
+  /* Shadows */
+  --ic-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --ic-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --ic-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Transitions */
+  --ic-transition-fast: 100ms ease;
+  --ic-transition-base: 200ms ease;
+  --ic-transition-slow: 300ms ease;
+
+  /* Z-index */
+  --ic-z-dropdown: 1000;
+  --ic-z-modal: 1100;
+  --ic-z-toast: 1200;
+}
+
+/* ── 淺色系 theme-light ─────────────────────────────────── */
+.theme-light {
+  /* 背景 */
+  --ic-bg-base:     #FFFFFF;
+  --ic-bg-surface:  #F8F9FA;
+  --ic-bg-elevated: #FFFFFF;
+  --ic-bg-sunken:   #F1F3F5;
+  --ic-bg-overlay:  rgba(0, 0, 0, 0.4);
+
+  /* 文字 */
+  --ic-text-primary:   #111827;
+  --ic-text-secondary: #4B5563;
+  --ic-text-muted:     #9CA3AF;
+  --ic-text-inverse:   #FFFFFF;
+  --ic-text-disabled:  #D1D5DB;
+
+  /* 強調色 */
+  --ic-accent:        #2563EB;
+  --ic-accent-hover:  #1D4ED8;
+  --ic-accent-subtle: #EFF6FF;
+  --ic-accent-text:   #1E40AF;
+
+  /* 邊框 */
+  --ic-border-default: #E5E7EB;
+  --ic-border-strong:  #D1D5DB;
+  --ic-border-focus:   #2563EB;
+
+  /* 三層記憶視覺語言 */
+  --ic-memory-data:         #3B82F6;
+  --ic-memory-data-bg:      #EFF6FF;
+  --ic-memory-data-text:    #1E40AF;
+  --ic-memory-pattern:      #8B5CF6;
+  --ic-memory-pattern-bg:   #F5F3FF;
+  --ic-memory-pattern-text: #5B21B6;
+  --ic-memory-log:          #F59E0B;
+  --ic-memory-log-bg:       #FFFBEB;
+  --ic-memory-log-text:     #92400E;
+
+  /* 語意色 */
+  --ic-success:       #10B981;
+  --ic-success-bg:    #ECFDF5;
+  --ic-warning:       #F59E0B;
+  --ic-warning-bg:    #FFFBEB;
+  --ic-danger:        #EF4444;
+  --ic-danger-bg:     #FEF2F2;
+  --ic-danger-hover:  #DC2626;
+
+  /* Sidebar */
+  --ic-sidebar-bg:    #F3F4F6;
+  --ic-sidebar-item-hover: #E5E7EB;
+  --ic-sidebar-item-active: #DBEAFE;
+}
+
+/* ── 深黑系 theme-dark ──────────────────────────────────── */
+.theme-dark {
+  --ic-bg-base:     #0F1117;
+  --ic-bg-surface:  #1A1D27;
+  --ic-bg-elevated: #22263A;
+  --ic-bg-sunken:   #0A0C12;
+  --ic-bg-overlay:  rgba(0, 0, 0, 0.7);
+
+  --ic-text-primary:   #F9FAFB;
+  --ic-text-secondary: #9CA3AF;
+  --ic-text-muted:     #6B7280;
+  --ic-text-inverse:   #111827;
+  --ic-text-disabled:  #374151;
+
+  --ic-accent:        #7C6FF7;
+  --ic-accent-hover:  #6D62E8;
+  --ic-accent-subtle: rgba(124, 111, 247, 0.15);
+  --ic-accent-text:   #A5B4FC;
+
+  --ic-border-default: #2D3167;
+  --ic-border-strong:  #4B5487;
+  --ic-border-focus:   #7C6FF7;
+
+  --ic-memory-data:         #60A5FA;
+  --ic-memory-data-bg:      rgba(96, 165, 250, 0.12);
+  --ic-memory-data-text:    #93C5FD;
+  --ic-memory-pattern:      #A78BFA;
+  --ic-memory-pattern-bg:   rgba(167, 139, 250, 0.12);
+  --ic-memory-pattern-text: #C4B5FD;
+  --ic-memory-log:          #FCD34D;
+  --ic-memory-log-bg:       rgba(252, 211, 77, 0.12);
+  --ic-memory-log-text:     #FDE68A;
+
+  --ic-success:       #34D399;
+  --ic-success-bg:    rgba(52, 211, 153, 0.12);
+  --ic-warning:       #FCD34D;
+  --ic-warning-bg:    rgba(252, 211, 77, 0.12);
+  --ic-danger:        #F87171;
+  --ic-danger-bg:     rgba(248, 113, 113, 0.12);
+  --ic-danger-hover:  #EF4444;
+
+  --ic-sidebar-bg:    #13151E;
+  --ic-sidebar-item-hover: #1E2235;
+  --ic-sidebar-item-active: rgba(124, 111, 247, 0.2);
+}
+
+/* ── 休閒系 theme-casual ────────────────────────────────── */
+.theme-casual {
+  --ic-bg-base:     #FAF6EF;
+  --ic-bg-surface:  #F5EFE3;
+  --ic-bg-elevated: #FFFFFF;
+  --ic-bg-sunken:   #EDE3D3;
+  --ic-bg-overlay:  rgba(80, 40, 0, 0.35);
+
+  --ic-text-primary:   #2C1A0E;
+  --ic-text-secondary: #6B4C30;
+  --ic-text-muted:     #A07850;
+  --ic-text-inverse:   #FAF6EF;
+  --ic-text-disabled:  #C9AE8C;
+
+  --ic-accent:        #C2722A;
+  --ic-accent-hover:  #A85E1E;
+  --ic-accent-subtle: #FDF0E6;
+  --ic-accent-text:   #A85E1E;
+
+  --ic-border-default: #DDD0BE;
+  --ic-border-strong:  #C4B19A;
+  --ic-border-focus:   #C2722A;
+
+  --ic-memory-data:         #3B82F6;
+  --ic-memory-data-bg:      #EFF6FF;
+  --ic-memory-data-text:    #1E40AF;
+  --ic-memory-pattern:      #C2722A;
+  --ic-memory-pattern-bg:   #FDF0E6;
+  --ic-memory-pattern-text: #A85E1E;
+  --ic-memory-log:          #D97706;
+  --ic-memory-log-bg:       #FEF3C7;
+  --ic-memory-log-text:     #92400E;
+
+  --ic-success:       #16A34A;
+  --ic-success-bg:    #F0FDF4;
+  --ic-warning:       #D97706;
+  --ic-warning-bg:    #FEF3C7;
+  --ic-danger:        #DC2626;
+  --ic-danger-bg:     #FEF2F2;
+  --ic-danger-hover:  #B91C1C;
+
+  --ic-sidebar-bg:    #F0E9DB;
+  --ic-sidebar-item-hover: #E8DFCE;
+  --ic-sidebar-item-active: #FDF0E6;
+}
+
+/* ── 清新系 theme-fresh ─────────────────────────────────── */
+.theme-fresh {
+  --ic-bg-base:     #F0F5F1;
+  --ic-bg-surface:  #E8F0EA;
+  --ic-bg-elevated: #FFFFFF;
+  --ic-bg-sunken:   #DCE8DE;
+  --ic-bg-overlay:  rgba(0, 50, 20, 0.35);
+
+  --ic-text-primary:   #0D2118;
+  --ic-text-secondary: #2D5040;
+  --ic-text-muted:     #5C8070;
+  --ic-text-inverse:   #F0F5F1;
+  --ic-text-disabled:  #A3BFB0;
+
+  --ic-accent:        #1A7F5A;
+  --ic-accent-hover:  #146B4C;
+  --ic-accent-subtle: #E6F4EE;
+  --ic-accent-text:   #146B4C;
+
+  --ic-border-default: #C8DDD0;
+  --ic-border-strong:  #A8C8B5;
+  --ic-border-focus:   #1A7F5A;
+
+  --ic-memory-data:         #3B82F6;
+  --ic-memory-data-bg:      #EFF6FF;
+  --ic-memory-data-text:    #1E40AF;
+  --ic-memory-pattern:      #1A7F5A;
+  --ic-memory-pattern-bg:   #E6F4EE;
+  --ic-memory-pattern-text: #146B4C;
+  --ic-memory-log:          #D97706;
+  --ic-memory-log-bg:       #FEF3C7;
+  --ic-memory-log-text:     #92400E;
+
+  --ic-success:       #1A7F5A;
+  --ic-success-bg:    #E6F4EE;
+  --ic-warning:       #D97706;
+  --ic-warning-bg:    #FEF3C7;
+  --ic-danger:        #DC2626;
+  --ic-danger-bg:     #FEF2F2;
+  --ic-danger-hover:  #B91C1C;
+
+  --ic-sidebar-bg:    #E4EEE6;
+  --ic-sidebar-item-hover: #D8E8DB;
+  --ic-sidebar-item-active: #E6F4EE;
+}

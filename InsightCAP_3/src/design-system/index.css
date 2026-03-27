@@ -1,0 +1,119 @@
+/* globals + tokens */
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    * {
+        box-sizing: border-box;
+        border-color: var(--ic-border-default);
+    }
+
+    html {
+        font-family: var(--ic-font-sans);
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+        background-color: var(--ic-bg-base);
+        color: var(--ic-text-primary);
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    #root {
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--ic-border-strong);
+        border-radius: var(--ic-radius-full);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--ic-text-muted);
+    }
+
+    /* Focus ring */
+    :focus-visible {
+        outline: 2px solid var(--ic-border-focus);
+        outline-offset: 2px;
+    }
+}
+
+@layer utilities {
+
+    /* 三層記憶徽章 */
+    .ic-badge-data {
+        color: var(--ic-memory-data-text);
+        background-color: var(--ic-memory-data-bg);
+        border: 1px solid var(--ic-memory-data);
+    }
+
+    .ic-badge-pattern {
+        color: var(--ic-memory-pattern-text);
+        background-color: var(--ic-memory-pattern-bg);
+        border: 1px solid var(--ic-memory-pattern);
+    }
+
+    .ic-badge-log {
+        color: var(--ic-memory-log-text);
+        background-color: var(--ic-memory-log-bg);
+        border: 1px solid var(--ic-memory-log);
+    }
+
+    /* 常用 bg / text shorthand */
+    .ic-bg-base {
+        background-color: var(--ic-bg-base);
+    }
+
+    .ic-bg-surface {
+        background-color: var(--ic-bg-surface);
+    }
+
+    .ic-bg-elevated {
+        background-color: var(--ic-bg-elevated);
+    }
+
+    .ic-bg-sunken {
+        background-color: var(--ic-bg-sunken);
+    }
+
+    .ic-text-primary {
+        color: var(--ic-text-primary);
+    }
+
+    .ic-text-secondary {
+        color: var(--ic-text-secondary);
+    }
+
+    .ic-text-muted {
+        color: var(--ic-text-muted);
+    }
+
+    .ic-border {
+        border-color: var(--ic-border-default);
+    }
+
+    .ic-border-s {
+        border-color: var(--ic-border-strong);
+    }
+}

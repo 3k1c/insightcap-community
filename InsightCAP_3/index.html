@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InsightCAP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <!-- 早期主題套用：在 CSS 應用前讀取 localStorage，避免 FWOT -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('ic-theme');
+          var validThemes = ['light', 'dark', 'casual', 'fresh'];
+          var theme = (stored && validThemes.includes(stored)) ? stored : 'light';
+          document.documentElement.classList.add('theme-' + theme);
+        } catch (e) {
+          document.documentElement.classList.add('theme-light');
+        }
+        try {
+          // quick-capture 視窗背景透明
+          var label = window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label;
+          if (label === 'quick-capture') {
+            document.documentElement.style.cssText = 'background:transparent!important';
+            document.addEventListener('DOMContentLoaded', function () {
+              document.body.style.cssText = 'background:transparent!important';
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
