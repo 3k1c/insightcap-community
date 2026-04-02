@@ -4,9 +4,11 @@
 pub mod auth;
 pub mod background;
 pub mod capture;
+pub mod ocr;
 pub mod commands;
 pub mod db;
 pub mod knowledge_source;
+pub mod prompts;
 pub mod providers;
 pub mod services;
 pub mod settings;
@@ -18,10 +20,16 @@ pub mod http_server;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, WebviewWindow,
 };
+
+#[tauri::command]
+fn set_zoom(window: WebviewWindow, factor: f64) -> Result<(), String> {
+    window.set_zoom(factor).map_err(|e| e.to_string())
+}
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use serde_json::json;
+use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -109,10 +117,20 @@ pub fn run() {
             let pool = tauri::async_runtime::block_on(
                 db::connection::init_db(&effective_kb_path, db_key_ref)
             ).unwrap_or_else(|e| {
-                eprintln!("[DB] init failed at {:?}: {}. Creating fresh DB in pending dir.", effective_kb_path, e);
+                eprintln!("[DB] init failed at {:?}: {}. Removing stale DB and retrying.", effective_kb_path, e);
+                // 刪除損壞/明文殘留的 DB，在同路徑重建（保留使用者選定的資料夾）
+                let stale_db = effective_kb_path.join(".insightcap").join("insightcap.db");
+                let _ = std::fs::remove_file(&stale_db);
+                let _ = std::fs::remove_file(stale_db.with_extension("db-shm"));
+                let _ = std::fs::remove_file(stale_db.with_extension("db-wal"));
                 tauri::async_runtime::block_on(
-                    db::connection::init_db(&app_data_dir.join("insightcap_v2_pending"), None)
-                ).expect("Failed to create pending DB")
+                    db::connection::init_db(&effective_kb_path, db_key_ref)
+                ).unwrap_or_else(|e2| {
+                    eprintln!("[DB] retry failed at {:?}: {}. Creating fresh DB in pending dir.", effective_kb_path, e2);
+                    tauri::async_runtime::block_on(
+                        db::connection::init_db(&app_data_dir.join("insightcap_v2_pending"), None)
+                    ).expect("Failed to create pending DB")
+                })
             });
 
             println!("[SETUP] Database initialized at {:?}", effective_kb_path);
@@ -146,14 +164,42 @@ pub fn run() {
                 });
             }
 
-            // 5. 管理 Pool 和 AppState
+            // 5. 初始化 Embedder 和 VectorStore
+            let embedder: Arc<dyn providers::embedding::Embedder> = {
+                let model_name = "MultilingualE5Small";
+                match providers::embedding::fastembed::FastEmbedder::new(model_name) {
+                    Ok(e) => Arc::new(e),
+                    Err(err) => {
+                        eprintln!("[SETUP] Embedder 初始化失敗: {}，RAG 功能將降級為關鍵字模式", err);
+                        Arc::new(providers::embedding::NoopEmbedder)
+                    }
+                }
+            };
+
+            let vector_store = vector_store::local::VectorStore::load_or_create(
+                &effective_kb_path,
+                embedder.dimension(),
+            ).unwrap_or_else(|e| {
+                eprintln!("[SETUP] VectorStore 載入失敗: {}，使用空索引", e);
+                vector_store::local::VectorStore::load_or_create(
+                    &effective_kb_path,
+                    384,
+                ).expect("無法建立 VectorStore")
+            });
+
+            // 建立背景任務停止 channel
+            let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+            let shutdown_tx = std::sync::Arc::new(shutdown_tx);
+
+            // 管理 Pool 和 AppState
             app.manage(pool.clone());
-            app.manage(db::AppState::new(pool.clone(), effective_kb_path.clone()));
+            app.manage(db::AppState::new(pool.clone(), effective_kb_path.clone(), vector_store, embedder, shutdown_tx));
 
             // 啟動背景任務
             let processor_pool = pool.clone();
+            let processor_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                background::capture_processor::start_capture_processor(processor_pool).await;
+                background::capture_processor::start_capture_processor(processor_pool, processor_app, shutdown_rx).await;
             });
             background::pattern_promotion::start_pattern_promotion_worker(app.handle().clone());
             background::space_recluster::start_recluster_worker(app.handle().clone());
@@ -224,9 +270,9 @@ pub fn run() {
                 s.hotkeys
             });
 
-            // 將設定字串解析為 Shortcut 物件（例如 "Ctrl+Alt+F"）
-            let shortcut_str = hotkey_settings.capture_clipboard;
-            match shortcut_str.parse::<Shortcut>() {
+            // 7a. 擷取剪貼簿快捷鍵（Ctrl+Alt+F）
+            let capture_shortcut_str = hotkey_settings.capture_clipboard;
+            match capture_shortcut_str.parse::<Shortcut>() {
                 Ok(shortcut) => {
                     app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
@@ -238,10 +284,26 @@ pub fn run() {
                             });
                         }
                     })?;
-                    println!("[HOTKEY] Registered shortcut: {}", shortcut_str);
+                    println!("[HOTKEY] Registered capture shortcut: {}", capture_shortcut_str);
                 }
                 Err(e) => {
-                    eprintln!("[HOTKEY] Failed to parse shortcut '{}': {:?}", shortcut_str, e);
+                    eprintln!("[HOTKEY] Failed to parse capture shortcut '{}': {:?}", capture_shortcut_str, e);
+                }
+            }
+
+            // 7b. 快速輸入框快捷鍵（Ctrl+Alt+G）
+            let quick_input_str = hotkey_settings.quick_input;
+            match quick_input_str.parse::<Shortcut>() {
+                Ok(shortcut) => {
+                    app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            capture::keyboard::show_quick_input_window(app);
+                        }
+                    })?;
+                    println!("[HOTKEY] Registered quick input shortcut: {}", quick_input_str);
+                }
+                Err(e) => {
+                    eprintln!("[HOTKEY] Failed to parse quick input shortcut '{}': {:?}", quick_input_str, e);
                 }
             }
 
@@ -262,6 +324,8 @@ pub fn run() {
             commands::auth_commands::change_password,
             commands::auth_commands::confirm_new_recovery,
             commands::auth_commands::recover_with_mnemonic,
+            commands::auth_commands::unlock_migrated_with_password,
+            commands::auth_commands::unlock_migrated_with_mnemonic,
             commands::auth_commands::get_pending_recovery,
             commands::auth_commands::generate_recovery_phrase,
             commands::auth_commands::restart_app,
@@ -272,29 +336,58 @@ pub fn run() {
             commands::settings_commands::switch_kb_path,
             commands::settings_commands::test_ollama,
             commands::settings_commands::test_provider_connection,
+            // Capture
+            commands::capture_commands::quick_capture,
+            commands::capture_commands::ingest_file,
+            commands::capture_commands::create_temp_chunk,
             // Knowledge
             commands::knowledge_commands::get_sources,
             commands::knowledge_commands::get_captures,
-            commands::knowledge_commands::get_pending_patterns,
-            commands::knowledge_commands::confirm_pattern,
-            commands::knowledge_commands::quick_capture,
+            commands::knowledge_commands::get_sources_timeline,
+            commands::knowledge_commands::create_editor_document,
+            commands::knowledge_commands::read_editor_document,
+            commands::knowledge_commands::save_editor_document,
+            commands::knowledge_commands::delete_source,
+            commands::knowledge_commands::get_captures_detail,
+            commands::knowledge_commands::create_manual_capture,
+            commands::knowledge_commands::update_capture,
+            commands::knowledge_commands::delete_capture,
+            commands::knowledge_commands::process_source,
+            commands::knowledge_commands::get_repository_stats,
+            commands::knowledge_commands::rebuild_kb_index,
+            commands::knowledge_commands::export_kb,
+            commands::knowledge_commands::import_kb,
+            commands::knowledge_commands::delete_kb,
+            commands::knowledge_commands::repair_missing_local_copies,
+            // Memory
+            commands::memory_commands::confirm_memory_chunk,
+            commands::memory_commands::get_pending_memory_chunks,
+            commands::memory_commands::get_pending_patterns,
+            commands::memory_commands::confirm_pattern,
             // Conversation
             commands::conversation_commands::get_conversations,
             commands::conversation_commands::create_conversation,
             commands::conversation_commands::get_messages,
             commands::conversation_commands::add_message,
             commands::conversation_commands::summarize_conversation,
+            commands::conversation_commands::enqueue_summary,
+            commands::conversation_commands::rename_conversation,
+            commands::conversation_commands::delete_conversation,
+            commands::conversation_commands::update_conversation,
+            // Project
+            commands::project_commands::get_projects,
+            commands::project_commands::get_project_conversations,
+            commands::project_commands::create_project,
+            commands::project_commands::update_project,
+            commands::project_commands::delete_project,
+            commands::project_commands::update_project_sort_order,
+            commands::project_commands::move_conversation_to_project,
             // Tag
             commands::tag_commands::get_all_tags,
             commands::tag_commands::suggest_tags,
+            commands::tag_commands::get_source_ids_by_tag,
             // Space
             commands::space_commands::get_all_spaces,
-            // Enterprise
-            knowledge_source::enterprise::load_external_kb,
-            knowledge_source::enterprise::get_external_kbs,
-            knowledge_source::enterprise::remove_external_kb,
-            // RAG
-            commands::rag_commands::rag_query,
             // Editor
             commands::editor_commands::open_document,
             commands::editor_commands::save_document,
@@ -304,6 +397,17 @@ pub fn run() {
             commands::editor_commands::read_image_base64,
             commands::editor_commands::copy_image_to_assets,
             commands::editor_commands::save_editor_to_knowledge,
+            // Enterprise
+            knowledge_source::enterprise::load_external_kb,
+            knowledge_source::enterprise::get_external_kbs,
+            knowledge_source::enterprise::remove_external_kb,
+            // Bilibili
+            commands::bilibili_auth::open_bilibili_login,
+            // RAG
+            commands::rag_commands::rag_query,
+            commands::rag_commands::rag_query_stream,
+            // Window
+            set_zoom,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

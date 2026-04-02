@@ -3,6 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::path::PathBuf;
+use tauri::Manager;
 use zeroize::Zeroize;
 
 use crate::auth::{
@@ -24,6 +25,8 @@ const KEYCHAIN_RECOVERY_PENDING: &str = "recovery_pending_v1";
 pub struct AuthStatus {
     pub is_setup: bool,
     pub auto_login: bool,
+    /// 目錄遷移場景：Keychain 空 + auth.json + DB 均存在
+    pub is_migrated: bool,
 }
 
 #[derive(Serialize)]
@@ -114,11 +117,20 @@ fn save_auth_json(kb_path: &str, salt_hex: &str) -> Result<(), String> {
 /// 查詢認證狀態：是否已完成首次設置、是否啟用自動登入
 #[tauri::command]
 pub async fn get_auth_status(kb_path: String) -> Result<AuthStatus, String> {
-    let is_setup = auth_json_path(&kb_path).exists() && recovery_bin_path(&kb_path).exists();
-    let auto_login = Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
+    let auth_exists = auth_json_path(&kb_path).exists();
+    let recovery_exists = recovery_bin_path(&kb_path).exists();
+    let db_exists = PathBuf::from(&kb_path).join(".insightcap").join("insightcap.db").exists();
+
+    let is_setup = auth_exists && recovery_exists;
+
+    let keychain_ok = Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
         .and_then(|e| e.get_password())
         .is_ok();
-    Ok(AuthStatus { is_setup, auto_login })
+
+    // 目錄遷移：auth.json + DB 存在但 Keychain 為空（此裝置尚未授權）
+    let is_migrated = is_setup && db_exists && !keychain_ok;
+
+    Ok(AuthStatus { is_setup, auto_login: keychain_ok, is_migrated })
 }
 
 /// 首次設置：建立密碼、生成恢復碼、寫入 auth.json 和 recovery.bin
@@ -128,6 +140,8 @@ pub async fn get_auth_status(kb_path: String) -> Result<AuthStatus, String> {
 #[tauri::command]
 pub async fn setup_auth(
     pool: tauri::State<'_, SqlitePool>,
+    app_state: tauri::State<'_, crate::db::AppState>,
+    app: tauri::AppHandle,
     payload: SetupPayload,
 ) -> Result<String, String> {
     let dir = auth_dir(&payload.kb_path);
@@ -160,29 +174,33 @@ pub async fn setup_auth(
         .set_password(&db_key_hex)
         .map_err(|e| e.to_string())?;
 
-    // 5. 關閉 pool 並刪除明文 DB，重啟後 init_db 將用 key 建全新加密 DB
-    // Windows 上 pool.close() 後 OS 層檔案鎖可能尚未釋放，加重試避免殘留明文 DB
+    // 5. 先通知背景任務停止，再關閉所有 pool clone，避免 Windows 檔案鎖殘留
+    let _ = app_state.shutdown_tx.send(true);
+    // 給背景任務時間退出 select loop
+    tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+    // 關閉兩個獨立管理的 pool（裸 SqlitePool 和 AppState.db 各持有一個 clone）
     pool.close().await;
-    let db_path = PathBuf::from(&payload.kb_path)
+    app_state.db.close().await;
+    // 等 OS 層釋放檔案鎖
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    // 刪除目前 pool 實際使用的 DB（而非前端傳來的新路徑）
+    let db_path = app_state.kb_path
         .join(".insightcap")
         .join("insightcap.db");
 
-    let mut deleted = false;
+    // 嘗試刪除明文 DB，失敗時不阻擋（重啟後 init_db 用加密 key 無法開明文 DB，會自動重建）
     for _ in 0..10 {
         if std::fs::remove_file(&db_path).is_ok() {
-            deleted = true;
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    if !deleted {
-        // 刪除失敗：回滾 Keychain，避免重啟後用加密 key 開啟殘留的明文 DB
-        let _ = Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
-            .and_then(|e| e.delete_credential());
-        return Err("無法刪除舊資料庫檔案，請手動關閉其他佔用程式後重試。".to_string());
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
     let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
     let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
+
+    // 寫入 bootstrap.json，讓重啟後使用使用者選定的新路徑
+    let app_data_dir = app.path().app_data_dir().map_err(|e: tauri::Error| e.to_string())?;
+    crate::db::connection::write_bootstrap(&app_data_dir, &payload.kb_path)?;
 
     db_key.zeroize();
 
@@ -389,6 +407,137 @@ pub async fn recover_with_mnemonic(
 
     write_recovery_bin(&rec_path, &new_db_key, &new_recovery_key, &new_recovery_salt)
         .map_err(|e| e.to_string())?;
+
+    db_key.zeroize();
+    new_db_key.zeroize();
+
+    Ok(new_mnemonic)
+}
+
+/// 目錄遷移解鎖（密碼路徑）：
+/// Argon2id(password, salt from auth.json) → db_key → PRAGMA key 驗證 → 寫 Keychain
+#[tauri::command]
+pub async fn unlock_migrated_with_password(
+    kb_path: String,
+    password: String,
+) -> Result<(), String> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    // 讀取 auth.json 取得 salt
+    let auth = load_auth_json(&kb_path)
+        .ok_or_else(|| "找不到 auth.json".to_string())?;
+    let salt_bytes = hex::decode(&auth.salt)
+        .map_err(|_| "auth.json salt 格式錯誤".to_string())?;
+    if salt_bytes.len() != 32 {
+        return Err("auth.json salt 長度錯誤".to_string());
+    }
+    let mut salt = [0u8; 32];
+    salt.copy_from_slice(&salt_bytes);
+
+    // 衍生 db_key
+    let mut db_key = derive_db_key(&password, &salt)
+        .map_err(|e| format!("key 衍生失敗: {}", e))?;
+    let db_key_hex = hex::encode(&db_key);
+
+    // 嘗試以此 key 開啟加密 DB（驗證密碼正確性）
+    let db_path = PathBuf::from(&kb_path).join(".insightcap").join("insightcap.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
+    let options = SqliteConnectOptions::from_str(&db_url)
+        .map_err(|e| format!("DB URL 解析失敗: {}", e))?
+        .pragma("key", format!("\"x'{}' \"", db_key_hex))
+        .create_if_missing(false);
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|_| "WRONG_PASSWORD".to_string())?;
+
+    // 驗證成功，關閉臨時連線
+    pool.close().await;
+
+    // 寫 Keychain（後續 try_auto_login 使用）
+    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
+        .map_err(|e| format!("Keychain 存取失敗: {}", e))?
+        .set_password(&db_key_hex)
+        .map_err(|e| format!("Keychain 寫入失敗: {}", e))?;
+
+    db_key.zeroize();
+    Ok(())
+}
+
+/// 目錄遷移解鎖（恢復碼路徑）：
+/// 解密 recovery.bin → db_key → PRAGMA key 驗證 → 讓用戶設新密碼 → rekey → 寫新 auth.json + Keychain
+/// 回傳新日常恢復碼（前端顯示後由用戶確認，再呼叫 restart_app）
+#[tauri::command]
+pub async fn unlock_migrated_with_mnemonic(
+    kb_path: String,
+    mnemonic: String,
+    new_password: String,
+) -> Result<String, String> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    // 讀取 recovery.bin 取得 salt → 驗證恢復碼 → 解密 db_key
+    let rec_path = recovery_bin_path(&kb_path);
+    let bin_data = std::fs::read(&rec_path)
+        .map_err(|e| format!("讀取 recovery.bin 失敗: {}", e))?;
+    if bin_data.len() < 17 {
+        return Err("recovery.bin 格式錯誤".to_string());
+    }
+    let mut stored_salt = [0u8; 16];
+    stored_salt.copy_from_slice(&bin_data[1..17]);
+
+    let recovery_key = derive_recovery_key_verify(&mnemonic, &stored_salt)
+        .map_err(|_| "INVALID_MNEMONIC".to_string())?;
+    let (mut db_key, _) = read_recovery_bin(&rec_path, &recovery_key)
+        .map_err(|_| "INVALID_MNEMONIC".to_string())?;
+    let db_key_hex = hex::encode(&db_key);
+
+    // 用原始 db_key 開啟加密 DB 驗證
+    let db_path = PathBuf::from(&kb_path).join(".insightcap").join("insightcap.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
+    let options = SqliteConnectOptions::from_str(&db_url)
+        .map_err(|e| format!("DB URL 解析失敗: {}", e))?
+        .pragma("key", format!("\"x'{}' \"", db_key_hex))
+        .create_if_missing(false);
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|_| "INVALID_MNEMONIC".to_string())?;
+
+    // PRAGMA rekey 換成新密碼衍生的 key
+    let mut new_salt = [0u8; 32];
+    rand::rng().fill_bytes(&mut new_salt);
+    let mut new_db_key = derive_db_key(&new_password, &new_salt)
+        .map_err(|e| format!("新密碼 key 衍生失敗: {}", e))?;
+    let new_key_hex = hex::encode(&new_db_key);
+
+    sqlx::query(&format!("PRAGMA rekey = \"x'{}'\";", new_key_hex))
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("PRAGMA rekey 失敗: {}", e))?;
+
+    pool.close().await;
+
+    // 寫新 auth.json
+    save_auth_json(&kb_path, &hex::encode(&new_salt))?;
+
+    // 生成新日常 recovery.bin
+    let new_mnemonic = generate_mnemonic();
+    let (new_recovery_key, new_recovery_salt) =
+        derive_recovery_key_new(&new_mnemonic).map_err(|e| format!("生成新恢復碼失敗: {}", e))?;
+    write_recovery_bin(&rec_path, &new_db_key, &new_recovery_key, &new_recovery_salt)
+        .map_err(|e| format!("寫入 recovery.bin 失敗: {}", e))?;
+
+    // 更新 Keychain
+    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
+        .map_err(|e| format!("Keychain 存取失敗: {}", e))?
+        .set_password(&new_key_hex)
+        .map_err(|e| format!("Keychain 寫入失敗: {}", e))?;
 
     db_key.zeroize();
     new_db_key.zeroize();

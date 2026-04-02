@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { SetupPage } from './pages/SetupPage';
 import { LoginPage } from './pages/LoginPage';
+import { MigratePage } from './pages/MigratePage';
 import { MainLayout } from './components/layout/MainLayout';
 import { QuickCapturePage } from './pages/QuickCapturePage';
 
@@ -18,9 +19,10 @@ if (windowLabel === 'quick-capture') {
 interface AuthStatus {
     isSetup: boolean;
     autoLogin: boolean;
+    isMigrated: boolean;
 }
 
-type AppState = 'loading' | 'setup' | 'login' | 'main';
+type AppState = 'loading' | 'setup' | 'login' | 'migrate' | 'main';
 
 export default function App() {
     // Quick Capture 視窗直接渲染，跳過認證流程
@@ -45,6 +47,8 @@ export default function App() {
 
             if (!status.isSetup) {
                 setAppState('setup');
+            } else if (status.isMigrated) {
+                setAppState('migrate');
             } else if (status.autoLogin) {
                 // 自動登入模式：直接嘗試登入
                 const autoOk = await invoke<boolean>('try_auto_login', { kbPath: path });
@@ -76,14 +80,8 @@ export default function App() {
 
     if (appState === 'loading') {
         return (
-            <div
-                className="flex h-screen w-screen items-center justify-center"
-                style={{ background: 'var(--ic-bg-base)' }}
-            >
-                <div
-                    className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent"
-                    style={{ borderColor: 'var(--ic-border-default)', borderTopColor: 'var(--ic-accent)' }}
-                />
+            <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-stroke-divider border-t-accent-default" />
             </div>
         );
     }
@@ -92,6 +90,15 @@ export default function App() {
         return (
             <>
                 <SetupPage onComplete={initApp} />
+                <Toaster position="bottom-right" />
+            </>
+        );
+    }
+
+    if (appState === 'migrate') {
+        return (
+            <>
+                <MigratePage kbPath={kbPath} onUnlockSuccess={initApp} />
                 <Toaster position="bottom-right" />
             </>
         );

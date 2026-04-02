@@ -91,10 +91,11 @@ InsightCAP 是**經驗調用系統**。
 │  │                                                      │  │
 │  │  Command Layer（IPC 邊界，只做參數驗證和服務調用）     │  │
 │  │  conversation_commands  rag_commands（含 stream）     │  │
-│  │  capture_commands（create_temp_chunk）               │  │
-│  │  knowledge_commands（quick_capture）                  │  │
-│  │  memory_commands  project_commands                   │  │
+│  │  capture_commands（quick_capture / ingest_file / create_temp_chunk） │  │
+│  │  knowledge_commands（timeline / editor document / source CRUD）      │  │
+│  │  memory_commands  project_commands  settings_commands │  │
 │  │  auth_commands  bilibili_auth（B 站 SESSDATA 登入）   │  │
+│  │  window commands（set_zoom）                          │  │
 │  │                         │                            │  │
 │  │  Core Services                                       │  │
 │  │  CaptureEngine  ConversationEngine  MemoryEngine     │  │
@@ -300,58 +301,73 @@ Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 ### 核心原則
 
 - 用戶看到的是原文件/來源（source），以 **Timeline（日期主導）** 排列
-- 展開文件後可查看關聯的 chunk（capture），chunk 支援**編輯內容/標籤/Space** 和**刪除**
-- 文件與 chunk 均可**獨立新增和刪除**
+- 目前實作為左側 timeline rail、右側內容卡片區的雙欄佈局
+- 右側內容依日期分組，同日再分為「來源文件」與「筆記」兩個區塊
+- source / note 均可直接開啟預覽，並支援卡片 hover 顯示刪除按鈕
+- 今天區塊的來源文件區提供「導入文件」卡，使用原生檔案選擇器匯入本機文件
 
-### 兩類文件
+### 兩類內容
 
-| 類別 | `source_category` | 說明 | 存放 |
-|------|-------------------|------|------|
-| **編輯器文件** | `editor` | 用戶在文本編輯器中撰寫的文件 | 本地 `{app_data}/documents/*.md`，暫存直到用戶刪除 |
-| **擷取內容** | `capture` | 通過快捷鍵/Quick Capture/匯入取得的原文件 | DB `sources` 表 + `captures` 表 |
+| 類別 | 當前實作值 | 說明 |
+|------|-----------|------|
+| **來源文件** | `timelineSources` / `source_category = editor_doc \| captured` | 由編輯器文件或匯入/擷取來源構成 |
+| **筆記** | `noteStore` 本地筆記 | 以獨立筆記檔案顯示於同一天的筆記區塊 |
 
 **擷取內容 media_type 細分：** `text` | `markdown` | `url` | `image` | `video` | `pdf` | `file`
 
-### 頁面結構
+### 頁面結構（目前實作）
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ [全部] [編輯器文件] [擷取內容]  🔍 搜尋...    [+ 新增 ▾]   │  ← TypeFilterBar
-│   文字 · 網頁 · 圖片 · 影片 · PDF                          │  ← media type chips
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ── 今天 ──────────────────────────────────────────────     │
-│  📄 週報草稿.md              editor    14:30    2 chunks    │
-│  🌐 example.com/article      url      10:15    8 chunks    │
-│                                                             │
-│  ── 昨天 ──────────────────────────────────────────────     │
-│  🖼️ 截圖_0330               image    18:42    1 chunk     │
-│  📄 專案提案.pdf             pdf      09:00    5 chunks    │
-│                                                             │
-│  ── 本週 ──────────────────────────────────────────────     │
-│  🎬 YouTube 影片標題          video    3/28     3 chunks    │
-│  📋 剪貼簿擷取               text     3/27     1 chunk     │
-│                                                             │
-│  ── 更早 ──────────────────────────────────────────────     │
-│  🌐 競品分析網站              url      3/15     6 chunks    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+左側：Timeline rail
+- 大尺寸顯示日期 + 星期
+- 小尺寸僅顯示節點圓點
+- 點擊節點，右側內容平滑捲動到對應日期
+- 右側捲動時，左側 active 日期會同步更新
+
+右側：日期分組內容
+- 日期標題
+- 來源文件卡片網格
+- 今天額外顯示「導入文件」卡
+- 筆記卡片網格
 ```
 
-**點擊展開文件** → 顯示：
-1. **文件預覽**（依 media_type 分流）：Markdown 渲染 / URL OG card / 圖片檢視器 / 影片 embed / PDF viewer / 檔案資訊卡
-2. **Chunk 列表**：每個 chunk 顯示內容摘要 + tags + space badge + 編輯/刪除按鈕
-3. **「+ 新增 chunk」按鈕**：可獨立為該 source 新增 chunk
+### 卡片互動（目前實作）
 
-**Chunk 編輯面板**（點擊 chunk 編輯按鈕觸發，inline 或 Dialog）：
-- 內容 textarea
-- Tags autocomplete（從 tags 表查詢）
-- Space 選擇器 dropdown
-- 儲存 / 取消
+- 來源文件卡：
+  - 依 `media_type` 顯示 icon 與 tag
+  - 可開啟文件、網址、圖片或預覽內容
+  - hover 顯示刪除按鈕
 
-**新增入口**（TypeFilterBar 右上角「+ 新增」按鈕）：
-- 新增文字文件 → Dialog 輸入標題 → 建立 editor 類型 source + 本地 `.md`
-- 獨立新增 chunk → Dialog 輸入內容 + tags（不依附 source）
+- 筆記卡：
+  - 顯示筆記 icon 與 `#筆記` tag
+  - 點擊開啟預覽
+  - hover 顯示刪除按鈕
+
+- 導入文件卡：
+  - 僅在今天區塊顯示
+  - 點擊後開啟原生檔案選擇器
+  - 導入完成後刷新 timeline，並顯示成功 / 失敗 toast
+
+### 導入文件流程（目前實作）
+
+```
+儲存庫頁「導入文件」卡
+    ↓
+前端 openDialog 選取本機檔案（可多選）
+    ↓
+invoke('ingest_file', { filePath, conversationId: null })
+    ↓
+capture_commands::ingest_file
+    - parse_file 解析文件
+    - 建立 sources 記錄（type='file'）
+    - 依段落建立 captures（capture_method='source_import'）
+    - embedding 寫入 vector store
+    - 更新 source.capture_count
+    ↓
+前端 reload timeline
+    ↓
+toast 顯示導入成功 / 失敗結果
+```
 
 **快速擷取的來源顯示：**
 - 截圖：「截圖 YYYY-MM-DD HH:mm」+ 縮圖
@@ -1112,6 +1128,23 @@ src/i18n/
 - 三層記憶類型名稱納入翻譯：`memory.type.data/pattern/log`
 - key 用語意命名：`common.confirm`，不是 `common.確認`
 
+### RepositoryPage 對照落差（2026-04-02）
+
+以下是目前實作與本文件仍未完全一致的項目，作為後續修正清單。
+
+| 類別 | 文件規範 | 目前實作狀態 | 影響範圍 |
+|------|----------|--------------|----------|
+| i18n | 全介面文字必須經 `t('key')`，禁止寫死 | `RepositoryPage.tsx` 仍有大量硬編碼文字（例如：今天/昨天、搜尋 placeholder、來源文件、筆記、導入文件、載入中、刪除確認、toast 訊息、Chunks 區塊） | 儲存庫頁（UI 文字）、部分導覽文字 |
+| source_category 命名 | 文件多處仍寫 `editor` / `capture` | 程式實作使用 `editor_doc` / `captured`，文件其餘章節尚有舊值殘留 | Schema 章節、UX 章節、開發說明 |
+| Chunk 編輯能力 | 文件描述「展開後可編輯內容/標籤/Space」 | 當前 `RepositoryPage` 僅提供 chunk 載入與唯讀預覽，尚未提供 inline 或 Dialog 編輯與儲存 | 儲存庫預覽 Modal、Chunk 操作流 |
+| TypeFilterBar 元件化 | 文件描述為獨立 `TypeFilterBar` 與既定元件結構 | 當前為 `RepositoryPage` 內嵌 filter chips（all/source/note + tag chips），未抽成獨立元件 | 前端元件結構章節、Phase 4 任務描述 |
+
+**建議修正優先序：**
+1. 先完成 i18n：將 `RepositoryPage` 全部字串改為 i18n key，補齊 `zh-TW/zh-CN/en`。
+2. 統一命名：文件與程式全部改為同一組 `source_category` 值（建議以實作值 `editor_doc` / `captured` 為準）。
+3. 補齊 Chunk 編輯面板：至少先提供內容與 tags 編輯，再補 Space 選擇。
+4. 視需要將 filter 區塊抽成 `TypeFilterBar` 元件，與架構文件一致。
+
 ---
 
 ## 模組結構
@@ -1250,7 +1283,7 @@ src-tauri/src/
 
 **Phase 4：儲存庫頁 UX**
 17. Timeline 視圖（以 sources 為單位，日期分組）
-18. TypeFilterBar（editor / capture 切換 + media type 篩選）
+18. TypeFilterBar（editor / capture 切換 + media type chips）
 19. Chunk 可見/編輯/刪除（展開文件後 ChunkListPanel + ChunkEditPanel）
 20. @ 引用（原文件層面）+ 標籤推薦 + `#` 輸入
 
@@ -1418,6 +1451,13 @@ Embedding → usearch
 - 實作 SettingsPage 一般設定 tab：textarea 管理用戶 prompt 偏好
 - 更新後端模組結構：補充 `vision.rs` 說明，加入 `prompts.rs`
 
+*版本：v2.5 | 日期：2026-04-03*
+本次更新：
+- 匯出/匯入知識庫重構為零知識設計：DB 全程 SQLCipher 加密，透過 `backup_recovery.bin` 傳遞 key，移除「計劃解法（方案 A）」暫記
+- 新增 `backup_recovery.bin` 至 KB 目錄結構說明
+- 新增「目錄遷移場景」：Keychain 空 + auth.json + DB 存在時顯示 `MigratePage`，支援密碼與恢復碼兩種解鎖路徑
+- `AuthStatus` 新增 `isMigrated` 欄位，`get_auth_status` 偵測條件
+
 *版本：v2.4 | 日期：2026-03-29*
 本次更新：
 - 新增 AppState 章節：定義 `db` / `kb_path` / `vector_store` / `embedder` / `current_conversation_id` 組成
@@ -1433,3 +1473,114 @@ Embedding → usearch
 - 變LLM 設定讀取統一改用 settings::store::get_settings，修正舍棄的 keys = 'models' 議題
 - 變memory_chunks 設計變：新増 promoted_capture_id，PatternEngine 改用 conversation_id 欄
 - 變Phase 6 HTTP API 骨架完成（axum，127.0.0.1:3030）
+````
+This is the description of what the code block changes:
+<changeDescription>
+補充知識庫備份/匯出/還原不會包含圖片、附件等資料夾，並說明影響與建議。
+</changeDescription>
+
+This is the code block that represents the suggested code change:
+```markdown
+---
+
+## 知識庫匯出／匯入設計（更新 2026-04-02）
+
+### 設計原則
+
+所有經程式處理的本地資料（文件副本、筆記）都必須有副本在 KB 目錄內，確保 KB 目錄是自足的完整單元，可獨立備份與還原。URL、YouTube、Bilibili 影片等網路資源不做副本（只存文字擷取結果）。
+
+### KB 目錄結構（完整）
+
+```
+kb_path/
+├── .insightcap/
+│   ├── insightcap.db       ← SQLCipher 加密 DB（主資料）
+│   ├── insightcap.db-wal   ← WAL 日誌（匯出前 checkpoint 清除）
+│   ├── insightcap.db-shm   ← WAL 共享記憶體（匯出時跳過）
+│   ├── auth.json           ← Argon2id salt（不含密碼/key）
+│   ├── recovery.bin        ← 加密備份的 db_key（日常恢復碼加密）
+│   ├── backup_recovery.bin ← 加密備份的 db_key（備份專用恢復碼加密，匯出時生成，匯入時解密）
+│   └── vectors/            ← usearch 向量索引
+├── files/                  ← 所有本地文件副本（PDF、DOCX、MD 等）
+└── notes/                  ← 編輯器筆記（draft_<timestamp>.md）
+```
+
+### 各擷取路徑的副本策略
+
+| 擷取入口 | `sources.file_path` | `sources.local_doc_path` | `sources.clean_content` | 匯出安全性 |
+|---------|----|----|-----|-----------|
+| 熱鍵擷取（文字/URL）| 無 | 無 | ✅ 完整內嵌 | ✅ 安全 |
+| 熱鍵擷取（圖片）| 無 | 無 | ✅ OCR 後內嵌；image_data BLOB 在 DB | ✅ 安全 |
+| 剪貼簿拖入檔案（`process_clipboard_file`）| 原始外部路徑 | `files/<id>_<name>` ✅ KB 內副本 | ✅ 完整內嵌 | ✅ 安全 |
+| 匯入文件（`ingest_file`）| 原始外部路徑 | `files/<id>_<name>` ✅ KB 內副本 | ✅ 完整內嵌 | ✅ 安全 |
+| 編輯器筆記（`editor_doc`）| 無 | `notes/draft_<ts>.md` ✅ KB 內 | 空（由磁碟讀取）| ✅ 安全（notes/ 隨 zip 打包） |
+| 對話臨時附件（`temp_attachment`）| 外部路徑 | 無 | ✅ 完整內嵌 | ✅ 安全（臨時用途，7天自動清除）|
+| URL / 網頁 | 無（URL 存 `sources.url`）| 無 | ✅ 爬取結果內嵌 | ✅ 安全 |
+
+### export_kb 行為（實作版，2026-04-03 更新）
+
+**零知識設計：** DB 全程保持 SQLCipher 加密狀態，key 透過獨立的 `backup_recovery.bin` 傳遞，zip 中不存在任何明文 DB 副本。
+
+前端流程：
+1. 呼叫 `generate_recovery_phrase` 生成 24-word 備份專用恢復碼（獨立於日常恢復碼）
+2. 顯示恢復碼 + 複製按鈕 + 確認勾選框
+3. 用戶確認後呼叫 `export_kb(dest_path, mnemonic)`
+
+後端 `export_kb(dest_path, mnemonic)` 流程：
+1. `PRAGMA wal_checkpoint(TRUNCATE)` 確保 DB 完整
+2. 從 Keychain 讀取當前 `db_key`（hex）
+3. 用備份恢復碼衍生 `backup_recovery_key`，生成 `backup_recovery.bin`（77-byte，同 recovery.bin 格式）至臨時路徑，讀入記憶體後刪除
+4. 打包 zip：遞迴走訪 `.insightcap/`（跳過 `-wal`、`-shm`、舊 `backup_recovery.bin`）+ `files/` + `notes/`，注入新 `backup_recovery.bin`（in-memory）
+5. zip 完成
+
+### import_kb 行為（實作版，2026-04-03 更新）
+
+前端流程（2 步）：
+- 步驟 1：選擇 zip → 輸入備份恢復碼 + 設定新密碼 → 呼叫 `import_kb(src_path, mnemonic, new_password)` → 後端回傳新日常恢復碼
+- 步驟 2：顯示新日常恢復碼 + 確認保存 → 呼叫 `restart_app`
+
+後端 `import_kb(src_path, mnemonic, new_password) → String` 流程：
+1. 驗證 ZIP magic bytes（`PK\x03\x04`）
+2. 備份現有 `insightcap.db` 為 `.db.bak`，解壓 zip 到 `kb_root`
+3. 讀取 `backup_recovery.bin`，從 bytes[1..17] 取出 salt，用備份恢復碼呼叫 `derive_recovery_key_verify` → 解密取得原始 `db_key`
+4. 用原始 `db_key` 開啟加密 DB（`SqliteConnectOptions::pragma("key", ...)`），驗證成功
+5. 衍生新 `new_db_key`（Argon2id + 新 salt），執行 `PRAGMA rekey`
+6. 原子寫入新 `auth.json`（新 salt）
+7. 生成新日常恢復碼，寫入 `recovery.bin`
+8. 更新 Keychain `auto_login_key` = 新 `db_key` hex
+9. Zeroize `db_key`、`new_db_key`，回傳新日常恢復碼
+
+### 安全邊界
+
+| 場景 | DB 狀態 | key 傳遞方式 |
+|------|--------|------------|
+| 匯出 zip | SQLCipher 加密原樣 | `backup_recovery.bin`（需備份恢復碼解密）|
+| zip 遭截取 | 無法讀取（無 key）| 零知識 |
+| 匯入成功後 | 用新密碼 rekey | 舊備份恢復碼作廢 |
+
+### 目錄遷移場景（2026-04-03 新增）
+
+**觸發條件：** Keychain 空 + `auth.json` 存在 + `insightcap.db` 存在
+
+此為「直接複製 KB 目錄到新機器」的場景，不同於首次 Setup（無 auth.json）或忘記密碼（Keychain 有值但密碼錯誤）。
+
+`get_auth_status` 回傳 `isMigrated: true`，前端渲染 `MigratePage`。
+
+**UI：** 偵測到知識庫，但此裝置尚未授權。選擇解鎖方式（密碼 / 恢復碼）。
+
+**密碼路徑（`unlock_migrated_with_password`）：**
+1. 讀取 `auth.json` 取得 salt
+2. Argon2id(password, salt) → `db_key`
+3. 用 `db_key` 開啟加密 DB 驗證（`SqlitePoolOptions::connect_with`）
+4. 成功 → 寫 Keychain `auto_login_key` → 前端呼叫 `initApp()`（`try_auto_login` 成功 → 進入 main）
+
+**恢復碼路徑（`unlock_migrated_with_mnemonic`）：**
+1. 解密 `recovery.bin` → 原始 `db_key`
+2. 用原始 `db_key` 開啟加密 DB 驗證
+3. 成功 → 衍生新 `new_db_key`（新密碼 + 新 salt），`PRAGMA rekey`
+4. 寫新 `auth.json`、新 `recovery.bin`、更新 Keychain
+5. 回傳新日常恢復碼 → 前端顯示並確認 → `restart_app`
+
+### repair_missing_local_copies 指令
+
+一次性修復工具，掃描所有 `file_path` 有值但 `local_doc_path` 為空的歷史 sources，把原始檔案（若仍存在）複製到 `kb_path/files/` 並更新 DB。原始檔案已刪除或移動者跳過。設定頁面「知識庫管理」區塊提供觸發按鈕。
