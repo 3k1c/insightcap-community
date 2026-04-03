@@ -22,18 +22,18 @@ export function Dialog({ open, onClose, title, children, className, size = 'md' 
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-[var(--ic-z-modal)] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4">
             {/* Overlay */}
             <div
-                className="absolute inset-0 bg-[var(--ic-bg-overlay)] backdrop-blur-sm"
+                className="absolute inset-0 bg-[var(rgba(0,0,0,0.5))] backdrop-blur-sm"
                 onClick={onClose}
             />
             {/* Dialog box */}
             <div
                 className={cn(
                     'relative w-full rounded-xl',
-                    'bg-[var(--ic-bg-elevated)] border border-[var(--ic-border-default)]',
-                    'shadow-[var(--ic-shadow-lg)]',
+                    'bg-surface-card border border-stroke-divider',
+                    'shadow-flyout',
                     'flex flex-col',
                     sizeClasses[size],
                     className
@@ -42,8 +42,8 @@ export function Dialog({ open, onClose, title, children, className, size = 'md' 
             >
                 {/* Header */}
                 {title && (
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--ic-border-default)]">
-                        <h2 className="text-base font-semibold text-[var(--ic-text-primary)]">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-stroke-divider">
+                        <h2 className="text-fs-base font-semibold text-text-primary">
                             {title}
                         </h2>
                         <Button variant="ghost" size="icon" onClick={onClose}>

@@ -1,242 +1,285 @@
-/* =========================================================
-   IC Design Token — InsightCAP 四主題完整定義
-   套用方式：在 <html> 加上 .theme-light / .theme-dark / .theme-casual / .theme-fresh
-   ========================================================= */
+/* ============================================================
+   InsightCAP Design System — 完整 Token 宣告 v1.1
+   支援四套主題：theme-frost / theme-void / theme-warm / theme-sage
+   套用方式：在 <html> 加上對應 class
+   ============================================================ */
 
-/* ── 固定值（不隨主題變化）─────────────────────────────── */
+/* === 共用基礎（Radius / Spacing / Typography / Motion / Knowledge） === */
 :root {
-  /* Spacing */
-  --ic-space-1: 4px;
-  --ic-space-2: 8px;
-  --ic-space-3: 12px;
-  --ic-space-4: 16px;
-  --ic-space-6: 24px;
-  --ic-space-8: 32px;
-  --ic-space-10: 40px;
-  --ic-space-12: 48px;
+  /* RADIUS */
+  --radius-micro: 2px;
+  --radius-sm:    4px;
+  --radius-md:    8px;
+  --radius-lg:    12px;
+  --radius-xl:    16px;
+  --radius-full:  9999px;
 
-  /* Border Radius */
-  --ic-radius-sm: 4px;
-  --ic-radius-md: 8px;
-  --ic-radius-lg: 12px;
-  --ic-radius-xl: 16px;
-  --ic-radius-full: 9999px;
+  /* SPACING */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
 
-  /* Font */
-  --ic-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --ic-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* TYPOGRAPHY */
+  --font-display: "Noto Serif TC", "Georgia", serif;
+  --font-ui:      "Segoe UI Variable", "PingFang TC", "Microsoft JhengHei UI", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
 
-  /* Font Sizes */
-  --ic-text-xs: 0.75rem;
-  --ic-text-sm: 0.875rem;
-  --ic-text-base: 1rem;
-  --ic-text-lg: 1.125rem;
-  --ic-text-xl: 1.25rem;
-  --ic-text-2xl: 1.5rem;
+  /* ── Font Size：單一來源 ── */
+  /* UI 層（Tailwind class 引用） */
+  --fs-xs:       0.875rem;   /* 14px */
+  --fs-xs-lh:    1.125rem;
+  --fs-sm:       0.9375rem;  /* 15px */
+  --fs-sm-lh:    1.375rem;
+  --fs-base:     1.0625rem;  /* 17px */
+  --fs-base-lh:  1.625rem;
+  --fs-lg:       1.25rem;    /* 20px */
+  --fs-lg-lh:    1.875rem;
+  --fs-xl:       1.375rem;   /* 22px */
+  --fs-xl-lh:    1.875rem;
+  --fs-2xl:      1.625rem;   /* 26px */
+  --fs-2xl-lh:   2.125rem;
 
-  /* Shadows */
-  --ic-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --ic-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --ic-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  /* 編輯器層 */
+  --fs-editor-h1:      1.5rem;
+  --fs-editor-h1-lh:   2rem;
+  --fs-editor-h2:      1.25rem;
+  --fs-editor-h2-lh:   1.75rem;
+  --fs-editor-h3:      1.125rem;
+  --fs-editor-h3-lh:   1.625rem;
+  --fs-editor-h4:      1rem;
+  --fs-editor-h4-lh:   1.5rem;
+  --fs-editor-h5:      0.9375rem;
+  --fs-editor-h5-lh:   1.4rem;
+  --fs-editor-h6:      0.875rem;
+  --fs-editor-h6-lh:   1.35rem;
+  --fs-editor-text1:   1rem;       /* 12pt */
+  --fs-editor-text1-lh: 1.6;
+  --fs-editor-text2:   1.167rem;   /* 14pt */
+  --fs-editor-text2-lh: 1.65rem;
+  --fs-editor-text3:   0.833rem;   /* 10pt */
+  --fs-editor-text3-lh: 1.2rem;
 
-  /* Transitions */
-  --ic-transition-fast: 100ms ease;
-  --ic-transition-base: 200ms ease;
-  --ic-transition-slow: 300ms ease;
+  --type-display:        600 40px/52px var(--font-display);
+  --type-title:          600 28px/36px var(--font-display);
+  --type-title-sm:       600 20px/28px var(--font-ui);
+  --type-subtitle:       600 16px/24px var(--font-ui);
+  --type-body-lg:        400 16px/24px var(--font-ui);
+  --type-body:           400 14px/20px var(--font-ui);
+  --type-body-strong:    600 14px/20px var(--font-ui);
+  --type-caption:        400 12px/16px var(--font-ui);
+  --type-caption-strong: 600 12px/16px var(--font-ui);
+  --type-overline:       600 11px/16px var(--font-ui);
+  --type-code:           400 13px/20px var(--font-mono);
 
-  /* Z-index */
-  --ic-z-dropdown: 1000;
-  --ic-z-modal: 1100;
-  --ic-z-toast: 1200;
+  /* MOTION */
+  --duration-instant: 80ms;
+  --duration-fast:    150ms;
+  --duration-normal:  200ms;
+  --duration-slow:    300ms;
+  --duration-crawl:   400ms;
+  --ease-fluent:      cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-out:         cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out:      cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring:      cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Z-INDEX */
+  --z-dropdown: 1000;
+  --z-modal:    1100;
+  --z-toast:    1200;
+  --z-titlebar: 9999;
+
+  /* KNOWLEDGE TYPE（亮色主題通用；Deep Void / Sage Breeze 在各自主題內覆寫） */
+  --knowledge-data:         #3B82F6;
+  --knowledge-data-bg:      rgba(59, 130, 246, 0.10);
+  --knowledge-data-text:    #1D4ED8;
+  --knowledge-pattern:      #14B8A6;
+  --knowledge-pattern-bg:   rgba(20, 184, 166, 0.10);
+  --knowledge-pattern-text: #0F766E;
+  --knowledge-log:          #F59E0B;
+  --knowledge-log-bg:       rgba(245, 158, 11, 0.10);
+  --knowledge-log-text:     #B45309;
+
+  /* SHARED SEMANTIC */
+  --text-on-accent: #FFFFFF;
+  --stroke-focus:   var(--accent-default);
+
+  /* SEMANTIC COLORS */
+  --color-success:    #16A34A;
+  --color-success-bg: rgba(22, 163, 74, 0.10);
+  --color-warning:    #D97706;
+  --color-warning-bg: rgba(217, 119, 6, 0.10);
+  --color-danger:     #DC2626;
+  --color-danger-bg:  rgba(220, 38, 38, 0.10);
+  --color-danger-hover: #B91C1C;
 }
 
-/* ── 淺色系 theme-light ─────────────────────────────────── */
-.theme-light {
-  /* 背景 */
-  --ic-bg-base:     #FFFFFF;
-  --ic-bg-surface:  #F8F9FA;
-  --ic-bg-elevated: #FFFFFF;
-  --ic-bg-sunken:   #F1F3F5;
-  --ic-bg-overlay:  rgba(0, 0, 0, 0.4);
+/* ============================================================
+   THEME: Frost Glass（預設 / 亮色・冰藍）
+   ============================================================ */
+.theme-frost {
+  --surface-base:          #F5F4F1;
+  --surface-layer:         rgba(255, 255, 255, 0.72);
+  --surface-card:          rgba(255, 255, 255, 0.60);
+  --surface-subtle:        rgba(0, 0, 0, 0.03);
+  --surface-flyout:        rgba(250, 250, 248, 0.92);
+  --surface-control:       rgba(255, 255, 255, 0.80);
+  --surface-control-hover: rgba(255, 255, 255, 0.92);
 
-  /* 文字 */
-  --ic-text-primary:   #111827;
-  --ic-text-secondary: #4B5563;
-  --ic-text-muted:     #9CA3AF;
-  --ic-text-inverse:   #FFFFFF;
-  --ic-text-disabled:  #D1D5DB;
+  --text-primary:          rgba(0, 0, 0, 0.88);
+  --text-secondary:        rgba(0, 0, 0, 0.56);
+  --text-tertiary:         rgba(0, 0, 0, 0.38);
+  --text-disabled:         rgba(0, 0, 0, 0.28);
+  --text-link:             #0066CC;
+  --text-link-hover:       #0052A3;
 
-  /* 強調色 */
-  --ic-accent:        #2563EB;
-  --ic-accent-hover:  #1D4ED8;
-  --ic-accent-subtle: #EFF6FF;
-  --ic-accent-text:   #1E40AF;
+  --accent-default:        #2B7FD4;
+  --accent-light1:         #4A95DE;
+  --accent-light2:         #EBF4FF;
+  --accent-dark1:          #1A6CBD;
+  --accent-dark2:          #155A9E;
 
-  /* 邊框 */
-  --ic-border-default: #E5E7EB;
-  --ic-border-strong:  #D1D5DB;
-  --ic-border-focus:   #2563EB;
+  --stroke-card:           rgba(0, 0, 0, 0.07);
+  --stroke-card-highlight: rgba(255, 255, 255, 0.80);
+  --stroke-control:        rgba(0, 0, 0, 0.14);
+  --stroke-divider:        rgba(0, 0, 0, 0.06);
+  --stroke-strong:         rgba(0, 0, 0, 0.40);
 
-  /* 三層記憶視覺語言 */
-  --ic-memory-data:         #3B82F6;
-  --ic-memory-data-bg:      #EFF6FF;
-  --ic-memory-data-text:    #1E40AF;
-  --ic-memory-pattern:      #8B5CF6;
-  --ic-memory-pattern-bg:   #F5F3FF;
-  --ic-memory-pattern-text: #5B21B6;
-  --ic-memory-log:          #F59E0B;
-  --ic-memory-log-bg:       #FFFBEB;
-  --ic-memory-log-text:     #92400E;
-
-  /* 語意色 */
-  --ic-success:       #10B981;
-  --ic-success-bg:    #ECFDF5;
-  --ic-warning:       #F59E0B;
-  --ic-warning-bg:    #FFFBEB;
-  --ic-danger:        #EF4444;
-  --ic-danger-bg:     #FEF2F2;
-  --ic-danger-hover:  #DC2626;
-
-  /* Sidebar */
-  --ic-sidebar-bg:    #F3F4F6;
-  --ic-sidebar-item-hover: #E5E7EB;
-  --ic-sidebar-item-active: #DBEAFE;
+  --shadow-card:           0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-card-hover:     0 4px 12px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-flyout:         0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08);
+  --shadow-dialog:         0 24px 48px rgba(0,0,0,0.16), 0 4px 12px rgba(0,0,0,0.08);
 }
 
-/* ── 深黑系 theme-dark ──────────────────────────────────── */
-.theme-dark {
-  --ic-bg-base:     #0F1117;
-  --ic-bg-surface:  #1A1D27;
-  --ic-bg-elevated: #22263A;
-  --ic-bg-sunken:   #0A0C12;
-  --ic-bg-overlay:  rgba(0, 0, 0, 0.7);
+/* ============================================================
+   THEME: Deep Void（暗色・極深黑・靛紫）
+   ============================================================ */
+.theme-void {
+  --surface-base:          #131416;
+  --surface-layer:         rgba(38, 38, 42, 0.85);
+  --surface-card:          rgba(255, 255, 255, 0.05);
+  --surface-subtle:        rgba(255, 255, 255, 0.04);
+  --surface-flyout:        rgba(32, 32, 36, 0.92);
+  --surface-control:       rgba(255, 255, 255, 0.07);
+  --surface-control-hover: rgba(255, 255, 255, 0.10);
 
-  --ic-text-primary:   #F9FAFB;
-  --ic-text-secondary: #9CA3AF;
-  --ic-text-muted:     #6B7280;
-  --ic-text-inverse:   #111827;
-  --ic-text-disabled:  #374151;
+  --text-primary:          rgba(255, 255, 255, 0.92);
+  --text-secondary:        rgba(255, 255, 255, 0.56);
+  --text-tertiary:         rgba(255, 255, 255, 0.38);
+  --text-disabled:         rgba(255, 255, 255, 0.28);
+  --text-link:             #818CF8;
+  --text-link-hover:       #A5B4FC;
 
-  --ic-accent:        #7C6FF7;
-  --ic-accent-hover:  #6D62E8;
-  --ic-accent-subtle: rgba(124, 111, 247, 0.15);
-  --ic-accent-text:   #A5B4FC;
+  --accent-default:        #6366F1;
+  --accent-light1:         #818CF8;
+  --accent-light2:         rgba(99, 102, 241, 0.14);
+  --accent-dark1:          #4F46E5;
+  --accent-dark2:          #4338CA;
 
-  --ic-border-default: #2D3167;
-  --ic-border-strong:  #4B5487;
-  --ic-border-focus:   #7C6FF7;
+  --stroke-card:           rgba(255, 255, 255, 0.08);
+  --stroke-card-highlight: rgba(255, 255, 255, 0.14);
+  --stroke-control:        rgba(255, 255, 255, 0.12);
+  --stroke-divider:        rgba(255, 255, 255, 0.06);
+  --stroke-strong:         rgba(255, 255, 255, 0.45);
 
-  --ic-memory-data:         #60A5FA;
-  --ic-memory-data-bg:      rgba(96, 165, 250, 0.12);
-  --ic-memory-data-text:    #93C5FD;
-  --ic-memory-pattern:      #A78BFA;
-  --ic-memory-pattern-bg:   rgba(167, 139, 250, 0.12);
-  --ic-memory-pattern-text: #C4B5FD;
-  --ic-memory-log:          #FCD34D;
-  --ic-memory-log-bg:       rgba(252, 211, 77, 0.12);
-  --ic-memory-log-text:     #FDE68A;
+  --shadow-card:           0 1px 3px rgba(0,0,0,0.24), 0 1px 2px rgba(0,0,0,0.16);
+  --shadow-card-hover:     0 4px 12px rgba(0,0,0,0.32), 0 1px 3px rgba(0,0,0,0.20);
+  --shadow-flyout:         0 8px 24px rgba(0,0,0,0.40), 0 2px 6px rgba(0,0,0,0.24);
+  --shadow-dialog:         0 24px 48px rgba(0,0,0,0.56), 0 4px 12px rgba(0,0,0,0.28);
 
-  --ic-success:       #34D399;
-  --ic-success-bg:    rgba(52, 211, 153, 0.12);
-  --ic-warning:       #FCD34D;
-  --ic-warning-bg:    rgba(252, 211, 77, 0.12);
-  --ic-danger:        #F87171;
-  --ic-danger-bg:     rgba(248, 113, 113, 0.12);
-  --ic-danger-hover:  #EF4444;
-
-  --ic-sidebar-bg:    #13151E;
-  --ic-sidebar-item-hover: #1E2235;
-  --ic-sidebar-item-active: rgba(124, 111, 247, 0.2);
+  /* 知識類型覆寫（深色調整）*/
+  --knowledge-data:         #818CF8;
+  --knowledge-data-bg:      rgba(99, 102, 241, 0.15);
+  --knowledge-data-text:    #A5B4FC;
+  --knowledge-pattern:      #34D399;
+  --knowledge-pattern-bg:   rgba(52, 211, 153, 0.15);
+  --knowledge-pattern-text: #6EE7B7;
+  --knowledge-log:          #FBBF24;
+  --knowledge-log-bg:       rgba(251, 191, 36, 0.15);
+  --knowledge-log-text:     #FCD34D;
 }
 
-/* ── 休閒系 theme-casual ────────────────────────────────── */
-.theme-casual {
-  --ic-bg-base:     #FAF6EF;
-  --ic-bg-surface:  #F5EFE3;
-  --ic-bg-elevated: #FFFFFF;
-  --ic-bg-sunken:   #EDE3D3;
-  --ic-bg-overlay:  rgba(80, 40, 0, 0.35);
+/* ============================================================
+   THEME: Warm Parchment（亮色・羊皮紙米・琥珀）
+   ============================================================ */
+.theme-warm {
+  --surface-base:          #F0E8D6;
+  --surface-layer:         rgba(255, 252, 240, 0.80);
+  --surface-card:          rgba(255, 252, 244, 0.75);
+  --surface-subtle:        rgba(120, 90, 40, 0.04);
+  --surface-flyout:        rgba(248, 244, 232, 0.94);
+  --surface-control:       rgba(255, 252, 240, 0.90);
+  --surface-control-hover: rgba(255, 255, 248, 0.96);
 
-  --ic-text-primary:   #2C1A0E;
-  --ic-text-secondary: #6B4C30;
-  --ic-text-muted:     #A07850;
-  --ic-text-inverse:   #FAF6EF;
-  --ic-text-disabled:  #C9AE8C;
+  --text-primary:          rgba(40, 28, 12, 0.88);
+  --text-secondary:        rgba(80, 60, 30, 0.58);
+  --text-tertiary:         rgba(100, 75, 35, 0.40);
+  --text-disabled:         rgba(100, 75, 35, 0.30);
+  --text-link:             #7C4A0A;
+  --text-link-hover:       #92400E;
 
-  --ic-accent:        #C2722A;
-  --ic-accent-hover:  #A85E1E;
-  --ic-accent-subtle: #FDF0E6;
-  --ic-accent-text:   #A85E1E;
+  --accent-default:        #B45309;
+  --accent-light1:         #CA6D1A;
+  --accent-light2:         rgba(180, 83, 9, 0.10);
+  --accent-dark1:          #92400E;
+  --accent-dark2:          #78350F;
 
-  --ic-border-default: #DDD0BE;
-  --ic-border-strong:  #C4B19A;
-  --ic-border-focus:   #C2722A;
+  --stroke-card:           rgba(120, 90, 40, 0.08);
+  --stroke-card-highlight: rgba(255, 252, 240, 0.85);
+  --stroke-control:        rgba(120, 90, 40, 0.16);
+  --stroke-divider:        rgba(120, 90, 40, 0.07);
+  --stroke-strong:         rgba(80, 60, 30, 0.40);
 
-  --ic-memory-data:         #3B82F6;
-  --ic-memory-data-bg:      #EFF6FF;
-  --ic-memory-data-text:    #1E40AF;
-  --ic-memory-pattern:      #C2722A;
-  --ic-memory-pattern-bg:   #FDF0E6;
-  --ic-memory-pattern-text: #A85E1E;
-  --ic-memory-log:          #D97706;
-  --ic-memory-log-bg:       #FEF3C7;
-  --ic-memory-log-text:     #92400E;
-
-  --ic-success:       #16A34A;
-  --ic-success-bg:    #F0FDF4;
-  --ic-warning:       #D97706;
-  --ic-warning-bg:    #FEF3C7;
-  --ic-danger:        #DC2626;
-  --ic-danger-bg:     #FEF2F2;
-  --ic-danger-hover:  #B91C1C;
-
-  --ic-sidebar-bg:    #F0E9DB;
-  --ic-sidebar-item-hover: #E8DFCE;
-  --ic-sidebar-item-active: #FDF0E6;
+  --shadow-card:           0 1px 3px rgba(80,50,10,0.06), 0 1px 2px rgba(80,50,10,0.04);
+  --shadow-card-hover:     0 4px 12px rgba(80,50,10,0.10), 0 1px 3px rgba(80,50,10,0.06);
+  --shadow-flyout:         0 8px 24px rgba(80,50,10,0.12), 0 2px 6px rgba(80,50,10,0.08);
+  --shadow-dialog:         0 24px 48px rgba(80,50,10,0.16), 0 4px 12px rgba(80,50,10,0.08);
 }
 
-/* ── 清新系 theme-fresh ─────────────────────────────────── */
-.theme-fresh {
-  --ic-bg-base:     #F0F5F1;
-  --ic-bg-surface:  #E8F0EA;
-  --ic-bg-elevated: #FFFFFF;
-  --ic-bg-sunken:   #DCE8DE;
-  --ic-bg-overlay:  rgba(0, 50, 20, 0.35);
+/* ============================================================
+   THEME: Sage Breeze（亮色・薄荷白・草地綠）
+   ============================================================ */
+.theme-sage {
+  --surface-base:          #F2F7F0;
+  --surface-layer:         rgba(234, 242, 232, 0.85);
+  --surface-card:          rgba(255, 255, 255, 0.75);
+  --surface-subtle:        rgba(80, 110, 70, 0.04);
+  --surface-flyout:        rgba(244, 250, 242, 0.94);
+  --surface-control:       rgba(255, 255, 255, 0.85);
+  --surface-control-hover: rgba(255, 255, 255, 0.96);
 
-  --ic-text-primary:   #0D2118;
-  --ic-text-secondary: #2D5040;
-  --ic-text-muted:     #5C8070;
-  --ic-text-inverse:   #F0F5F1;
-  --ic-text-disabled:  #A3BFB0;
+  --text-primary:          rgba(30, 55, 25, 0.88);
+  --text-secondary:        rgba(50, 80, 40, 0.56);
+  --text-tertiary:         rgba(60, 90, 50, 0.38);
+  --text-disabled:         rgba(60, 90, 50, 0.30);
+  --text-link:             #286019;
+  --text-link-hover:       #1A4A10;
 
-  --ic-accent:        #1A7F5A;
-  --ic-accent-hover:  #146B4C;
-  --ic-accent-subtle: #E6F4EE;
-  --ic-accent-text:   #146B4C;
+  --accent-default:        #528F44;
+  --accent-light1:         #62A852;
+  --accent-light2:         rgba(82, 143, 68, 0.10);
+  --accent-dark1:          #3D7A2A;
+  --accent-dark2:          #2D6020;
 
-  --ic-border-default: #C8DDD0;
-  --ic-border-strong:  #A8C8B5;
-  --ic-border-focus:   #1A7F5A;
+  --stroke-card:           rgba(80, 110, 70, 0.08);
+  --stroke-card-highlight: rgba(255, 255, 255, 0.82);
+  --stroke-control:        rgba(80, 110, 70, 0.15);
+  --stroke-divider:        rgba(80, 110, 70, 0.07);
+  --stroke-strong:         rgba(50, 80, 40, 0.40);
 
-  --ic-memory-data:         #3B82F6;
-  --ic-memory-data-bg:      #EFF6FF;
-  --ic-memory-data-text:    #1E40AF;
-  --ic-memory-pattern:      #1A7F5A;
-  --ic-memory-pattern-bg:   #E6F4EE;
-  --ic-memory-pattern-text: #146B4C;
-  --ic-memory-log:          #D97706;
-  --ic-memory-log-bg:       #FEF3C7;
-  --ic-memory-log-text:     #92400E;
+  --shadow-card:           0 1px 3px rgba(40,70,30,0.06), 0 1px 2px rgba(40,70,30,0.04);
+  --shadow-card-hover:     0 4px 12px rgba(40,70,30,0.10), 0 1px 3px rgba(40,70,30,0.06);
+  --shadow-flyout:         0 8px 24px rgba(40,70,30,0.12), 0 2px 6px rgba(40,70,30,0.08);
+  --shadow-dialog:         0 24px 48px rgba(40,70,30,0.16), 0 4px 12px rgba(40,70,30,0.08);
 
-  --ic-success:       #1A7F5A;
-  --ic-success-bg:    #E6F4EE;
-  --ic-warning:       #D97706;
-  --ic-warning-bg:    #FEF3C7;
-  --ic-danger:        #DC2626;
-  --ic-danger-bg:     #FEF2F2;
-  --ic-danger-hover:  #B91C1C;
-
-  --ic-sidebar-bg:    #E4EEE6;
-  --ic-sidebar-item-hover: #D8E8DB;
-  --ic-sidebar-item-active: #E6F4EE;
+  /* 知識類型覆寫（Pattern 改草地深綠）*/
+  --knowledge-pattern:      #3D7A2A;
+  --knowledge-pattern-bg:   rgba(82, 143, 68, 0.10);
+  --knowledge-pattern-text: #286019;
 }

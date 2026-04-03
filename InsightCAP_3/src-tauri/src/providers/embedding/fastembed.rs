@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use fastembed::{InitOptions, TextEmbedding};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -31,6 +32,7 @@ impl FastEmbedder {
     }
 }
 
+#[async_trait]
 impl Embedder for FastEmbedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, crate::providers::embedding::EmbedError> {
         let mut model = self.model.lock().await;

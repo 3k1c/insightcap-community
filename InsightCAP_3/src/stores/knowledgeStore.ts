@@ -11,6 +11,21 @@ export interface SourceItem {
     contentPreview: string;
 }
 
+export interface TimelineSourceItem {
+    id: string;
+    title: string;
+    type: string;
+    sourceCategory: string; // 'editor_doc' | 'captured'
+    mediaType: string;      // 'text' | 'url' | 'image' | 'video' | 'pdf'
+    url?: string;
+    filePath?: string;
+    localDocPath?: string;
+    capturedAt: string;
+    contentPreview: string;
+    captureCount: number;
+    tags: string[];
+}
+
 export interface CaptureItem {
     id: string;
     sourceId?: string;
@@ -20,6 +35,19 @@ export interface CaptureItem {
     createdAt: string;
 }
 
+export interface CaptureDetail {
+    id: string;
+    sourceId?: string;
+    spaceId?: string;
+    cleanContent: string;
+    type: string;
+    tags: string;
+    status: string;
+    isUserEdited: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface SpaceItem {
     id: string;
     name: string;
@@ -27,7 +55,16 @@ export interface SpaceItem {
     chunkCount: number;
 }
 
+export type CategoryFilter = 'all' | 'editor_doc' | 'captured';
+export type MediaFilter = string | null; // null = all
+
+export interface TimelineGroup {
+    label: string;   // 'today' | 'yesterday' | 'this_week' | 'earlier' | date string
+    items: TimelineSourceItem[];
+}
+
 interface KnowledgeState {
+    // Legacy
     sources: SourceItem[];
     pendingCaptures: CaptureItem[];
     spaces: SpaceItem[];
@@ -35,19 +72,87 @@ interface KnowledgeState {
     isLoadingSources: boolean;
     isLoadingCaptures: boolean;
 
+    // Timeline
+    timelineSources: TimelineSourceItem[];
+    timelineGroups: TimelineGroup[];
+    categoryFilter: CategoryFilter;
+    mediaFilter: MediaFilter;
+    searchQuery: string;
+    isLoadingTimeline: boolean;
+    expandedSourceId: string | null;
+    expandedCaptures: CaptureDetail[];
+    isLoadingCapDetail: boolean;
+
+    // Legacy actions
     setActiveSpaceId: (id: string | null) => void;
     loadSources: () => Promise<void>;
     loadPendingCaptures: () => Promise<void>;
     loadSpaces: () => Promise<void>;
+
+    // Timeline actions
+    setCategoryFilter: (f: CategoryFilter) => void;
+    setMediaFilter: (f: MediaFilter) => void;
+    setSearchQuery: (q: string) => void;
+    loadTimeline: () => Promise<void>;
+    expandSource: (id: string | null) => Promise<void>;
+
+    // CRUD actions
+    createEditorDocument: (title: string) => Promise<TimelineSourceItem | null>;
+    deleteSource: (id: string) => Promise<void>;
+    createManualCapture: (sourceId: string | null, content: string, tags?: string, spaceId?: string) => Promise<CaptureDetail | null>;
+    updateCapture: (captureId: string, content?: string, tags?: string, spaceId?: string) => Promise<void>;
+    deleteCapture: (captureId: string) => Promise<void>;
+}
+
+function groupByDate(items: TimelineSourceItem[]): TimelineGroup[] {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const groups: Record<string, TimelineSourceItem[]> = {};
+    const order: string[] = [];
+
+    for (const item of items) {
+        const d = item.capturedAt.slice(0, 10);
+        let label: string;
+        if (d === todayStr) label = 'today';
+        else if (d === yesterdayStr) label = 'yesterday';
+        else if (new Date(d) >= weekAgo) label = 'this_week';
+        else label = 'earlier';
+
+        if (!groups[label]) {
+            groups[label] = [];
+            order.push(label);
+        }
+        groups[label].push(item);
+    }
+
+    return order.map(label => ({ label, items: groups[label] }));
 }
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
+    // Legacy
     sources: [],
     pendingCaptures: [],
     spaces: [],
     activeSpaceId: null,
     isLoadingSources: false,
     isLoadingCaptures: false,
+
+    // Timeline
+    timelineSources: [],
+    timelineGroups: [],
+    categoryFilter: 'all',
+    mediaFilter: null,
+    searchQuery: '',
+    isLoadingTimeline: false,
+    expandedSourceId: null,
+    expandedCaptures: [],
+    isLoadingCapDetail: false,
 
     setActiveSpaceId: (id) => {
         set({ activeSpaceId: id });
@@ -88,6 +193,138 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
             set({ spaces });
         } catch (error) {
             console.error('Failed to load spaces:', error);
+        }
+    },
+
+    // ── Timeline ────────────────────────────────
+
+    setCategoryFilter: (f) => {
+        set({ categoryFilter: f });
+        get().loadTimeline();
+    },
+
+    setMediaFilter: (f) => {
+        set({ mediaFilter: f });
+        get().loadTimeline();
+    },
+
+    setSearchQuery: (q) => {
+        set({ searchQuery: q });
+        get().loadTimeline();
+    },
+
+    loadTimeline: async () => {
+        set({ isLoadingTimeline: true });
+        try {
+            const { categoryFilter, mediaFilter, searchQuery } = get();
+            const items = await invoke<TimelineSourceItem[]>('get_sources_timeline', {
+                category: categoryFilter === 'all' ? null : categoryFilter,
+                mediaType: mediaFilter,
+                searchQuery: searchQuery || null,
+                limit: 100,
+                offset: 0,
+            });
+            set({ timelineSources: items, timelineGroups: groupByDate(items) });
+        } catch (error) {
+            console.error('Failed to load timeline:', error);
+        } finally {
+            set({ isLoadingTimeline: false });
+        }
+    },
+
+    expandSource: async (id) => {
+        if (!id) {
+            set({ expandedSourceId: null, expandedCaptures: [] });
+            return;
+        }
+        set({ expandedSourceId: id, isLoadingCapDetail: true });
+        try {
+            const captures = await invoke<CaptureDetail[]>('get_captures_detail', { sourceId: id });
+            set({ expandedCaptures: captures });
+        } catch (error) {
+            console.error('Failed to load capture details:', error);
+            set({ expandedCaptures: [] });
+        } finally {
+            set({ isLoadingCapDetail: false });
+        }
+    },
+
+    // ── CRUD ─────────────────────────────────────
+
+    createEditorDocument: async (title) => {
+        try {
+            const doc = await invoke<TimelineSourceItem>('create_editor_document', { title });
+            get().loadTimeline();
+            return doc;
+        } catch (error) {
+            console.error('Failed to create editor document:', error);
+            return null;
+        }
+    },
+
+    deleteSource: async (id) => {
+        try {
+            await invoke('delete_source', { sourceId: id });
+            set((s) => ({
+                timelineSources: s.timelineSources.filter(i => i.id !== id),
+                timelineGroups: groupByDate(s.timelineSources.filter(i => i.id !== id)),
+                expandedSourceId: s.expandedSourceId === id ? null : s.expandedSourceId,
+                expandedCaptures: s.expandedSourceId === id ? [] : s.expandedCaptures,
+            }));
+        } catch (error) {
+            console.error('Failed to delete source:', error);
+        }
+    },
+
+    createManualCapture: async (sourceId, content, tags, spaceId) => {
+        try {
+            const cap = await invoke<CaptureDetail>('create_manual_capture', {
+                sourceId, content, tags: tags ?? null, spaceId: spaceId ?? null,
+            });
+            if (get().expandedSourceId === sourceId) {
+                set((s) => ({ expandedCaptures: [...s.expandedCaptures, cap] }));
+            }
+            return cap;
+        } catch (error) {
+            console.error('Failed to create capture:', error);
+            return null;
+        }
+    },
+
+    updateCapture: async (captureId, content, tags, spaceId) => {
+        try {
+            await invoke('update_capture', {
+                captureId,
+                content: content ?? null,
+                tags: tags ?? null,
+                spaceId: spaceId ?? null,
+            });
+            set((s) => ({
+                expandedCaptures: s.expandedCaptures.map(c =>
+                    c.id === captureId
+                        ? {
+                            ...c,
+                            cleanContent: content ?? c.cleanContent,
+                            tags: tags ?? c.tags,
+                            spaceId: spaceId ?? c.spaceId,
+                            isUserEdited: true,
+                        }
+                        : c
+                ),
+            }));
+        } catch (error) {
+            console.error('Failed to update capture:', error);
+        }
+    },
+
+    deleteCapture: async (captureId) => {
+        try {
+            await invoke('delete_capture', { captureId });
+            set((s) => ({
+                expandedCaptures: s.expandedCaptures.filter(c => c.id !== captureId),
+            }));
+        } catch (error) {
+            console.error('Failed to delete capture:', error);
         }
     },
 }));

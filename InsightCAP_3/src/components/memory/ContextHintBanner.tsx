@@ -23,10 +23,10 @@ export const ContextHintBanner: React.FC<ContextHintBannerProps> = ({
     }
 
     return (
-        <div className="flex items-center justify-between px-3 py-2 bg-[var(--ic-bg-subtle)] border-y border-[var(--ic-border)] text-xs text-[var(--ic-text-muted)] animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="flex items-center justify-between px-3 py-2 bg-surface-subtle border-y border-stroke-divider text-fs-xs text-text-tertiary animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-2">
                 {isInjecting ? (
-                    <span className="flex items-center gap-2 text-[var(--ic-accent-primary)]">
+                    <span className="flex items-center gap-2 text-accent-default">
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
@@ -40,17 +40,17 @@ export const ContextHintBanner: React.FC<ContextHintBannerProps> = ({
 
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5" title="Data (原始資料/事實)">
-                    <Database className="w-3.5 h-3.5 text-ic-memory-data" />
+                    <Database className="w-3.5 h-3.5 text-knowledge-data" />
                     <span className="font-semibold">{stats.dataCount}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5" title="Pattern (觀點/模式/模型)">
-                    <Network className="w-3.5 h-3.5 text-ic-memory-pattern" />
+                    <Network className="w-3.5 h-3.5 text-knowledge-pattern" />
                     <span className="font-semibold">{stats.patternCount}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5" title="Log (行為日誌/操作)">
-                    <LayoutList className="w-3.5 h-3.5 text-ic-memory-log" />
+                    <LayoutList className="w-3.5 h-3.5 text-knowledge-log" />
                     <span className="font-semibold">{stats.logCount}</span>
                 </div>
             </div>

@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(grep -rn accent-default-primary --include=*.tsx --include=*.ts)",
+      "Bash(powershell -Command \"Format-Hex ''C:\\\\Users\\\\ckkong\\\\Downloads\\\\ICData\\\\.insightcap\\\\insightcap.db'' | Select-Object -First 3\")",
+      "Read(//c/Users/ckkong/**)",
+      "Bash(find /c/Users/ckkong/InsightCAP/InsightCAP_ref/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(npx tsc:*)",
+      "Bash(do mkdir:*)",
+      "Bash(mv \"$f.md\" \"$f/SKILL.md\")",
+      "Bash(xargs cat:*)",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\ckkong\\\\InsightCAP\\\\InsightCAP_3\\\\src-tauri && cargo check 2>&1\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\ckkong\\\\InsightCAP\\\\InsightCAP_3\\\\src-tauri''; cargo check 2>&1\")",
+      "Bash(find /c/Users/ckkong/InsightCAP/InsightCAP_ref/src-tauri/src/capture/extractors -type f -name *.rs)",
+      "Bash(find /c/Users/ckkong/InsightCAP/InsightCAP_3/src-tauri/src/capture/extractors -type f -name *.rs)",
+      "Bash(grep -rh text- /c/Users/ckkong/InsightCAP/InsightCAP_3/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -rh text-[ /c/Users/ckkong/InsightCAP/InsightCAP_3/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -rhoE text-[[^]]+] /c/Users/ckkong/InsightCAP/InsightCAP_3/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -r text-[ /c/Users/ckkong/InsightCAP/InsightCAP_3/src --include=*.tsx --include=*.ts)",
+      "Bash(for file:*)",
+      "Bash(do echo:*)",
+      "Bash(for size:*)",
+      "Bash(find C:/Users/ckkong/AppData -name *.log -newer C:/Users/ckkong/AppData/Roaming/com.insightcap.app/bootstrap.json)",
+      "Bash(find C:/Users/ckkong/AppData/Local/com.insightcap.app -name *.log)",
+      "Bash(node -e \":*)",
+      "Bash(node -e \"require\\(''./node_modules/@babel/parser''\\).parse\\(require\\(''fs''\\).readFileSync\\(''./src/components/chat/EditorPane.tsx'',''utf8''\\),{sourceType:''module'',plugins:[''typescript'',''jsx'']}\\); console.log\\(''Parse OK''\\)\")",
+      "Bash(node -e \"require\\(''./node_modules/@babel/parser''\\).parse\\(require\\(''fs''\\).readFileSync\\(''./src/pages/ChatPage.tsx'',''utf8''\\),{sourceType:''module'',plugins:[''typescript'',''jsx'']}\\); console.log\\(''Parse OK''\\)\")",
+      "Bash(node -e \"const p=require\\(''./node_modules/@babel/parser''\\);const fs=require\\(''fs''\\);try{p.parse\\(fs.readFileSync\\(''src/components/chat/EditorPane.tsx'',''utf8''\\),{sourceType:''module'',plugins:[''typescript'',''jsx'']}\\);console.log\\(''OK''\\);}catch\\(e\\){console.error\\(''FAIL:'',e.message\\);}\")",
+      "Bash(node -e \"const p=require\\(''./package.json''\\); const deps={...p.dependencies,...p.devDependencies}; [''docx'',''jspdf'',''html2canvas'',''turndown'',''@tiptap/html''].forEach\\(k=>console.log\\(k, deps[k]||''NOT FOUND''\\)\\)\")",
+      "Bash(node -e \"require\\(''./node_modules/@babel/parser''\\).parse\\(require\\(''fs''\\).readFileSync\\(''./src/components/chat/EditorPane.tsx'',''utf8''\\),{sourceType:''module'',plugins:[''typescript'',''jsx'']}\\); console.log\\(''OK''\\)\")",
+      "Bash(node -e \"const m = require\\(''prosemirror-commands''\\); console.log\\(Object.keys\\(m\\).filter\\(k=>k.includes\\(''List''\\)\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''prosemirror-list-commands''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''@tiptap/pm/list''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''''@tiptap/pm/commands''''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''@tiptap/pm/commands''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(python3 -c \":*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\ckkong\\AppData\\Roaming\\com.insightcap.app",
+      "c:\\Users\\ckkong\\InsightCAP\\.claude"
+    ]
+  }
+}

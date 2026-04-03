@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 use chrono::Utc;
 use base64::{Engine as _, engine::general_purpose};
+use crate::db::AppState;
 
 #[tauri::command]
 pub async fn open_document(path: String) -> Result<String, String> {
@@ -82,6 +83,7 @@ pub async fn copy_image_to_assets(doc_path: String, image_abs_path: String) -> R
 #[tauri::command]
 pub async fn save_editor_to_knowledge(
     pool: State<'_, SqlitePool>,
+    state: State<'_, AppState>,
     title: String,
     content: String,
 ) -> Result<(), String> {
@@ -138,6 +140,23 @@ pub async fn save_editor_to_knowledge(
         .map_err(|e| e.to_string())?;
         new_id
     };
+
+    // 將快照保存至 documents 資料夾
+    let doc_dir = state.kb_path.join(".insightcap").join("documents");
+    fs::create_dir_all(&doc_dir).map_err(|e| e.to_string())?;
+    let safe_name = title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+    let file_name = format!("{}_{}.md", safe_name, &source_id[..8]);
+    let doc_path = doc_dir.join(&file_name);
+    fs::write(&doc_path, &clean_content).map_err(|e| e.to_string())?;
+
+    // 更新 local_doc_path
+    let local_path_str = doc_path.to_string_lossy().to_string();
+    sqlx::query("UPDATE sources SET local_doc_path = ? WHERE id = ?")
+        .bind(&local_path_str)
+        .bind(&source_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Split content by Markdown headers (H1, H2, H3)
     let chunks = split_markdown_by_headings(&clean_content);

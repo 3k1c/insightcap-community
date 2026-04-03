@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id             TEXT PRIMARY KEY,
   name           TEXT NOT NULL,
   default_tags   TEXT DEFAULT '[]',
+  color          TEXT,
   is_pinned      INTEGER DEFAULT 0,
   is_archived    INTEGER DEFAULT 0,
   sort_order     INTEGER DEFAULT 0,

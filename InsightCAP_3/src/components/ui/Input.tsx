@@ -26,28 +26,28 @@ export function Input({
             {label && (
                 <label
                     htmlFor={inputId}
-                    className="text-sm font-medium text-[var(--ic-text-primary)]"
+                    className="text-fs-sm font-medium text-text-primary"
                 >
                     {label}
                 </label>
             )}
             <div className="relative flex items-center">
                 {leftIcon && (
-                    <span className="absolute left-3 text-[var(--ic-text-muted)]">
+                    <span className="absolute left-3 text-text-tertiary">
                         {leftIcon}
                     </span>
                 )}
                 <input
                     id={inputId}
                     className={cn(
-                        'w-full rounded-md border bg-[var(--ic-bg-elevated)]',
-                        'text-sm text-[var(--ic-text-primary)] placeholder:text-[var(--ic-text-muted)]',
-                        'border-[var(--ic-border-default)]',
+                        'w-full rounded-md border bg-surface-card',
+                        'text-fs-sm text-text-primary placeholder:text-text-tertiary',
+                        'border-stroke-divider',
                         'px-3 py-2 h-9',
                         'transition-colors duration-100',
-                        'focus:outline-none focus:ring-1 focus:ring-[var(--ic-border-focus)] focus:border-[var(--ic-border-focus)]',
+                        'focus:outline-none focus:ring-1 focus:ring-stroke-focus focus:border-stroke-focus',
                         'disabled:opacity-50 disabled:cursor-not-allowed',
-                        error && 'border-[var(--ic-danger)] focus:ring-[var(--ic-danger)]',
+                        error && 'border-color-danger focus:ring-color-danger',
                         leftIcon && 'pl-9',
                         rightElement && 'pr-10',
                         className
@@ -61,10 +61,10 @@ export function Input({
                 )}
             </div>
             {hint && !error && (
-                <p className="text-xs text-[var(--ic-text-muted)]">{hint}</p>
+                <p className="text-fs-xs text-text-tertiary">{hint}</p>
             )}
             {error && (
-                <p className="text-xs text-[var(--ic-danger)]">{error}</p>
+                <p className="text-fs-xs text-color-danger">{error}</p>
             )}
         </div>
     );

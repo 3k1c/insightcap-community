@@ -101,30 +101,17 @@ export function SetupPage({ onComplete }: SetupPageProps) {
     }
 
     return (
-        <div
-            className="flex h-screen w-screen items-center justify-center"
-            style={{ background: 'var(--ic-bg-base)' }}
-        >
-            <div
-                className="w-full max-w-md rounded-2xl border p-8"
-                style={{
-                    background: 'var(--ic-bg-elevated)',
-                    borderColor: 'var(--ic-border-default)',
-                    boxShadow: 'var(--ic-shadow-lg)',
-                }}
-            >
+        <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
+            <div className="w-full max-w-md rounded-2xl border border-stroke-divider p-8 bg-surface-card shadow-flyout">
                 {/* Logo / Header */}
                 <div className="mb-6 text-center">
-                    <div
-                        className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3"
-                        style={{ background: 'var(--ic-accent-subtle)' }}
-                    >
-                        <span className="text-2xl font-bold" style={{ color: 'var(--ic-accent)' }}>⚡</span>
+                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3 bg-accent-light2">
+                        <span className="text-fs-2xl font-bold text-accent-default">⚡</span>
                     </div>
-                    <h1 className="text-xl font-bold" style={{ color: 'var(--ic-text-primary)' }}>
+                    <h1 className="text-fs-xl font-bold text-text-primary">
                         {t('auth.setup.title')}
                     </h1>
-                    <p className="mt-1 text-sm" style={{ color: 'var(--ic-text-muted)' }}>
+                    <p className="mt-1 text-fs-sm text-text-tertiary">
                         {t('auth.setup.subtitle')}
                     </p>
                 </div>
@@ -134,25 +121,24 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                     {steps.map((s, i) => (
                         <React.Fragment key={s}>
                             <div
-                                className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors"
-                                style={{
-                                    background: i <= stepIndex ? 'var(--ic-accent)' : 'var(--ic-bg-sunken)',
-                                    color: i <= stepIndex ? 'var(--ic-text-inverse)' : 'var(--ic-text-muted)',
-                                }}
+                                className={`flex h-6 w-6 items-center justify-center rounded-full text-fs-xs font-medium transition-colors ${
+                                    i <= stepIndex
+                                        ? 'bg-accent-default text-on-accent'
+                                        : 'bg-surface-subtle text-text-tertiary'
+                                }`}
                             >
                                 {i + 1}
                             </div>
                             {i < steps.length - 1 && (
                                 <div
-                                    className="flex-1 h-px"
-                                    style={{ background: i < stepIndex ? 'var(--ic-accent)' : 'var(--ic-border-default)' }}
+                                    className={`flex-1 h-px ${i < stepIndex ? 'bg-accent-default' : 'bg-stroke-divider'}`}
                                 />
                             )}
                         </React.Fragment>
                     ))}
                 </div>
 
-                <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--ic-text-primary)' }}>
+                <h2 className="text-fs-base font-semibold mb-4 text-text-primary">
                     {stepTitles[step]}
                 </h2>
 
@@ -160,7 +146,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                 {step === 'workspace' && (
                     <div className="space-y-4">
                         <div>
-                            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--ic-text-primary)' }}>
+                            <label className="mb-1.5 block text-fs-sm font-medium text-text-primary">
                                 {t('auth.setup.workspace_label')}
                             </label>
                             <div className="flex gap-2">
@@ -169,22 +155,17 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                                     value={workspacePath}
                                     onChange={e => setWorkspacePath(e.target.value)}
                                     placeholder={t('auth.setup.workspace_placeholder')}
-                                    className="flex-1 h-9 rounded-md border px-3 text-sm focus:outline-none focus:ring-1"
-                                    style={{
-                                        background: 'var(--ic-bg-base)',
-                                        borderColor: 'var(--ic-border-default)',
-                                        color: 'var(--ic-text-primary)',
-                                    }}
+                                    className="flex-1 h-9 rounded-md border border-stroke-divider px-3 text-fs-sm bg-surface-base text-text-primary focus:outline-none focus:ring-1 focus:ring-stroke-focus"
                                 />
                                 <Button variant="secondary" size="icon" onClick={handleBrowse}>
                                     <FolderOpen className="h-4 w-4" />
                                 </Button>
                             </div>
-                            <p className="mt-1 text-xs" style={{ color: 'var(--ic-text-muted)' }}>
+                            <p className="mt-1 text-fs-xs text-text-tertiary">
                                 {t('auth.setup.workspace_hint')}
                             </p>
                         </div>
-                        {error && <p className="text-xs" style={{ color: 'var(--ic-danger)' }}>{error}</p>}
+                        {error && <p className="text-fs-xs text-color-danger">{error}</p>}
                         <Button
                             className="w-full"
                             onClick={() => { setError(''); if (workspacePath.trim()) setStep('password'); else setError('請輸入工作區路徑'); }}
@@ -207,7 +188,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    style={{ color: 'var(--ic-text-muted)' }}
+                                    className="text-text-tertiary"
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
@@ -224,7 +205,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                                 <button
                                     type="button"
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                    style={{ color: 'var(--ic-text-muted)' }}
+                                    className="text-text-tertiary"
                                 >
                                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
@@ -244,16 +225,11 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                 {/* Step 3: Recovery Phrase */}
                 {step === 'recovery' && (
                     <div className="space-y-4">
-                        <p className="text-sm" style={{ color: 'var(--ic-text-secondary)' }}>
+                        <p className="text-fs-sm text-text-secondary">
                             {t('auth.setup.recovery_hint')}
                         </p>
                         <div
-                            className="rounded-lg p-4 font-mono text-xs leading-relaxed select-all"
-                            style={{
-                                background: 'var(--ic-bg-sunken)',
-                                color: 'var(--ic-text-primary)',
-                                wordBreak: 'break-all',
-                            }}
+                            className="rounded-lg p-4 font-mono text-fs-xs leading-relaxed select-all bg-surface-subtle text-text-primary break-all"
                         >
                             {recoveryPhrase}
                         </div>
@@ -266,10 +242,9 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                                 type="checkbox"
                                 checked={recoveryConfirmed}
                                 onChange={e => setRecoveryConfirmed(e.target.checked)}
-                                className="h-4 w-4 rounded"
-                                style={{ accentColor: 'var(--ic-accent)' }}
+                                className="h-4 w-4 rounded accent-accent-default"
                             />
-                            <span className="text-sm" style={{ color: 'var(--ic-text-secondary)' }}>
+                            <span className="text-fs-sm text-text-secondary">
                                 {t('auth.setup.recovery_confirm')}
                             </span>
                         </label>

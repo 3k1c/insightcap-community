@@ -175,7 +175,7 @@ PatternPromotion 掃描：
 
 **Prompt 分兩段：**
 - **系統段（固定）**：AI 身份定義 + 分層 context + 優先級聲明，由 `prompts.rs` 集中管理，不開放修改
-- **用戶段（可選）**：風格/語氣偏好，從 `settings.chat_prompt_instruction` 讀取，留空時不插入
+- **用戶段（可選）**：風格/語氣偏好，從 `settings` 表中的 `chat_prompt_instruction` 鍵讀取（後端 `store.rs` 負責 persistence），留空時不插入
 
 ```
 你是 InsightCAP，一個本地優先的 AI 助理。
@@ -401,13 +401,25 @@ toast 顯示導入成功 / 失敗結果
 **思考模式切換（Normal / Think）：**
 - Normal：使用設定中的主模型，無特殊指令
 - Think：在 system prompt 注入 `<thinking>` 思考鏈指令，或若設定了 reasoning 模型則切換至該模型
-- 切換狀態跟隨對話輸入框（不跨對話保留）
+- 切換狀態跟隨對話輸入框（不跨對話保留），並將狀態同步至 `isGenerating` 進行 UI 反饋
+
+**對話渲染與互動：**
+- **Markdown 支援**：對話內容使用 `ReactMarkdown` + `remark-gfm` 渲染，支援粗體、列表、表格、超連結。
+- **程式碼高亮**：整合 `SyntaxHighlighter` (Prism / oneDark) 支援多國語言語法亮顯與「一鍵複製」功能。
+- **自動捲動 (Auto-scroll)**：訊息新增或 Streaming 生成時，若用戶位於底部 300px 內則自動平滑置底。
+- **打字機游標**：AI 回答時顯示與主題一致的脈衝游標。
 
 ### @ 引用
 
 - `@` 觸發引用選單，顯示原文件層面的對象（文件名/網址/圖片）
 - 選中後系統自動把該 source 所有相關 chunk 納入 RAG context
 - 用戶看到「@活動計劃書.md」，不看到 chunk
+
+**引用來源預覽 (Citation Preview)：**
+- **觸發機制**：改為「**點擊觸發**」(Click-to-toggle) 而非懸停，防止誤觸。
+- **關閉邏輯**：支援點擊預覽窗外關閉 (Click-outside) 或手動按關閉按鈕。
+- **自適應縮放**：預覽窗寬度 (`w-full`) 隨對話泡泡自動延展，確保長文閱讀體驗。
+- **空狀態隱藏**：若該則訊息無引用來源，區塊將完全隱藏，不顯示「未引用」佔位符。
 
 ### ContextHintBanner
 
@@ -491,7 +503,7 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 |-----|---------|------|
 | `hotkeys` | `captureClipboard`（預設 `Ctrl+Alt+F`）| 擷取剪貼簿快捷鍵 |
 | `hotkeys` | `quickInput`（預設 `Ctrl+Alt+G`）| 快速輸入框快捷鍵 |
-| `general` | `chatPromptInstruction` | 用戶自訂 AI 回答風格（可留空；只影響語氣，不可覆蓋系統指引） |
+| `chat_prompt_instruction` | `string`（非 JSON） | 用戶自訂 AI 回答風格，由 `store::save_settings` 獨立寫入 |
 | `general` | `minimizeToTray` | 關閉主視窗時最小化到系統托盤（預設 true） |
 | `knowledge` | `kbPath` | 知識庫根目錄路徑 |
 | `aiModels` | `chatLlm` | 對話主模型（`provider` / `model` / `apiKey` / `baseUrl`） |

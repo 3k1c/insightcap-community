@@ -42,4 +42,23 @@ pub trait LLMProvider: Send + Sync {
         prompt: &str,
         options: LLMOptions,
     ) -> impl std::future::Future<Output = Result<serde_json::Value, LLMError>> + Send;
+
+    /// 多輪對話：system prompt + history[(role,content)] + 本輪 user query
+    fn complete_with_history(
+        &self,
+        system_prompt: &str,
+        history: &[(String, String)],
+        user_query: &str,
+        options: LLMOptions,
+    ) -> impl std::future::Future<Output = Result<String, LLMError>> + Send;
+
+    /// Streaming 版本：每個 token 透過 on_token 回調推送
+    fn complete_stream(
+        &self,
+        system_prompt: &str,
+        history: &[(String, String)],
+        user_query: &str,
+        options: LLMOptions,
+        on_token: impl Fn(String) + Send + 'static,
+    ) -> impl std::future::Future<Output = Result<String, LLMError>> + Send;
 }

@@ -1,8 +1,10 @@
 pub mod clipboard;
+pub mod encoding;
 pub mod file_parser;
 pub mod keyboard;
 pub mod metadata;
 pub mod readability;
+pub mod video_parser;
 pub mod extractors;
 pub mod attachment_manager;
 
@@ -53,11 +55,6 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     let pool = app.state::<SqlitePool>();
     println!("\n[CAPTURE] 🚀 Hotkey triggered. Starting capture...");
 
-    let main_was_visible = app
-        .get_webview_window("main")
-        .and_then(|w| w.is_visible().ok())
-        .unwrap_or(false);
-
     // 1. 清空剪貼簿
     let _ = clipboard::clear_clipboard();
 
@@ -79,15 +76,7 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     let clipboard_data = match clipboard_result {
         Ok(data) => data,
         Err(_) => {
-            println!("[CAPTURE] No selection. Showing Quick Capture UI...");
-            if let Some(qc) = app.get_webview_window("quick-capture") {
-                let _ = qc.show();
-                let _ = qc.set_focus();
-                let _ = qc.emit("show-quick-capture", ());
-            }
-            if !main_was_visible {
-                if let Some(w) = app.get_webview_window("main") { let _ = w.hide(); }
-            }
+            println!("[CAPTURE] No selection detected, aborting capture.");
             return Ok(());
         }
     };
@@ -155,6 +144,12 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 需要複製到知識庫的文件副檔名（排除影片）
+fn should_copy_to_kb(ext: &str) -> bool {
+    matches!(ext, "txt" | "log" | "md" | "pdf" | "doc" | "docx" | "ppt" | "pptx"
+                | "xls" | "xlsx" | "csv" | "html" | "htm" | "rtf" | "epub" | "code")
+}
+
 /// 直接處理剪貼簿中的文件（跳過 inbox，直接寫入 sources + captures）
 async fn process_clipboard_file(
     app: tauri::AppHandle,
@@ -177,12 +172,45 @@ async fn process_clipboard_file(
         .collect::<Vec<_>>()
         .join("\n\n");
 
+    // 複製檔案到知識庫 files 目錄（文件類型，排除影片）
+    let local_doc_path: Option<String> = {
+        let ext = file_path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if should_copy_to_kb(&ext) && !kb_path.is_empty() {
+            let files_dir = std::path::Path::new(&kb_path).join("files");
+            if let Err(e) = std::fs::create_dir_all(&files_dir) {
+                eprintln!("[CAPTURE] 無法建立 files 目錄: {}", e);
+                None
+            } else {
+                let file_name = file_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| format!("{}.{}", source_id, ext));
+                let dest = files_dir.join(format!("{}_{}", &source_id[..8], file_name));
+                match std::fs::copy(&file_path, &dest) {
+                    Ok(_) => {
+                        println!("[CAPTURE] 📋 已複製至知識庫: {}", dest.display());
+                        Some(dest.to_string_lossy().to_string())
+                    }
+                    Err(e) => {
+                        eprintln!("[CAPTURE] 複製檔案失敗: {}", e);
+                        None
+                    }
+                }
+            }
+        } else {
+            None
+        }
+    };
+
     sqlx::query(
-        "INSERT INTO sources (id, type, title, file_path, clean_content, captured_at, updated_at) VALUES (?, 'file', ?, ?, ?, ?, ?)"
+        "INSERT INTO sources (id, type, title, file_path, local_doc_path, clean_content, captured_at, updated_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?)"
     )
     .bind(&source_id)
     .bind(&parsed.title)
     .bind(&path_str)
+    .bind(&local_doc_path)
     .bind(&full_content)
     .bind(&now_iso)
     .bind(&now_iso)
@@ -191,7 +219,91 @@ async fn process_clipboard_file(
     .map_err(|e| format!("Failed to create source: {}", e))?;
 
     println!("[CAPTURE] 📄 File '{}' saved as source.", parsed.title);
-    // 向量化和完整的 captures 寫入由 background/capture_processor.rs 負責
+
+    // 切分段落 → 寫入 captures → embedding + tag
+    let app_state = app.state::<crate::db::AppState>();
+    let mut chunk_count: i64 = 0;
+
+    for f_chunk in &parsed.chunks {
+        let paragraphs: Vec<String> = f_chunk.content
+            .split("\n\n")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let paragraphs = if paragraphs.is_empty() {
+            vec![f_chunk.content.clone()]
+        } else {
+            paragraphs
+        };
+
+        for (idx, para) in paragraphs.into_iter().enumerate() {
+            let chunk_id = uuid::Uuid::now_v7().to_string();
+
+            // Embedding
+            let vector_id_opt: Option<i64> = match app_state.embedder.embed(&para).await {
+                Ok(vec) => {
+                    let vid = {
+                        use std::collections::hash_map::DefaultHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut h = DefaultHasher::new();
+                        chunk_id.hash(&mut h);
+                        h.finish()
+                    };
+                    match app_state.vector_store.add_vector(vid, &vec).await {
+                        Ok(_) => Some(vid as i64),
+                        Err(e) => { eprintln!("[CAPTURE] vector store error: {}", e); None }
+                    }
+                }
+                Err(e) => { eprintln!("[CAPTURE] embed error: {}", e); None }
+            };
+
+            sqlx::query(
+                "INSERT INTO captures (id, source_id, type, raw_content, clean_content, \
+                 capture_method, chunk_index, status, vector_id, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 'hotkey', ?, 'processed', ?, ?, ?)"
+            )
+            .bind(&chunk_id)
+            .bind(&source_id)
+            .bind(&f_chunk.chunk_type)
+            .bind(&para)
+            .bind(&para)
+            .bind((chunk_count + idx as i64) as i64)
+            .bind(vector_id_opt)
+            .bind(&now_iso)
+            .bind(&now_iso)
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("insert capture failed: {}", e))?;
+
+            // Tagger：非同步提取標籤
+            let tag_pool = pool.clone();
+            let tag_cid = chunk_id.clone();
+            let tag_content = para.clone();
+            tokio::spawn(async move {
+                let tag_engine = crate::services::tag_engine::TagEngine::new(tag_pool);
+                if let Err(e) = tag_engine.process_new_capture(&tag_cid, &tag_content).await {
+                    eprintln!("[CAPTURE] Tag failed for {}: {}", &tag_cid[..8.min(tag_cid.len())], e);
+                }
+            });
+
+            chunk_count += 1;
+        }
+    }
+
+    // 更新 capture_count
+    sqlx::query("UPDATE sources SET capture_count = ?, updated_at = ? WHERE id = ?")
+        .bind(chunk_count)
+        .bind(&now_iso)
+        .bind(&source_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("update source count failed: {}", e))?;
+
+    // 非同步儲存向量索引
+    let vs = app_state.vector_store.clone();
+    tokio::spawn(async move { let _ = vs.save().await; });
+
+    println!("[CAPTURE] ✅ File '{}' processed: {} chunks with tags", parsed.title, chunk_count);
     let _ = app.emit("knowledge-updated", ());
     Ok(())
 }

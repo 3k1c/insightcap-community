@@ -4,7 +4,11 @@
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+
+use crate::providers::embedding::Embedder;
+use crate::vector_store::local::VectorStore;
 
 // ─── AppState ──────────────────────────────────────────────────────────────
 
@@ -12,15 +16,28 @@ use serde::{Deserialize, Serialize};
 pub struct AppState {
     pub db: SqlitePool,
     pub kb_path: PathBuf,
-    pub current_conversation_id: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
+    pub vector_store: VectorStore,
+    pub embedder: Arc<dyn Embedder>,
+    pub current_conversation_id: Arc<tokio::sync::Mutex<Option<String>>>,
+    /// 用於通知背景任務停止（發送 true = 停止）
+    pub shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool, kb_path: PathBuf) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        kb_path: PathBuf,
+        vector_store: VectorStore,
+        embedder: Arc<dyn Embedder>,
+        shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    ) -> Self {
         Self {
             db: pool,
             kb_path,
-            current_conversation_id: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            vector_store,
+            embedder,
+            current_conversation_id: Arc::new(tokio::sync::Mutex::new(None)),
+            shutdown_tx,
         }
     }
 }
@@ -74,19 +91,11 @@ pub fn write_db_state(app_data_dir: &Path, state: &DbState) -> Result<(), String
 /// 原子寫入 bootstrap.json（tmp + rename + sync_all）
 pub fn write_bootstrap(app_data_dir: &Path, kb_path: &str) -> Result<(), String> {
     let bootstrap_path = app_data_dir.join("bootstrap.json");
-    let tmp_path = bootstrap_path.with_extension("tmp");
-
     let json = serde_json::json!({ "kb_path": kb_path });
     let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
 
-    std::fs::write(&tmp_path, &content).map_err(|e| e.to_string())?;
-
-    // sync_all 確保 flush 到磁碟
-    let file = std::fs::File::open(&tmp_path).map_err(|e| e.to_string())?;
-    file.sync_all().map_err(|e| e.to_string())?;
-
-    // 原子重命名
-    std::fs::rename(&tmp_path, &bootstrap_path).map_err(|e| e.to_string())?;
+    // Windows 上直接覆寫（rename 在目標已存在時可能失敗）
+    std::fs::write(&bootstrap_path, &content).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -121,26 +130,22 @@ pub async fn init_db(
     let db_path = kb_path.join(".insightcap").join("insightcap.db");
     let db_url = format!("sqlite:{}", db_path.to_string_lossy());
 
-    let options = SqliteConnectOptions::from_str(&db_url)
+    let mut options = SqliteConnectOptions::from_str(&db_url)
         .map_err(|e| e.to_string())?
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
+
+    // SQLCipher: key 格式必須為 "x'hex'" (含外層雙引號)
+    if let Some(key_hex) = db_key_hex {
+        options = options.pragma("key", format!("\"x'{}'\"", key_hex));
+    }
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)
         .await
         .map_err(|e| format!("無法連接資料庫: {}", e))?;
-
-    // 若有 db_key，設定 SQLCipher 加密
-    if let Some(key_hex) = db_key_hex {
-        let pragma_key = format!("PRAGMA key = \"x'{}'\";", key_hex);
-        sqlx::query(&pragma_key)
-            .execute(&pool)
-            .await
-            .map_err(|e| format!("PRAGMA key 失敗: {}", e))?;
-    }
 
     // 執行 WAL checkpoint
     let _ = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
@@ -155,11 +160,78 @@ pub async fn init_db(
 
 /// 執行 Schema Migration
 async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
-    let sql = include_str!("../../migrations/001_init.sql");
-    sqlx::raw_sql(sql)
-        .execute(pool)
+    println!("[DB] run_migrations 開始");
+    // 建立 migration 追蹤表（若不存在）
+    sqlx::raw_sql(
+        "CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Migration 追蹤表建立失敗: {}", e))?;
+    println!("[DB] _migrations 表建立完成");
+
+    let migrations: &[(&str, &str)] = &[
+        ("001", include_str!("../../migrations/001_init.sql")),
+        ("002", include_str!("../../migrations/002_pattern_engine.sql")),
+        ("003", include_str!("../../migrations/003_enterprise.sql")),
+        ("004", include_str!("../../migrations/004_add_project_color.sql")),
+        ("005", include_str!("../../migrations/005_conversation_pin_lock.sql")),
+        ("006", include_str!("../../migrations/006_repository_timeline.sql")),
+        ("007", include_str!("../../migrations/007_fix_local_doc_path.sql")),
+    ];
+
+    for (id, sql) in migrations {
+        let already: bool = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM _migrations WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_one(pool)
         .await
-        .map_err(|e| format!("Migration 失敗: {}", e))?;
+        .unwrap_or(0) > 0;
+
+        if already {
+            println!("[DB] Migration {} 已存在，跳過", id);
+            continue;
+        }
+
+        println!("[DB] 正在執行 Migration {}...", id);
+        // 逐句執行，跳過已存在的欄位/表等 idempotent 錯誤
+        for statement in sql.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            // 過濾掉純 comment 的 fragment
+            let non_comment: String = trimmed.lines()
+                .filter(|l| !l.trim_start().starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if non_comment.trim().is_empty() {
+                continue;
+            }
+            match sqlx::raw_sql(&format!("{};", trimmed)).execute(pool).await {
+                Ok(_) => {}
+                Err(e) => {
+                    let msg = e.to_string().to_lowercase();
+                    if msg.contains("duplicate column") || msg.contains("already exists") {
+                        println!("[DB] Migration {} 跳過已存在的物件", id);
+                        continue;
+                    }
+                    return Err(format!("Migration {} 失敗: {} | SQL: {}", id, e, &trimmed[..trimmed.len().min(80)]));
+                }
+            }
+        }
+
+        sqlx::query("INSERT INTO _migrations (id, applied_at) VALUES (?, ?)")
+            .bind(id)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Migration {} 記錄失敗: {}", id, e))?;
+
+        println!("[DB] Migration {} 完成", id);
+    }
+
     Ok(())
 }
 

@@ -120,12 +120,14 @@ impl Default for KnowledgeSettings {
 #[serde(rename_all = "camelCase")]
 pub struct HotkeySettings {
     pub capture_clipboard: String,
+    pub quick_input: String,
 }
 
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
             capture_clipboard: "Ctrl+Alt+F".to_string(),
+            quick_input: "Ctrl+Alt+G".to_string(),
         }
     }
 }
@@ -191,6 +193,11 @@ pub struct AllSettings {
     #[serde(default)]
     pub editor: EditorSettings,
     pub bilibili_sessdata: Option<String>,
+    /// 用戶自訂的 AI 回答風格指令（可選）
+    /// 例如："請用英文回答，語氣要簡潔"
+    /// 注意：系統指引優先，此欄位不可覆蓋系統行為
+    #[serde(default)]
+    pub chat_prompt_instruction: String,
 }
 
 impl AllSettings {
@@ -343,6 +350,9 @@ pub async fn get_settings(pool: &SqlitePool) -> Result<AllSettings, sqlx::Error>
                     settings.editor = val;
                 }
             }
+            "chat_prompt_instruction" => {
+                settings.chat_prompt_instruction = value;
+            }
             _ => {}
         }
     }
@@ -397,6 +407,7 @@ pub async fn save_settings(
             "editor",
             serde_json::to_string(&settings.editor).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
+        ("chat_prompt_instruction", settings.chat_prompt_instruction.clone()),
     ];
 
     for (key, value) in queries {

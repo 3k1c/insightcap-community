@@ -3,9 +3,9 @@ import { cn } from '../../lib/utils';
 
 const buttonVariants = cva(
     [
-        'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium',
+        'inline-flex items-center justify-center gap-2 rounded-md text-fs-sm font-medium',
         'transition-colors duration-100',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ic-border-focus)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stroke-focus',
         'disabled:opacity-50 disabled:pointer-events-none',
         'select-none cursor-pointer',
     ].join(' '),
@@ -13,31 +13,31 @@ const buttonVariants = cva(
         variants: {
             variant: {
                 primary: [
-                    'bg-[var(--ic-accent)] text-[var(--ic-text-inverse)]',
-                    'hover:bg-[var(--ic-accent-hover)]',
+                    'bg-accent-default text-on-accent',
+                    'hover:bg-accent-light1',
                 ].join(' '),
                 secondary: [
-                    'bg-[var(--ic-bg-elevated)] text-[var(--ic-text-primary)]',
-                    'border border-[var(--ic-border-default)]',
-                    'hover:bg-[var(--ic-bg-sunken)]',
+                    'bg-surface-card text-text-primary',
+                    'border border-stroke-divider',
+                    'hover:bg-surface-subtle',
                 ].join(' '),
                 ghost: [
-                    'text-[var(--ic-text-secondary)]',
-                    'hover:bg-[var(--ic-bg-sunken)] hover:text-[var(--ic-text-primary)]',
+                    'text-text-secondary',
+                    'hover:bg-surface-subtle hover:text-text-primary',
                 ].join(' '),
                 destructive: [
-                    'bg-[var(--ic-danger)] text-white',
-                    'hover:bg-[var(--ic-danger-hover)]',
+                    'bg-color-danger text-white',
+                    'hover:bg-color-danger-hover',
                 ].join(' '),
                 link: [
-                    'text-[var(--ic-accent)] underline-offset-4',
+                    'text-accent-default underline-offset-4',
                     'hover:underline',
                 ].join(' '),
             },
             size: {
-                sm: 'h-8 px-3 text-xs',
+                sm: 'h-8 px-3 text-fs-xs',
                 md: 'h-9 px-4',
-                lg: 'h-10 px-6 text-base',
+                lg: 'h-10 px-6 text-fs-base',
                 icon: 'h-9 w-9 p-0',
             },
         },

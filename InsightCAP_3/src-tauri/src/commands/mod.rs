@@ -1,7 +1,11 @@
 pub mod auth_commands;
+pub mod bilibili_auth;
+pub mod capture_commands;
 pub mod settings_commands;
 pub mod knowledge_commands;
+pub mod memory_commands;
 pub mod conversation_commands;
+pub mod project_commands;
 pub mod rag_commands;
 pub mod tag_commands;
 pub mod space_commands;

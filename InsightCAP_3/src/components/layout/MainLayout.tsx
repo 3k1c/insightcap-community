@@ -1,45 +1,48 @@
 import React from 'react';
 import { useUiStore } from '../../stores/uiStore';
-import { MessageSquare, Database, Settings } from 'lucide-react';
+import { useT } from '../../hooks/useT';
+import { Database, MessageSquare, Settings } from 'lucide-react';
 import { ChatPage } from '../../pages/ChatPage';
-import { KnowledgePage } from '../../pages/KnowledgePage';
+import { RepositoryPage } from '../../pages/RepositoryPage';
 import { SettingsPage } from '../../pages/SettingsPage';
 
 export const MainLayout: React.FC = () => {
-    const { activePage, setActivePage } = useUiStore();
+    const { activePage, setActivePage, toggleSidebar } = useUiStore();
+    const t = useT();
 
     return (
-        <div className="flex w-full h-screen bg-[var(--ic-bg-base)] text-[var(--ic-text-primary)]">
-            {/* Global Slim Sidebar */}
-            <div className="w-16 border-r border-[var(--ic-border)] bg-[var(--ic-bg-surface)] flex flex-col items-center py-4 gap-4 shrink-0 z-50">
+        <div className="flex flex-col w-full h-screen bg-surface-base text-text-primary">
+            {/* Top Nav */}
+            <div className="h-12 border-b border-stroke-divider bg-surface-layer flex items-center px-4 gap-1 shrink-0 z-50">
                 <button
                     onClick={() => setActivePage('chat')}
-                    className={`p-2.5 rounded-xl transition-all ${activePage === 'chat' ? 'bg-[var(--ic-accent-primary)] text-white shadow-md' : 'text-[var(--ic-text-secondary)] hover:text-[var(--ic-text-primary)] hover:bg-[var(--ic-bg-subtle)]'}`}
-                    title="對話"
+                    onDoubleClick={() => { setActivePage('chat'); toggleSidebar(); }}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-fs-sm transition-all ${activePage === 'chat' ? 'bg-accent-default text-white shadow-sm' : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'}`}
                 >
-                    <MessageSquare className="w-5 h-5" />
+                    <MessageSquare className="w-4 h-4" />
+                    <span>{t('nav.chat')}</span>
                 </button>
                 <button
-                    onClick={() => setActivePage('knowledge')}
-                    className={`p-2.5 rounded-xl transition-all ${activePage === 'knowledge' ? 'bg-[var(--ic-accent-primary)] text-white shadow-md' : 'text-[var(--ic-text-secondary)] hover:text-[var(--ic-text-primary)] hover:bg-[var(--ic-bg-subtle)]'}`}
-                    title="記憶庫"
+                    onClick={() => setActivePage('repository')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-fs-sm transition-all ${activePage === 'repository' ? 'bg-accent-default text-white shadow-sm' : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'}`}
                 >
-                    <Database className="w-5 h-5" />
+                    <Database className="w-4 h-4" />
+                    <span>儲存庫</span>
                 </button>
                 <div className="flex-1" />
                 <button
                     onClick={() => setActivePage('settings')}
-                    className={`p-2.5 rounded-xl transition-all ${activePage === 'settings' ? 'bg-[var(--ic-accent-primary)] text-white shadow-md' : 'text-[var(--ic-text-secondary)] hover:text-[var(--ic-text-primary)] hover:bg-[var(--ic-bg-subtle)]'}`}
-                    title="設定"
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-fs-sm transition-all ${activePage === 'settings' ? 'bg-accent-default text-white shadow-sm' : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'}`}
                 >
-                    <Settings className="w-5 h-5" />
+                    <Settings className="w-4 h-4" />
+                    <span>{t('nav.settings')}</span>
                 </button>
             </div>
 
             {/* Main Content Area */}
             <div className="flex-1 flex overflow-hidden">
                 {activePage === 'chat' && <ChatPage />}
-                {activePage === 'knowledge' && <KnowledgePage />}
+                {activePage === 'repository' && <RepositoryPage />}
                 {activePage === 'settings' && <SettingsPage />}
             </div>
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -6,6 +7,7 @@ import { tauriCmd } from '../../lib/tauri';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
+import Paragraph from '@tiptap/extension-paragraph';
 import Placeholder from '@tiptap/extension-placeholder';
 import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
@@ -19,6 +21,22 @@ import ImageNodeView from './extensions/ImageNodeView';
 // import { ImageNodePro } from './extensions/ImageNodePro';
 
 const inputRegex = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/;
+
+const ParagraphVariant = Paragraph.extend({
+    addAttributes() {
+        return {
+            ...this.parent?.(),
+            variant: {
+                default: 'text1',
+                parseHTML: element => element.getAttribute('data-variant') || 'text1',
+                renderHTML: attributes => {
+                    const variant = attributes.variant || 'text1';
+                    return variant !== 'text1' ? { 'data-variant': variant } : {};
+                },
+            },
+        };
+    },
+});
 
 const ImageNodePro = TiptapNode.create({
     name: 'imageNodePro',
@@ -92,18 +110,71 @@ interface MenuBarProps {
     onOpenDocument: () => void;
 }
 
-const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
+// Memoized MenuBar - prevents unnecessary re-renders when parent (EditorPane) updates
+const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) => {
     const t = useT();
-    // Force re-render on cursor/selection change so active states stay in sync
-    const [, forceUpdate] = useState(0);
+    // Track menu-related active states via ref to avoid unnecessary re-renders.
+    const menuStatesRef = useRef({
+        bold: false,
+        italic: false,
+        underline: false,
+        highlight: false,
+        text1: false,
+        text2: false,
+        text3: false,
+        h1: false,
+        h2: false,
+        h3: false,
+        h4: false,
+        bulletList: false,
+        orderedList: false,
+        alignLeft: false,
+        alignCenter: false,
+        alignRight: false,
+        alignJustify: false,
+        link: false,
+        table: false,
+        codeBlock: false,
+    });
+    const [menuStates, setMenuStates] = useState(menuStatesRef.current);
     useEffect(() => {
         if (!editor) return;
-        const handler = () => forceUpdate(n => n + 1);
-        editor.on('selectionUpdate', handler);
-        editor.on('transaction', handler);
+        const updateActiveStates = () => {
+            const newStates = {
+                bold: editor.isActive('bold'),
+                italic: editor.isActive('italic'),
+                underline: editor.isActive('underline'),
+                highlight: editor.isActive('highlight'),
+                text1: editor.isActive('paragraph', { variant: 'text1' }),
+                text2: editor.isActive('paragraph', { variant: 'text2' }),
+                text3: editor.isActive('paragraph', { variant: 'text3' }),
+                h1: editor.isActive('heading', { level: 1 }),
+                h2: editor.isActive('heading', { level: 2 }),
+                h3: editor.isActive('heading', { level: 3 }),
+                h4: editor.isActive('heading', { level: 4 }),
+                bulletList: editor.isActive('bulletList'),
+                orderedList: editor.isActive('orderedList'),
+                alignLeft: editor.isActive({ textAlign: 'left' }),
+                alignCenter: editor.isActive({ textAlign: 'center' }),
+                alignRight: editor.isActive({ textAlign: 'right' }),
+                alignJustify: editor.isActive({ textAlign: 'justify' }),
+                link: editor.isActive('link'),
+                table: editor.isActive('table'),
+                codeBlock: editor.isActive('codeBlock'),
+            };
+            if (JSON.stringify(menuStatesRef.current) !== JSON.stringify(newStates)) {
+                menuStatesRef.current = newStates;
+                setMenuStates(newStates);
+            }
+        };
+        updateActiveStates();
+        editor.on('update', updateActiveStates);
+        editor.on('transaction', updateActiveStates);
+        editor.on('selectionUpdate', updateActiveStates);
         return () => {
-            editor.off('selectionUpdate', handler);
-            editor.off('transaction', handler);
+            editor.off('update', updateActiveStates);
+            editor.off('transaction', updateActiveStates);
+            editor.off('selectionUpdate', updateActiveStates);
         };
     }, [editor]);
     const [showTableMenu, setShowTableMenu] = useState(false);
@@ -139,10 +210,12 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
 
     const ToolbarButton = ({ onClick, isActive = false, disabled = false, icon: Icon, title, label }: any) => (
         <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={onClick}
             disabled={disabled}
             title={title}
-            className={`p-1.5 rounded transition-colors flex items-center gap-1.5 ${isActive ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            aria-pressed={isActive}
+            className={`p-1.5 rounded transition-colors flex items-center gap-1.5 ${isActive ? 'bg-accent-light2 text-accent-default ring-1 ring-accent-default/30 font-medium' : 'text-text-secondary hover:bg-surface-subtle'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
             <Icon className="w-4 h-4" />
             {label && <span className="text-fs-xs font-medium">{label}</span>}
@@ -205,11 +278,11 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
         };
 
         const filterMap: Record<string, { name: string; extensions: string[] }[]> = {
-            txt:  [{ name: '純文字', extensions: ['txt'] }],
-            md:   [{ name: 'Markdown', extensions: ['md'] }],
+            txt: [{ name: '純文字', extensions: ['txt'] }],
+            md: [{ name: 'Markdown', extensions: ['md'] }],
             html: [{ name: 'HTML 文件', extensions: ['html'] }],
             docx: [{ name: 'Word 文件', extensions: ['docx'] }],
-            pdf:  [{ name: 'PDF 文件', extensions: ['pdf'] }],
+            pdf: [{ name: 'PDF 文件', extensions: ['pdf'] }],
         };
         const filePath = await saveDialog({
             defaultPath: `${name}.${format}`,
@@ -260,6 +333,20 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
             }
             pdf.save(filePath);
         }
+
+        // 匯出成功後自動入庫（清洗、分塊、標籤生成）
+        try {
+            const title = fileName || '文件';
+            const md = format === 'md'
+                ? await (async () => {
+                    const TurndownService = (await import('turndown')).default;
+                    return new TurndownService({ headingStyle: 'atx', bulletListMarker: '-' }).turndown(html);
+                })()
+                : format === 'txt' ? text : html;
+            await tauriCmd.saveEditorToKnowledge(title, md);
+        } catch (e) {
+            console.error('入庫失敗:', e);
+        }
     };
 
     return (
@@ -309,35 +396,35 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
             {/* Turn Into Dropdown ??MenuBar */}
             <div className="relative" ref={turnIntoMenuRef}>
                 {(() => {
-                    const currentLabel = editor.isActive('heading', { level: 1 }) ? t('turn_into.heading1')
-                        : editor.isActive('heading', { level: 2 }) ? t('turn_into.heading2')
-                        : editor.isActive('heading', { level: 3 }) ? t('turn_into.heading3')
-                        : editor.isActive('heading', { level: 4 }) ? t('turn_into.heading4')
-                        : editor.isActive('heading', { level: 5 }) ? t('turn_into.heading5')
-                        : editor.isActive('heading', { level: 6 }) ? t('turn_into.heading6')
-                        : t('turn_into.text');
+                    const currentLabel = menuStates.h1 ? t('turn_into.heading1')
+                        : menuStates.h2 ? t('turn_into.heading2')
+                            : menuStates.h3 ? t('turn_into.heading3')
+                                : menuStates.h4 ? t('turn_into.heading4')
+                                    : menuStates.text2 ? t('turn_into.text2')
+                                        : menuStates.text3 ? t('turn_into.text3')
+                                            : t('turn_into.text1');
                     return (
-                <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShowTurnIntoMenu(v => !v); }}
-                    className={`flex items-center gap-1 px-2 py-1.5 rounded text-fs-xs font-medium transition-colors ${showTurnIntoMenu ? 'bg-surface-subtle text-text-primary' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                    title={t('turn_into.label')}
-                >
-                    <span>{currentLabel}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showTurnIntoMenu ? 'rotate-180' : ''}`} />
-                </button>
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setShowTurnIntoMenu(v => !v); }}
+                            className={`flex items-center gap-1 px-2 py-1.5 rounded text-fs-xs font-medium transition-colors ${showTurnIntoMenu ? 'bg-surface-subtle text-text-primary' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
+                            title={t('turn_into.label')}
+                        >
+                            <span>{currentLabel}</span>
+                            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showTurnIntoMenu ? 'rotate-180' : ''}`} />
+                        </button>
                     );
                 })()}
                 {showTurnIntoMenu && (
                     <div className="absolute left-0 top-full mt-1 w-44 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1 px-1 ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
                         {([
-                            { key: 'text', label: t('turn_into.text'), icon: 'T', action: () => editor.chain().focus().setParagraph().run(), isActive: editor.isActive('paragraph') && !editor.isActive('heading') },
-                            { key: 'h1', label: t('turn_into.heading1'), icon: 'H1', action: () => editor.chain().focus().setHeading({ level: 1 }).run(), isActive: editor.isActive('heading', { level: 1 }) },
-                            { key: 'h2', label: t('turn_into.heading2'), icon: 'H2', action: () => editor.chain().focus().setHeading({ level: 2 }).run(), isActive: editor.isActive('heading', { level: 2 }) },
-                            { key: 'h3', label: t('turn_into.heading3'), icon: 'H3', action: () => editor.chain().focus().setHeading({ level: 3 }).run(), isActive: editor.isActive('heading', { level: 3 }) },
-                            { key: 'h4', label: t('turn_into.heading4'), icon: 'H4', action: () => editor.chain().focus().setHeading({ level: 4 }).run(), isActive: editor.isActive('heading', { level: 4 }) },
-                            { key: 'h5', label: t('turn_into.heading5'), icon: 'H5', action: () => editor.chain().focus().setHeading({ level: 5 }).run(), isActive: editor.isActive('heading', { level: 5 }) },
-                            { key: 'h6', label: t('turn_into.heading6'), icon: 'H6', action: () => editor.chain().focus().setHeading({ level: 6 }).run(), isActive: editor.isActive('heading', { level: 6 }) },
+                            { key: 'text1', label: t('turn_into.text1'), icon: 'T1', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text1' }).run(), isActive: menuStates.text1 },
+                            { key: 'text2', label: t('turn_into.text2'), icon: 'T2', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text2' }).run(), isActive: menuStates.text2 },
+                            { key: 'text3', label: t('turn_into.text3'), icon: 'T3', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text3' }).run(), isActive: menuStates.text3 },
+                            { key: 'h1', label: t('turn_into.heading1'), icon: 'H1', action: () => editor.chain().focus().setHeading({ level: 1 }).run(), isActive: menuStates.h1 },
+                            { key: 'h2', label: t('turn_into.heading2'), icon: 'H2', action: () => editor.chain().focus().setHeading({ level: 2 }).run(), isActive: menuStates.h2 },
+                            { key: 'h3', label: t('turn_into.heading3'), icon: 'H3', action: () => editor.chain().focus().setHeading({ level: 3 }).run(), isActive: menuStates.h3 },
+                            { key: 'h4', label: t('turn_into.heading4'), icon: 'H4', action: () => editor.chain().focus().setHeading({ level: 4 }).run(), isActive: menuStates.h4 },
                         ] as const).map(item => (
                             <button
                                 key={item.key}
@@ -357,71 +444,69 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
                 icon={Bold}
                 title="粗體 (Ctrl+B)"
                 onClick={() => editor.chain().focus().toggleBold().run()}
-                isActive={editor.isActive('bold')}
+                isActive={menuStates.bold}
             />
             <ToolbarButton
                 icon={Italic}
                 title="斜體 (Ctrl+I)"
                 onClick={() => editor.chain().focus().toggleItalic().run()}
-                isActive={editor.isActive('italic')}
+                isActive={menuStates.italic}
             />
             <ToolbarButton
                 icon={UnderlineIcon}
                 title="底線 (Ctrl+U)"
                 onClick={() => editor.chain().focus().toggleUnderline().run()}
-                isActive={editor.isActive('underline')}
+                isActive={menuStates.underline}
             />
             <ToolbarButton
                 icon={Highlighter}
                 title="螢光筆"
                 onClick={() => editor.chain().focus().toggleHighlight().run()}
-                isActive={editor.isActive('highlight')}
-            />
-            <div className="w-px h-5 bg-stroke-divider mx-1" />
-            <ToolbarButton
-                icon={Heading1}
-                title="標題 1 (Ctrl+Alt+1)"
-                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                isActive={editor.isActive('heading', { level: 1 })}
-            />
-            <ToolbarButton
-                icon={Heading2}
-                title="標題 2 (Ctrl+Alt+2)"
-                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                isActive={editor.isActive('heading', { level: 2 })}
+                isActive={menuStates.highlight}
             />
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
-            {/* List Dropdown ??MenuBar */}
-            <div className="relative" ref={listMenuRef}>
-                <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShowListMenu(v => !v); }}
-                    className={`flex items-center gap-1 p-1.5 rounded transition-colors ${editor.isActive('bulletList') || editor.isActive('orderedList') ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                    title={t('list_dropdown.label')}
-                >
-                    {editor.isActive('orderedList') ? <ListOrdered className="w-4 h-4" /> : <List className="w-4 h-4" />}
-                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showListMenu ? 'rotate-180' : ''}`} />
-                </button>
-                {showListMenu && (
-                    <div className="absolute left-0 top-full mt-1 w-44 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1 px-1 ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
-                        <button
-                            onClick={() => { editor.chain().focus().toggleBulletList().run(); setShowListMenu(false); }}
-                            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium rounded-md transition-colors text-left ${editor.isActive('bulletList') ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                        >
-                            <List className="w-3.5 h-3.5 shrink-0" />
-                            {t('list_dropdown.bullet_list')}
-                        </button>
-                        <button
-                            onClick={() => { editor.chain().focus().toggleOrderedList().run(); setShowListMenu(false); }}
-                            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium rounded-md transition-colors text-left ${editor.isActive('orderedList') ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                        >
-                            <ListOrdered className="w-3.5 h-3.5 shrink-0" />
-                            {t('list_dropdown.ordered_list')}
-                        </button>
-                    </div>
-                )}
-            </div>
+            {/* Text Align Buttons */}
+            <ToolbarButton
+                icon={AlignLeft}
+                title="靠左對齊"
+                onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                isActive={menuStates.alignLeft}
+            />
+            <ToolbarButton
+                icon={AlignCenter}
+                title="置中對齊"
+                onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                isActive={menuStates.alignCenter}
+            />
+            <ToolbarButton
+                icon={AlignRight}
+                title="靠右對齊"
+                onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                isActive={menuStates.alignRight}
+            />
+            <ToolbarButton
+                icon={AlignJustify}
+                title="兩端對齊"
+                onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+                isActive={menuStates.alignJustify}
+            />
+
+            <div className="w-px h-5 bg-stroke-divider mx-1" />
+
+            {/* List Buttons */}
+            <ToolbarButton
+                icon={List}
+                title={t('list_dropdown.bullet_list')}
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                isActive={menuStates.bulletList}
+            />
+            <ToolbarButton
+                icon={ListOrdered}
+                title={t('list_dropdown.ordered_list')}
+                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                isActive={menuStates.orderedList}
+            />
 
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
@@ -431,14 +516,14 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
                     type="button"
                     onClick={(e) => {
                         e.stopPropagation();
-                        if (editor.isActive('table')) {
+                        if (menuStates.table) {
                             setShowTableMenu(!showTableMenu);
                         } else {
                             editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
                         }
                     }}
-                    title={editor.isActive('table') ? "表格操作" : "插入表格"}
-                    className={`p-1.5 rounded transition-all flex items-center gap-0.5 ${editor.isActive('table')
+                    title={menuStates.table ? "表格操作" : "插入表格"}
+                    className={`p-1.5 rounded transition-all flex items-center gap-0.5 ${menuStates.table
                         ? 'bg-accent-light2 text-accent-default shadow-sm'
                         : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'
                         }`}
@@ -496,19 +581,19 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
                         <div className="h-px bg-stroke-divider my-1.5 mx-1" />
                         <MenuAction
                             icon={Trash2}
-                                                        label="刪除此行"
+                            label="刪除此行"
                             onClick={() => editor.chain().focus().deleteRow().run()}
                             danger
                         />
                         <MenuAction
                             icon={Trash2}
-                                                        label="刪除此列"
+                            label="刪除此列"
                             onClick={() => editor.chain().focus().deleteColumn().run()}
                             danger
                         />
                         <MenuAction
                             icon={Trash2}
-                                                        label="刪除整個表格"
+                            label="刪除整個表格"
                             onClick={() => editor.chain().focus().deleteTable().run()}
                             danger
                         />
@@ -548,17 +633,35 @@ const MenuBar = ({ editor, fileName, onOpenDocument }: MenuBarProps) => {
 
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
+            {/* Link Button */}
+            <button
+                onClick={() => {
+                    const url = window.prompt('請輸入網址:');
+                    if (url) {
+                        editor.chain().focus().setLink({ href: url }).run();
+                    }
+                }}
+                className={`p-1.5 rounded transition-colors ${menuStates.link ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
+                title="超連結"
+            >
+                <LinkIcon className="w-4 h-4" />
+            </button>
+
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
             <ToolbarButton
                 icon={Code}
                 title="程式碼區塊"
                 onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-                isActive={editor.isActive('codeBlock')}
+                isActive={menuStates.codeBlock}
             />
         </div>
     );
-};
+});
+
+function normalizeFsPath(path: string): string {
+    return path.replace(/\\/g, '/').toLowerCase();
+}
 
 function calcPanelStyle(anchor: { x: number; y: number }): React.CSSProperties {
     const PANEL_WIDTH = 320;
@@ -658,7 +761,10 @@ export const EditorPane: React.FC = () => {
 
     const editor = useEditor({
         extensions: [
-            StarterKit,
+            StarterKit.configure({
+                paragraph: false,
+            }),
+            ParagraphVariant,
             Table.configure({
                 resizable: true,
                 allowTableNodeSelection: false,
@@ -843,7 +949,8 @@ export const EditorPane: React.FC = () => {
 
     const openDocumentFromPath = useCallback((path: string, content: string) => {
         if (!editor) return;
-        const existingTab = tabs.find(t => t.filePath === path);
+        const normalizedTargetPath = normalizeFsPath(path);
+        const existingTab = tabs.find(t => t.filePath && normalizeFsPath(t.filePath) === normalizedTargetPath);
         if (existingTab) {
             tabContentsRef.current[activeTabId] = JSON.stringify(editor.getJSON());
             saveContent(activeTabId, tabContentsRef.current[activeTabId]);
@@ -888,6 +995,7 @@ export const EditorPane: React.FC = () => {
             openDocumentFromPath(selected, content);
         } catch (error) {
             console.error('Open document failed:', error);
+            window.alert('無法開啟文件，請確認檔案格式與權限。');
         }
     }, [editor, openDocumentFromPath]);
 
@@ -899,7 +1007,7 @@ export const EditorPane: React.FC = () => {
             editor.commands.setContent(JSON.parse(entry.snapshot));
             tabContentsRef.current[activeTabId] = entry.snapshot;
             saveContent(activeTabId, entry.snapshot);
-        } catch {}
+        } catch { }
         setShowHistoryMenu(false);
     }, [editor, activeTabId]);
 
@@ -916,41 +1024,114 @@ export const EditorPane: React.FC = () => {
 
     const lastPromptRef = useRef<string>('');
     const selectedTextRef = useRef<string>('');
+    const selectedRangeRef = useRef<{ from: number; to: number } | null>(null);
+    const aiTargetRangeRef = useRef<{ from: number; to: number } | null>(null);
 
-        // 表格工具選單位置（fixed，固定在表格上方置中）
+
+    const popupStatesRef = useRef({
+        bold: false,
+        italic: false,
+        underline: false,
+        highlight: false,
+        bulletList: false,
+        orderedList: false,
+        alignLeft: false,
+        alignCenter: false,
+        alignRight: false,
+        alignJustify: false,
+        link: false,
+        imageAlignLeft: false,
+        imageAlignCenter: false,
+        imageAlignRight: false,
+        imageWidth: '100%',
+        tableActive: false,
+    });
+    const [popupStates, setPopupStates] = useState(popupStatesRef.current);
+
+    useEffect(() => {
+        if (!editor) return;
+
+        const updatePopupStates = () => {
+            const imageAttrs = editor.getAttributes('imageNodePro') as { width?: string };
+            const newStates = {
+                bold: editor.isActive('bold'),
+                italic: editor.isActive('italic'),
+                underline: editor.isActive('underline'),
+                highlight: editor.isActive('highlight'),
+                bulletList: editor.isActive('bulletList'),
+                orderedList: editor.isActive('orderedList'),
+                alignLeft: editor.isActive({ textAlign: 'left' }),
+                alignCenter: editor.isActive({ textAlign: 'center' }),
+                alignRight: editor.isActive({ textAlign: 'right' }),
+                alignJustify: editor.isActive({ textAlign: 'justify' }),
+                link: editor.isActive('link'),
+                imageAlignLeft: editor.isActive('imageNodePro', { textAlign: 'left' }),
+                imageAlignCenter: editor.isActive('imageNodePro', { textAlign: 'center' }),
+                imageAlignRight: editor.isActive('imageNodePro', { textAlign: 'right' }),
+                imageWidth: imageAttrs.width ?? '100%',
+                tableActive: editor.isActive('table'),
+            };
+
+            if (JSON.stringify(popupStatesRef.current) !== JSON.stringify(newStates)) {
+                popupStatesRef.current = newStates;
+                setPopupStates(newStates);
+            }
+        };
+
+        updatePopupStates();
+        editor.on('update', updatePopupStates);
+        editor.on('transaction', updatePopupStates);
+        editor.on('selectionUpdate', updatePopupStates);
+
+        return () => {
+            editor.off('update', updatePopupStates);
+            editor.off('transaction', updatePopupStates);
+            editor.off('selectionUpdate', updatePopupStates);
+        };
+    }, [editor]);
+
+    // 表格工具選單位置（fixed，固定在表格上方置中）
     const [tableMenuPos, setTableMenuPos] = useState<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         if (!editor) return;
+        let rafId: number | null = null;
         const update = () => {
-            if (editor.isActive('table')) {
-                // 找到目前選取所在的 table DOM 節點
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                if (!editor.isActive('table')) {
+                    setTableMenuPos(prev => prev === null ? prev : null);
+                    return;
+                }
                 const { state, view } = editor;
                 const { $from } = state.selection;
-                let tablePos: number | null = null;
+                let tPos: number | null = null;
                 for (let d = $from.depth; d >= 0; d--) {
                     if ($from.node(d).type.name === 'table') {
-                        tablePos = $from.before(d);
+                        tPos = $from.before(d);
                         break;
                     }
                 }
-                if (tablePos !== null) {
-                    const domNode = view.nodeDOM(tablePos) as HTMLElement | null;
+                if (tPos !== null) {
+                    const domNode = view.nodeDOM(tPos) as HTMLElement | null;
                     const tableEl = domNode?.nodeName === 'TABLE' ? domNode : domNode?.querySelector('table') ?? domNode;
                     if (tableEl) {
                         const rect = tableEl.getBoundingClientRect();
-                        setTableMenuPos({ x: rect.left + rect.width / 2, y: rect.top });
+                        const nx = rect.left + rect.width / 2;
+                        const ny = rect.top;
+                        setTableMenuPos(prev => {
+                            if (prev && Math.abs(prev.x - nx) < 1 && Math.abs(prev.y - ny) < 1) return prev;
+                            return { x: nx, y: ny };
+                        });
                     }
                 }
-            } else {
-                setTableMenuPos(null);
-            }
+            });
         };
         editor.on('selectionUpdate', update);
-        editor.on('transaction', update);
         return () => {
             editor.off('selectionUpdate', update);
-            editor.off('transaction', update);
+            if (rafId !== null) cancelAnimationFrame(rafId);
         };
     }, [editor]);
 
@@ -965,9 +1146,16 @@ export const EditorPane: React.FC = () => {
             if (textBubbleTimer.current) { clearTimeout(textBubbleTimer.current); textBubbleTimer.current = null; }
             textBubbleTimer.current = setTimeout(() => {
                 if (!editor || isAiImproving || aiImproveResult) return;
-                if ((editor.state.selection as any).$anchorCell) return;
+                if ((editor.state.selection as any).$anchorCell) {
+                    setTextBubblePos(null);
+                    return;
+                }
                 const { from, to } = editor.state.selection;
-                if (from === to || editor.isActive('imageNodePro')) return;
+                if (from === to || editor.isActive('imageNodePro')) {
+                    setTextBubblePos(null);
+                    return;
+                }
+                selectedRangeRef.current = { from, to };
                 const { view } = editor;
                 const start = view.coordsAtPos(from);
                 const end = view.coordsAtPos(to);
@@ -978,7 +1166,10 @@ export const EditorPane: React.FC = () => {
         const hideBubble = () => {
             if (textBubbleTimer.current) { clearTimeout(textBubbleTimer.current); textBubbleTimer.current = null; }
             const { from, to } = editor.state.selection;
-            if (from === to) setTextBubblePos(null);
+            const isCellSelection = !!(editor.state.selection as any).$anchorCell;
+            if (from === to || editor.isActive('imageNodePro') || isCellSelection) {
+                setTextBubblePos(null);
+            }
         };
 
         // mouseup 時延遲計算位置
@@ -1001,10 +1192,16 @@ export const EditorPane: React.FC = () => {
     const handleAiImprove = useCallback(async (prompt: string) => {
         if (!editor || isAiImproving) return;
 
-        const { from, to } = editor.state.selection;
+        let { from, to } = editor.state.selection;
+        if (from === to && selectedRangeRef.current) {
+            from = selectedRangeRef.current.from;
+            to = selectedRangeRef.current.to;
+        }
         const text = editor.state.doc.textBetween(from, to);
         if (!text.trim()) return;
 
+        selectedRangeRef.current = { from, to };
+        aiTargetRangeRef.current = { from, to };
         lastPromptRef.current = prompt;
         selectedTextRef.current = text;
 
@@ -1086,7 +1283,7 @@ export const EditorPane: React.FC = () => {
     }, [aiImproveResult, isAiImproving]);
 
     return (
-        <div className="w-full h-full flex flex-col border-l border-stroke-divider bg-surface-base transition-all duration-300" onClick={() => editor?.commands.focus()}>
+        <div className="w-full h-full flex flex-col border-l border-stroke-divider bg-surface-base" onClick={() => editor?.commands.focus()}>
             {/* Tab Bar */}
             <div className="flex items-center border-b border-stroke-divider bg-surface-layer shrink-0 h-12" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center min-w-0 flex-1 overflow-x-auto">
@@ -1095,11 +1292,10 @@ export const EditorPane: React.FC = () => {
                             key={tab.id}
                             onClick={() => tab.id !== activeTabId && switchTab(tab.id)}
                             onDoubleClick={() => { setRenamingTabId(tab.id); setRenameValue(tab.title); }}
-                            className={`group flex items-center gap-1.5 px-3 py-2 text-fs-xs font-medium cursor-pointer shrink-0 border-r border-stroke-divider transition-colors select-none ${
-                                tab.id === activeTabId
-                                    ? 'bg-surface-base text-text-primary border-b-2 border-b-accent-default -mb-px'
-                                    : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-subtle'
-                            }`}
+                            className={`group flex items-center gap-1.5 px-3 py-2 text-fs-xs font-medium cursor-pointer shrink-0 border-r border-stroke-divider transition-colors select-none ${tab.id === activeTabId
+                                ? 'bg-surface-base text-text-primary border-b-2 border-b-accent-default -mb-px'
+                                : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-subtle'
+                                }`}
                         >
                             {renamingTabId === tab.id ? (
                                 <input
@@ -1136,20 +1332,20 @@ export const EditorPane: React.FC = () => {
                         +
                     </button>
                 </div>
-                </div>
+            </div>
 
-                {/* Menu Bar */}
-                <MenuBar
-                    editor={editor}
-                    fileName={tabs.find(t => t.id === activeTabId)?.title ?? '文件'}
-                    onOpenDocument={handleOpenDocument}
-                />
+            {/* Menu Bar */}
+            <MenuBar
+                editor={editor}
+                fileName={tabs.find(t => t.id === activeTabId)?.title ?? '文件'}
+                onOpenDocument={handleOpenDocument}
+            />
 
             {/* Image Bubble Menu，僅在選中圖片且不在表格內時顯示 */}
             {editor && (
                 <BubbleMenu
                     editor={editor}
-                    shouldShow={({ editor }) => editor.isActive('imageNodePro') && !editor.isActive('table')}
+                    shouldShow={() => !!editor.isActive('imageNodePro') && !textBubblePos}
                     options={{
                         offset: 8,
                         placement: 'top',
@@ -1158,21 +1354,21 @@ export const EditorPane: React.FC = () => {
                     <div className="flex items-center gap-0.5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200 z-[100] mx-6">
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { textAlign: 'left' }).run()}
-                            className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${editor.isActive('imageNodePro', { textAlign: 'left' }) ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
+                            className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${popupStates.imageAlignLeft ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
                             title="對齊置左"
                         >
                             <AlignLeft className="w-4 h-4" />
                         </button>
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { textAlign: 'center' }).run()}
-                            className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${editor.isActive('imageNodePro', { textAlign: 'center' }) ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
+                            className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${popupStates.imageAlignCenter ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
                             title="對齊置中"
                         >
                             <AlignCenter className="w-4 h-4" />
                         </button>
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { textAlign: 'right' }).run()}
-                            className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${editor.isActive('imageNodePro', { textAlign: 'right' }) ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
+                            className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${popupStates.imageAlignRight ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
                             title="對齊置右"
                         >
                             <AlignRight className="w-4 h-4" />
@@ -1180,19 +1376,19 @@ export const EditorPane: React.FC = () => {
                         <div className="w-px h-4 bg-stroke-divider mx-1" />
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { width: '25%' }).run()}
-                            className="px-1.5 py-1 text-[10px] font-bold text-text-secondary hover:bg-surface-subtle rounded transition-colors"
+                            className={`px-1.5 py-1 text-[10px] font-bold rounded transition-colors ${popupStates.imageWidth === '25%' ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
                         >
                             25%
                         </button>
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { width: '50%' }).run()}
-                            className="px-1.5 py-1 text-[10px] font-bold text-text-secondary hover:bg-surface-subtle rounded transition-colors"
+                            className={`px-1.5 py-1 text-[10px] font-bold rounded transition-colors ${popupStates.imageWidth === '50%' ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
                         >
                             50%
                         </button>
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { width: '100%' }).run()}
-                            className="px-1.5 py-1 text-[10px] font-bold text-text-secondary hover:bg-surface-subtle rounded transition-colors"
+                            className={`px-1.5 py-1 text-[10px] font-bold rounded transition-colors ${popupStates.imageWidth === '100%' ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
                         >
                             100%
                         </button>
@@ -1209,7 +1405,7 @@ export const EditorPane: React.FC = () => {
             )}
 
             {/* Text Bubble Menu */}
-            {editor && textBubblePos && (
+            {editor && textBubblePos && !editor.isActive('imageNodePro') && !(editor.state.selection as any).$anchorCell && (
                 <div
                     style={{
                         position: 'fixed',
@@ -1218,411 +1414,352 @@ export const EditorPane: React.FC = () => {
                         transform: 'translate(-50%, -100%)',
                         zIndex: 100,
                     }}
-                    onMouseDown={e => e.stopPropagation()}
+                    onMouseDown={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
                 >
                     <div className="flex items-center gap-0.5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl p-1 animate-in fade-in zoom-in duration-200 z-[100] whitespace-nowrap">
                         <div className="flex items-center gap-0.5 flex-nowrap">
-                                {/* Improve Dropdown Trigger */}
-                                <div className="relative" ref={aiDropdownRef}>
-                                    <button
-                                        onClick={() => { setShowAiDropdown(v => !v); setAiDropdownType('main'); }}
-                                        className={`flex items-center gap-1 px-2 py-1.5 rounded hover:bg-accent-light2 text-accent-default transition-colors font-bold text-fs-xs ${showAiDropdown ? 'bg-accent-light2' : ''}`}
-                                        title={t('editor.ai_improve')}
-                                    >
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                        <span>{t('editor.ai_improve')}</span>
-                                        <ChevronDown className={`w-3 h-3 transition-transform ${showAiDropdown ? 'rotate-180' : ''}`} />
-                                    </button>
+                            {/* Improve Dropdown Trigger */}
+                            <div className="relative" ref={aiDropdownRef}>
+                                <button
+                                    onClick={() => { setShowAiDropdown(v => !v); setAiDropdownType('main'); }}
+                                    className={`flex items-center gap-1 px-2 py-1.5 rounded hover:bg-accent-light2 text-accent-default transition-colors font-bold text-fs-xs ${showAiDropdown ? 'bg-accent-light2' : ''}`}
+                                    title={t('editor.ai_improve')}
+                                >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>{t('editor.ai_improve')}</span>
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${showAiDropdown ? 'rotate-180' : ''}`} />
+                                </button>
 
-                                    {/* Custom Dropdown Menu */}
-                                    {showAiDropdown && (
-                                        <div
-                                            className={`absolute left-0 top-full mt-1 bg-surface-base border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200 ${aiDropdownType === 'custom' ? 'w-72' : 'w-52'} ${aiDropdownType === 'tone' ? 'max-h-72 overflow-y-auto' : ''}`}
-                                            onMouseDown={e => e.stopPropagation()}
-                                        >
-                                            {aiDropdownType === 'main' && (
-                                                <>
-                                                    <button onClick={() => handleAiImprove('請修正以下文字的語法錯誤，使其更流暢自然。直接輸出修正後的文字，不要附上任何解釋：')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <Wand2 className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_fix_grammar')}
-                                                    </button>
-                                                    <button onClick={() => setAiDropdownType('expand')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <FileText className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_extend')}
-                                                        </div>
-                                                        <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                    </button>
-                                                    <button onClick={() => setAiDropdownType('shorten')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <Eraser className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_shorten')}
-                                                        </div>
-                                                        <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                    </button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字簡化，使其更簡單易懂，並保留原意。直接輸出簡化後的文字，不要附上任何解釋：')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <Eraser className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_simplify')}
-                                                    </button>
-                                                    <div className="h-px bg-stroke-divider my-1 mx-1" />
-                                                    <button onClick={() => setAiDropdownType('tone')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <Smile className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_adjust_tone')}
-                                                        </div>
-                                                        <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                    </button>
-                                                    <button onClick={() => handleAiImprove('請將以下段落補寫完整，使其內容更完整自然。直接輸出補寫後的文字，不要附上任何解釋：')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <RefreshCw className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_complete')}
-                                                    </button>
-                                                    <button onClick={() => handleAiImprove('請將以下段落整理為簡潔摘要。直接輸出摘要，不要附上任何解釋：')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <FileText className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_summarize')}
-                                                    </button>
-                                                    <button onClick={() => setAiDropdownType('translate')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <Languages className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_translate')}
-                                                        </div>
-                                                        <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                    </button>
-                                                    <div className="h-px bg-stroke-divider my-1 mx-1" />
-                                                    <button onClick={() => { setAiDropdownType('custom'); setCustomPrompt(''); }} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                        <Sparkles className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_custom')}
-                                                    </button>
-                                                </>
-                                            )}
-                                            {aiDropdownType === 'expand' && (
-                                                <>
-                                                    <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                        <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                    </button>
-                                                    <div className="px-2.5 py-1 text-[10px] font-medium text-text-tertiary">{t('editor.ai_extend_degree')}</div>
-                                                    <button onClick={() => handleAiImprove('請適度擴展以下文字，補充少量細節並保持簡潔。直接輸出擴展後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_slight')}</button>
-                                                    <button onClick={() => handleAiImprove('請擴展以下文字，增加更多細節與例子，使內容更豐富。直接輸出擴展後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_moderate')}</button>
-                                                    <button onClick={() => handleAiImprove('請大幅擴展以下文字，加入豐富細節、具體說明與多個例子。直接輸出擴展後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_large')}</button>
-                                                </>
-                                            )}
-                                            {aiDropdownType === 'shorten' && (
-                                                <>
-                                                    <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                        <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                    </button>
-                                                    <div className="px-2.5 py-1 text-[10px] font-medium text-text-tertiary">{t('editor.ai_shorten_degree')}</div>
-                                                    <button onClick={() => handleAiImprove('請適度精簡以下文字，移除冗詞並保持原意。直接輸出精簡後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_slight')}</button>
-                                                    <button onClick={() => handleAiImprove('請精簡以下文字，保留重點並刪除非必要細節。直接輸出精簡後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_moderate')}</button>
-                                                    <button onClick={() => handleAiImprove('請大幅濃縮以下文字，壓縮成更精煉的幾句話。直接輸出精簡後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_large')}</button>
-                                                </>
-                                            )}
-                                            {aiDropdownType === 'tone' && (
-                                                <>
-                                                    <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                        <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                    </button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成學術研究風格，使用嚴謹的學術語言與正式結構。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_academic')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成專業商務風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_business')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成輕鬆隨性的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_casual')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成適合兒童閱讀的風格，使用簡單詞彙。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_childfriendly')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成自信且肯定的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_confident')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成自然對話風格，像在與人交談。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_conversational')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成更有創意與想像力的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_creative')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成更有情感張力、能打動人心的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_emotional')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成充滿熱情與活力的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_excited')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成正式且嚴謹的書面風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_formal')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成親切友善的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_friendly')}</button>
-                                                    <button onClick={() => handleAiImprove('請將以下文字改寫成幽默風趣的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_funny')}</button>
-                                                </>
-                                            )}
-                                            {aiDropdownType === 'translate' && (
-                                                <>
-                                                    <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                        <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                    </button>
-                                                    <button onClick={() => handleAiImprove('將以下文字翻譯為繁體中文。直接輸出翻譯結果，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_zhtw')}</button>
-                                                    <button onClick={() => handleAiImprove('將以下文字翻譯為簡體中文。直接輸出翻譯結果，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_zhcn')}</button>
-                                                    <button onClick={() => handleAiImprove('Translate the following text into English. Output only the translation, no explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_en')}</button>
-                                                    <button onClick={() => handleAiImprove('以下のテキストを日本語に翻訳して出力してください。翻訳文のみを出力してください。')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_ja')}</button>
-                                                </>
-                                            )}
-                                            {aiDropdownType === 'custom' && (
-                                                <>
-                                                    <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                        <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                    </button>
-                                                    <div className="px-2 pb-1">
-                                                        <p className="text-[10px] font-medium text-text-tertiary mb-1.5">{t('editor.ai_custom_label')}</p>
-                                                        <textarea
-                                                            autoFocus
-                                                            value={customPrompt}
-                                                            onChange={e => setCustomPrompt(e.target.value)}
-                                                            onMouseDown={e => e.stopPropagation()}
-                                                            onClick={e => e.stopPropagation()}
-                                                            onKeyDown={e => {
-                                                                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customPrompt.trim()) {
-                                                                    e.preventDefault();
-                                                                    handleAiImprove(customPrompt.trim());
-                                                                }
-                                                                e.stopPropagation();
-                                                            }}
-                                                            placeholder={t('editor.ai_custom_placeholder')}
-                                                            rows={4}
-                                                            className="w-full resize-none rounded-md border border-stroke-divider bg-surface-subtle text-fs-xs text-text-primary placeholder:text-text-tertiary px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-accent-default transition-colors"
-                                                        />
-                                                        <button
-                                                            onClick={() => { if (customPrompt.trim()) handleAiImprove(customPrompt.trim()); }}
-                                                            disabled={!customPrompt.trim()}
-                                                            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-accent-default text-white text-fs-xs font-medium transition-opacity disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
-                                                        >
-                                                            <Sparkles className="w-3.5 h-3.5" /> {t('editor.ai_custom_submit')}
-                                                        </button>
-                                                        <p className="mt-1.5 text-[10px] text-text-tertiary text-center">按 Ctrl+Enter 送出</p>
+                                {/* Custom Dropdown Menu */}
+                                {showAiDropdown && (
+                                    <div
+                                        className={`absolute left-0 top-full mt-1 whitespace-normal bg-surface-base border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200 ${aiDropdownType === 'custom' ? 'w-72' : 'w-52'} ${aiDropdownType === 'tone' ? 'max-h-72 overflow-y-auto' : ''}`}
+                                        onMouseDown={e => {
+                                            e.stopPropagation();
+                                            if (aiDropdownType !== 'custom') {
+                                                e.preventDefault();
+                                            }
+                                        }}
+                                    >
+                                        {aiDropdownType === 'main' && (
+                                            <>
+                                                <button onClick={() => setAiDropdownType('tone')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <Smile className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_adjust_tone')}
                                                     </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="w-px h-4 bg-stroke-divider mx-1" />
-
-                                {/* Turn Into Dropdown for BubbleMenu */}
-                                <div className="relative" ref={bubbleTurnIntoRef}>
-                                    <button
-                                        onClick={() => setShowBubbleTurnInto(v => !v)}
-                                        className={`flex items-center gap-1 px-2 py-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors text-fs-xs font-medium ${showBubbleTurnInto ? 'bg-surface-subtle' : ''}`}
-                                        title={t('turn_into.label')}
-                                    >
-                                        <span>
-                                            {editor.isActive('heading', { level: 1 }) ? t('turn_into.heading1')
-                                            : editor.isActive('heading', { level: 2 }) ? t('turn_into.heading2')
-                                            : editor.isActive('heading', { level: 3 }) ? t('turn_into.heading3')
-                                            : editor.isActive('heading', { level: 4 }) ? t('turn_into.heading4')
-                                            : editor.isActive('heading', { level: 5 }) ? t('turn_into.heading5')
-                                            : editor.isActive('heading', { level: 6 }) ? t('turn_into.heading6')
-                                            : t('turn_into.text')}
-                                        </span>
-                                        <ChevronDown className={`w-3 h-3 transition-transform ${showBubbleTurnInto ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    {showBubbleTurnInto && (
-                                        <div
-                                            className="absolute left-0 top-full mt-1 w-44 bg-surface-base border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200"
-                                            onMouseDown={e => e.stopPropagation()}
-                                        >
-                                            {([
-                                                { key: 'text', label: t('turn_into.text'), icon: 'T', action: () => editor.chain().focus().setParagraph().run(), isActive: editor.isActive('paragraph') && !editor.isActive('heading') },
-                                                { key: 'h1', label: t('turn_into.heading1'), icon: 'H1', action: () => editor.chain().focus().setHeading({ level: 1 }).run(), isActive: editor.isActive('heading', { level: 1 }) },
-                                                { key: 'h2', label: t('turn_into.heading2'), icon: 'H2', action: () => editor.chain().focus().setHeading({ level: 2 }).run(), isActive: editor.isActive('heading', { level: 2 }) },
-                                                { key: 'h3', label: t('turn_into.heading3'), icon: 'H3', action: () => editor.chain().focus().setHeading({ level: 3 }).run(), isActive: editor.isActive('heading', { level: 3 }) },
-                                                { key: 'h4', label: t('turn_into.heading4'), icon: 'H4', action: () => editor.chain().focus().setHeading({ level: 4 }).run(), isActive: editor.isActive('heading', { level: 4 }) },
-                                                { key: 'h5', label: t('turn_into.heading5'), icon: 'H5', action: () => editor.chain().focus().setHeading({ level: 5 }).run(), isActive: editor.isActive('heading', { level: 5 }) },
-                                                { key: 'h6', label: t('turn_into.heading6'), icon: 'H6', action: () => editor.chain().focus().setHeading({ level: 6 }).run(), isActive: editor.isActive('heading', { level: 6 }) },
-                                            ] as const).map(item => (
-                                                <button
-                                                    key={item.key}
-                                                    onClick={() => { item.action(); setShowBubbleTurnInto(false); }}
-                                                    className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium rounded-md transition-colors text-left ${item.isActive ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                                                >
-                                                    <span className="w-5 text-center text-[10px] font-bold shrink-0 text-text-tertiary">{item.icon}</span>
-                                                    {item.label}
+                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
                                                 </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="w-px h-4 bg-stroke-divider mx-1" />
-
-                                <button
-                                    onClick={() => editor.chain().focus().toggleBold().run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="粗體"
-                                >
-                                    <Bold className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => editor.chain().focus().toggleItalic().run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="斜體"
-                                >
-                                    <Italic className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => editor.chain().focus().toggleUnderline().run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="底線"
-                                >
-                                    <UnderlineIcon className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => editor.chain().focus().toggleHighlight().run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                                                        title="螢光筆"
-                                >
-                                    <Highlighter className="w-4 h-4" />
-                                </button>
-
-                                <div className="w-px h-4 bg-stroke-divider mx-1" />
-
-                                {/* Bullet List Button */}
-                                <button
-                                    onClick={() => editor.chain().focus().toggleBulletList().run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title={t('list_dropdown.bullet_list')}
-                                >
-                                    <List className="w-4 h-4" />
-                                </button>
-                                {/* Ordered List Button */}
-                                <button
-                                    onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title={t('list_dropdown.ordered_list')}
-                                >
-                                    <ListOrdered className="w-4 h-4" />
-                                </button>
-
-                                <div className="w-px h-4 bg-stroke-divider mx-1" />
-                                {/* Text Align Buttons */}
-                                <button
-                                    onClick={() => editor.chain().focus().setTextAlign('left').run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="靠左對齊"
-                                >
-                                    <AlignLeft className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => editor.chain().focus().setTextAlign('center').run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="置中對齊"
-                                >
-                                    <AlignCenter className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => editor.chain().focus().setTextAlign('right').run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="靠右對齊"
-                                >
-                                    <AlignRight className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="兩端對齊"
-                                >
-                                    <AlignJustify className="w-4 h-4" />
-                                </button>
-
-                                <div className="w-px h-4 bg-stroke-divider mx-1" />
-                                <button
-                                    onClick={() => {
-                                        const url = window.prompt('請輸入網址:');
-                                        if (url) {
-                                            editor.chain().focus().setLink({ href: url }).run();
-                                        }
-                                    }}
-                                    className="p-1.5 rounded hover:bg-surface-subtle transition-colors text-text-secondary"
-                                    title="超連結"
-                                >
-                                    <LinkIcon className="w-4 h-4" />
-                                </button>
+                                                <button onClick={() => setAiDropdownType('expand')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <FileText className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_extend')}
+                                                    </div>
+                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
+                                                </button>
+                                                <button onClick={() => setAiDropdownType('shorten')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <Eraser className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_shorten')}
+                                                    </div>
+                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
+                                                </button>
+                                                <button onClick={() => handleAiImprove('請將以下段落補寫完整，使其內容更完整自然。直接輸出補寫後的文字，不要附上任何解釋：')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <RefreshCw className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_complete')}
+                                                </button>
+                                                <button onClick={() => handleAiImprove('請修正以下文字的語法錯誤，使其更流暢自然。直接輸出修正後的文字，不要附上任何解釋：')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <Wand2 className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_fix_grammar')}
+                                                </button>
+                                                <button onClick={() => setAiDropdownType('translate')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <Languages className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_translate')}
+                                                    </div>
+                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
+                                                </button>
+                                                <div className="h-px bg-stroke-divider my-1 mx-1" />
+                                                <button onClick={() => { setAiDropdownType('custom'); setCustomPrompt(''); }} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
+                                                    <Sparkles className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_custom')}
+                                                </button>
+                                            </>
+                                        )}
+                                        {aiDropdownType === 'expand' && (
+                                            <>
+                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
+                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
+                                                </button>
+                                                <button onClick={() => handleAiImprove('請適度擴展以下文字，補充少量細節並保持簡潔。直接輸出擴展後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_slight')}</button>
+                                                <button onClick={() => handleAiImprove('請擴展以下文字，增加更多細節與例子，使內容更豐富。直接輸出擴展後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_moderate')}</button>
+                                                <button onClick={() => handleAiImprove('請大幅擴展以下文字，加入豐富細節、具體說明與多個例子。直接輸出擴展後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_large')}</button>
+                                            </>
+                                        )}
+                                        {aiDropdownType === 'shorten' && (
+                                            <>
+                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
+                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
+                                                </button>
+                                                <button onClick={() => handleAiImprove('請適度精簡以下文字，移除冗詞並保持原意。直接輸出精簡後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_slight')}</button>
+                                                <button onClick={() => handleAiImprove('請精簡以下文字，保留重點並刪除非必要細節。直接輸出精簡後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_moderate')}</button>
+                                                <button onClick={() => handleAiImprove('請大幅濃縮以下文字，壓縮成更精煉的幾句話。直接輸出精簡後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_large')}</button>
+                                            </>
+                                        )}
+                                        {aiDropdownType === 'tone' && (
+                                            <>
+                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
+                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
+                                                </button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成專業商務風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_business')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成正式且嚴謹的書面風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_formal')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成自信且肯定的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_confident')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成親切友善的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_friendly')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成充滿熱情與活力的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_excited')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成更有創意與想像力的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_creative')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成輕鬆隨性的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_casual')}</button>
+                                                <button onClick={() => handleAiImprove('請將以下文字改寫成更有情感張力、能打動人心的風格。直接輸出改寫後的文字，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_emotional')}</button>
+                                            </>
+                                        )}
+                                        {aiDropdownType === 'translate' && (
+                                            <>
+                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
+                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
+                                                </button>
+                                                <button onClick={() => handleAiImprove('將以下文字翻譯為繁體中文。直接輸出翻譯結果，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_zhtw')}</button>
+                                                <button onClick={() => handleAiImprove('將以下文字翻譯為簡體中文。直接輸出翻譯結果，不要附上任何解釋：')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_zhcn')}</button>
+                                                <button onClick={() => handleAiImprove('Translate the following text into English. Output only the translation, no explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_en')}</button>
+                                                <button onClick={() => handleAiImprove('以下のテキストを日本語に翻訳して出力してください。翻訳文のみを出力してください。')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_ja')}</button>
+                                            </>
+                                        )}
+                                        {aiDropdownType === 'custom' && (
+                                            <>
+                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
+                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
+                                                </button>
+                                                <div className="px-2 pb-1">
+                                                    <p className="text-[10px] font-medium text-text-tertiary mb-1.5">{t('editor.ai_custom_label')}</p>
+                                                    <textarea
+                                                        autoFocus
+                                                        value={customPrompt}
+                                                        onChange={e => setCustomPrompt(e.target.value)}
+                                                        onMouseDown={e => e.stopPropagation()}
+                                                        onClick={e => e.stopPropagation()}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customPrompt.trim()) {
+                                                                e.preventDefault();
+                                                                handleAiImprove(customPrompt.trim());
+                                                            }
+                                                            e.stopPropagation();
+                                                        }}
+                                                        placeholder={t('editor.ai_custom_placeholder')}
+                                                        rows={4}
+                                                        className="w-full resize-none rounded-md border border-stroke-divider bg-surface-subtle text-fs-xs text-text-primary placeholder:text-text-tertiary px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-accent-default transition-colors"
+                                                    />
+                                                    <button
+                                                        onClick={() => { if (customPrompt.trim()) handleAiImprove(customPrompt.trim()); }}
+                                                        disabled={!customPrompt.trim()}
+                                                        className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-accent-default text-white text-fs-xs font-medium transition-opacity disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+                                                    >
+                                                        <Sparkles className="w-3.5 h-3.5" /> {t('editor.ai_custom_submit')}
+                                                    </button>
+                                                    <p className="mt-1.5 text-[10px] text-text-tertiary text-center">按 Ctrl+Enter 送出</p>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
+
+                            <div className="w-px h-4 bg-stroke-divider mx-1" />
+
+                            {/* Turn Into Dropdown for BubbleMenu */}
+                            <div className="relative" ref={bubbleTurnIntoRef}>
+                                <button
+                                    onClick={() => setShowBubbleTurnInto(v => !v)}
+                                    className={`flex items-center gap-1 px-2 py-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors text-fs-xs font-medium ${showBubbleTurnInto ? 'bg-surface-subtle' : ''}`}
+                                    title={t('turn_into.label')}
+                                >
+                                    <span>
+                                        {editor.isActive('heading', { level: 1 }) ? t('turn_into.heading1')
+                                            : editor.isActive('heading', { level: 2 }) ? t('turn_into.heading2')
+                                                : editor.isActive('heading', { level: 3 }) ? t('turn_into.heading3')
+                                                    : editor.isActive('heading', { level: 4 }) ? t('turn_into.heading4')
+                                                        : editor.isActive('paragraph', { variant: 'text2' }) ? t('turn_into.text2')
+                                                            : editor.isActive('paragraph', { variant: 'text3' }) ? t('turn_into.text3')
+                                                                : t('turn_into.text1')}
+                                    </span>
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${showBubbleTurnInto ? 'rotate-180' : ''}`} />
+                                </button>
+                                {showBubbleTurnInto && (
+                                    <div
+                                        className="absolute left-0 top-full mt-1 w-44 bg-surface-base border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200"
+                                        onMouseDown={e => e.stopPropagation()}
+                                    >
+                                        {([
+                                            { key: 'text1', label: t('turn_into.text1'), icon: 'T1', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text1' }).run(), isActive: editor.isActive('paragraph', { variant: 'text1' }) },
+                                            { key: 'text2', label: t('turn_into.text2'), icon: 'T2', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text2' }).run(), isActive: editor.isActive('paragraph', { variant: 'text2' }) },
+                                            { key: 'text3', label: t('turn_into.text3'), icon: 'T3', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text3' }).run(), isActive: editor.isActive('paragraph', { variant: 'text3' }) },
+                                            { key: 'h1', label: t('turn_into.heading1'), icon: 'H1', action: () => editor.chain().focus().setHeading({ level: 1 }).run(), isActive: editor.isActive('heading', { level: 1 }) },
+                                            { key: 'h2', label: t('turn_into.heading2'), icon: 'H2', action: () => editor.chain().focus().setHeading({ level: 2 }).run(), isActive: editor.isActive('heading', { level: 2 }) },
+                                            { key: 'h3', label: t('turn_into.heading3'), icon: 'H3', action: () => editor.chain().focus().setHeading({ level: 3 }).run(), isActive: editor.isActive('heading', { level: 3 }) },
+                                            { key: 'h4', label: t('turn_into.heading4'), icon: 'H4', action: () => editor.chain().focus().setHeading({ level: 4 }).run(), isActive: editor.isActive('heading', { level: 4 }) },
+                                        ] as const).map(item => (
+                                            <button
+                                                key={item.key}
+                                                onClick={() => { item.action(); setShowBubbleTurnInto(false); }}
+                                                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium rounded-md transition-colors text-left ${item.isActive ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
+                                            >
+                                                <span className="w-5 text-center text-[10px] font-bold shrink-0 text-text-tertiary">{item.icon}</span>
+                                                {item.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="w-px h-4 bg-stroke-divider mx-1" />
+
+                            <button
+                                onClick={() => editor.chain().focus().toggleBold().run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.bold ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="粗體"
+                            >
+                                <Bold className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor.chain().focus().toggleItalic().run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.italic ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="斜體"
+                            >
+                                <Italic className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor.chain().focus().toggleUnderline().run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.underline ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="底線"
+                            >
+                                <UnderlineIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor.chain().focus().toggleHighlight().run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.highlight ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="螢光筆"
+                            >
+                                <Highlighter className="w-4 h-4" />
+                            </button>
+
+                            <div className="w-px h-4 bg-stroke-divider mx-1" />
+
+                            {/* Bullet List Button */}
+                            <button
+                                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.bulletList ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title={t('list_dropdown.bullet_list')}
+                            >
+                                <List className="w-4 h-4" />
+                            </button>
+                            {/* Ordered List Button */}
+                            <button
+                                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.orderedList ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title={t('list_dropdown.ordered_list')}
+                            >
+                                <ListOrdered className="w-4 h-4" />
+                            </button>
+
+                            <div className="w-px h-4 bg-stroke-divider mx-1" />
+                            {/* Text Align Buttons */}
+                            <button
+                                onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.alignLeft ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="靠左對齊"
+                            >
+                                <AlignLeft className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.alignCenter ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="置中對齊"
+                            >
+                                <AlignCenter className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.alignRight ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="靠右對齊"
+                            >
+                                <AlignRight className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+                                className={`p-1.5 rounded transition-colors ${popupStates.alignJustify ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="兩端對齊"
+                            >
+                                <AlignJustify className="w-4 h-4" />
+                            </button>
+
+                            <div className="w-px h-4 bg-stroke-divider mx-1" />
+                            <button
+                                onClick={() => {
+                                    const url = window.prompt('請輸入網址:');
+                                    if (url) {
+                                        editor.chain().focus().setLink({ href: url }).run();
+                                    }
+                                }}
+                                className={`p-1.5 rounded transition-colors ${popupStates.link ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle'}`}
+                                title="超連結"
+                            >
+                                <LinkIcon className="w-4 h-4" />
+                            </button>
                         </div>
+                    </div>
                 </div>
             )}
 
-            {/* Table Fixed Menu ???��??�表?��??�置中�?不用 BubbleMenu */}
-            {/* 顯示條件：�?標在表格?��?point selection）�?�?cell ?��?（CellSelection，用?��?併�?位�? */}
-            {editor && tableMenuPos && (
-                editor.state.selection.from === editor.state.selection.to
-                || !!(editor.state.selection as any).$anchorCell
-            ) && (
+            {/* Table Menu — position:fixed 錨定在表格頂部正中央 */}
+            {editor && tableMenuPos && !textBubblePos && !editor.isActive('imageNodePro') && (
                 <div
                     style={{
                         position: 'fixed',
                         left: `${tableMenuPos.x}px`,
                         top: `${tableMenuPos.y - 8}px`,
                         transform: 'translate(-50%, -100%)',
-                        zIndex: 200,
+                        zIndex: 9999,
                     }}
                     onMouseDown={e => e.stopPropagation()}
                     className="flex items-center gap-0.5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200"
                 >
-                    {/* Columns */}
-                    <button
-                        onClick={() => editor.chain().focus().addColumnBefore().run()}
-                        className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5"
-                        title="左側加一列"
-                    >
-                        <Plus className="w-3 h-3" />
-                        <Columns className="w-4 h-4 rotate-180" />
+                    <button onClick={() => editor.chain().focus().addColumnBefore().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title="左側加一欄">
+                        <Plus className="w-3 h-3" /><Columns className="w-4 h-4 rotate-180" />
                     </button>
-                    <button
-                        onClick={() => editor.chain().focus().addColumnAfter().run()}
-                        className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5"
-                        title="右側加一列"
-                    >
-                        <Columns className="w-4 h-4" />
-                        <Plus className="w-3 h-3" />
+                    <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title="右側加一欄">
+                        <Columns className="w-4 h-4" /><Plus className="w-3 h-3" />
                     </button>
-                    <button
-                        onClick={() => editor.chain().focus().deleteColumn().run()}
-                        className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors"
-                        title="刪除列"
-                    >
+                    <button onClick={() => editor.chain().focus().deleteColumn().run()} className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors" title="刪除欄">
                         <Trash2 className="w-4 h-4" />
                     </button>
-
                     <div className="w-px h-4 bg-stroke-divider mx-1" />
-
-                    {/* Rows */}
-                    <button
-                        onClick={() => editor.chain().focus().addRowBefore().run()}
-                        className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5"
-                        title="後面加一行"
-                    >
-                        <Plus className="w-3 h-3" />
-                        <LayoutTemplate className="w-4 h-4 -rotate-90" />
+                    <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title="上方加一列">
+                        <Plus className="w-3 h-3" /><LayoutTemplate className="w-4 h-4 -rotate-90" />
                     </button>
-                    <button
-                        onClick={() => editor.chain().focus().addRowAfter().run()}
-                        className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5"
-                        title="前面加一行"
-                    >
-                        <LayoutTemplate className="w-4 h-4 rotate-90" />
-                        <Plus className="w-3 h-3" />
+                    <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title="下方加一列">
+                        <LayoutTemplate className="w-4 h-4 rotate-90" /><Plus className="w-3 h-3" />
                     </button>
-                    <button
-                        onClick={() => editor.chain().focus().deleteRow().run()}
-                        className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors"
-                                                title="刪除行"
-                    >
+                    <button onClick={() => editor.chain().focus().deleteRow().run()} className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors" title="刪除列">
                         <Trash2 className="w-4 h-4" />
                     </button>
-
                     <div className="w-px h-4 bg-stroke-divider mx-1" />
-
-                    {/* Cell Merge/Split */}
-                    <button
-                        onClick={() => editor.chain().focus().mergeCells().run()}
-                        className="p-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors"
-                                                title="合併格"
-                    >
+                    <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors" title="合併格">
                         <Merge className="w-4 h-4" />
                     </button>
-                    <button
-                        onClick={() => editor.chain().focus().splitCell().run()}
-                        className="p-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors"
-                                                title="分割格"
-                    >
+                    <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors" title="分割格">
                         <Split className="w-4 h-4" />
                     </button>
-
                     <div className="w-px h-4 bg-stroke-divider mx-1" />
-
-                    {/* Delete Table */}
-                    <button
-                        onClick={() => editor.chain().focus().deleteTable().run()}
-                        className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors"
-                                                title="刪除整個表格"
-                    >
+                    <button onClick={() => editor.chain().focus().deleteTable().run()} className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors" title="刪除整個表格">
                         <Trash2 className="w-4 h-4" />
                     </button>
                 </div>
             )}
 
-            {/* Editor Content Area */}
+
             <div className="flex-1 overflow-y-auto">
                 <EditorContent editor={editor} />
             </div>
@@ -1673,12 +1810,13 @@ export const EditorPane: React.FC = () => {
                             <div className="flex items-center gap-2 px-3 py-2 border-t border-stroke-divider">
                                 <button onClick={() => {
                                     if (!editor || !aiImproveResult) return;
-                                    const { from, to } = editor.state.selection;
-                                    if (from !== to) {
-                                        editor.chain().focus().deleteSelection().insertContent(aiImproveResult).run();
+                                    const target = aiTargetRangeRef.current;
+                                    if (target) {
+                                        editor.chain().focus().insertContentAt({ from: target.from, to: target.to }, aiImproveResult).run();
                                     } else {
                                         editor.chain().focus().insertContent(aiImproveResult).run();
                                     }
+                                    aiTargetRangeRef.current = null;
                                     setAiImproveResult(null);
                                     setAiPanelAnchor(null);
                                 }}
@@ -1688,6 +1826,7 @@ export const EditorPane: React.FC = () => {
                                 <button onClick={() => {
                                     if (lastPromptRef.current) {
                                         setAiImproveResult(null);
+                                        aiTargetRangeRef.current = selectedRangeRef.current;
                                         handleAiImprove(lastPromptRef.current);
                                     }
                                 }}

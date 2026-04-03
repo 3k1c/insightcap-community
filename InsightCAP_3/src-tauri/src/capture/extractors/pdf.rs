@@ -126,8 +126,13 @@ pub async fn extract_pdf(
                 status,
             });
         } else if let Some(bytes) = img_bytes {
-            // 已完成即時 OCR -> Phase 2 改由 vision_llm 處理，此處先給佔位
-            let ocr_text = "[背景 OCR 任務已排隊]".to_string();
+            let ocr_text = match crate::ocr::perform_ocr(&bytes).await {
+                Ok(raw) => {
+                    let lang = crate::ocr::postprocess::detect_language(&raw);
+                    crate::ocr::postprocess::postprocess_ocr_text(&raw, lang)
+                }
+                Err(_) => "[OCR 失敗]".to_string(),
+            };
 
             // 合併原生文字與 OCR 文字
             let merged = if native_text.is_empty() {

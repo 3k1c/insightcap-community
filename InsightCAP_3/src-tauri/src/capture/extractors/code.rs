@@ -5,7 +5,6 @@
 
 use crate::error::AppError;
 use regex::Regex;
-use std::fs;
 use std::path::Path;
 
 pub struct CodeChunk {
@@ -32,7 +31,7 @@ pub async fn extract_code(
         .unwrap_or("Unknown");
 
     let language = map_extension_to_language(&ext);
-    let content = fs::read_to_string(file_path)
+    let content = crate::capture::encoding::read_text_file(file_path)
         .map_err(|e| AppError::Capture(format!("程式碼讀取失敗: {}", e)))?;
 
     // 門檻值：約 512 token (以 2000 字元估計)

@@ -344,6 +344,7 @@ pub fn run() {
             commands::knowledge_commands::get_sources,
             commands::knowledge_commands::get_captures,
             commands::knowledge_commands::get_sources_timeline,
+            commands::knowledge_commands::get_source_preview_by_title,
             commands::knowledge_commands::create_editor_document,
             commands::knowledge_commands::read_editor_document,
             commands::knowledge_commands::save_editor_document,

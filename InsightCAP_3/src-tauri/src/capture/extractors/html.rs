@@ -4,7 +4,6 @@
 //! 見 Phase3.1.md P3.1-10。
 
 use crate::error::AppError;
-use std::fs;
 use std::io::Cursor;
 use url::Url;
 
@@ -19,7 +18,7 @@ pub async fn extract_html(
     file_path: &str,
     _file_stem: &str,
 ) -> Result<Vec<HtmlChunk>, AppError> {
-    let content = fs::read_to_string(file_path)
+    let content = crate::capture::encoding::read_text_file(file_path)
         .map_err(|e| AppError::Capture(format!("HTML 讀取失敗: {}", e)))?;
 
     // 使用 readability 提取正文

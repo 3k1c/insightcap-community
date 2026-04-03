@@ -5,7 +5,6 @@
 
 use crate::error::AppError;
 use rtf_parser::RtfDocument;
-use std::fs;
 use regex::Regex;
 
 pub struct RtfChunk {
@@ -18,7 +17,7 @@ pub async fn extract_rtf(
     file_path: &str,
     _file_stem: &str,
 ) -> Result<Vec<RtfChunk>, AppError> {
-    let content = fs::read_to_string(file_path)
+    let content = crate::capture::encoding::read_text_file(file_path)
         .map_err(|e| AppError::Capture(format!("RTF 讀取失敗: {}", e)))?;
 
     // rtf-parser 會自動過濾掉不具備文字內容的 ControlWord（包含 \par, \line），

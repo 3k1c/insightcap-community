@@ -1,6 +1,7 @@
 use sqlx::{SqlitePool, Row};
 use uuid::Uuid;
 use chrono::Utc;
+use crate::prompts;
 use crate::providers::llm::LLMProvider;
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::LLMOptions;
@@ -51,10 +52,8 @@ impl PatternEngine {
         if api_key.is_empty() { return Ok(0); }
 
         let provider = OpenAiProvider::new(api_key, llm_cfg.base_url, llm_cfg.model);
-        let system_prompt = "你是一個跨對話記憶分析引擎。請檢視以下來自多個對話的重點模式(Patterns)。如果發現有多個對話中重複出現的強烈共同概念、問題或需求，請輸出一個統一的總結(Pattern)。這將被用來升格為正式知識點。若沒有明顯交集，不要硬湊，請嚴格輸出 'NONE'。";
-        
         // 此處我們使用使用者的設定
-        let prompt_input = format!("{sys}\n\n[多對話紀錄]\n{data}", sys=system_prompt, data=combined_text);
+        let prompt_input = format!("{sys}\n\n[多對話紀錄]\n{data}", sys=prompts::PATTERN_ANALYSIS, data=combined_text);
         let response: String = provider.complete(&prompt_input, LLMOptions::default()).await.map_err(|e| e.to_string())?;
         if response.trim().to_uppercase().contains("NONE") {
             return Ok(0);

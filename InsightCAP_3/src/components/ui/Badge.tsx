@@ -17,11 +17,11 @@ const memorySymbols: Record<MemoryType, string> = {
 };
 
 export function Badge({ children, variant = 'default', className, ...props }: BadgeProps) {
-    const base = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium';
+    const base = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-fs-xs font-medium';
 
     const variantClasses: Record<BadgeVariant, string> = {
-        default: 'bg-[var(--ic-bg-sunken)] text-[var(--ic-text-secondary)]',
-        outline: 'border border-[var(--ic-border-default)] text-[var(--ic-text-secondary)]',
+        default: 'bg-surface-subtle text-text-secondary',
+        outline: 'border border-stroke-divider text-text-secondary',
         data: 'ic-badge-data',
         pattern: 'ic-badge-pattern',
         log: 'ic-badge-log',

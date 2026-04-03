@@ -3,18 +3,54 @@ use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
 use chrono::Utc;
+use tauri::{AppHandle, Manager};
 
-pub async fn start_capture_processor(pool: SqlitePool) {
-    println!("[CaptureProcessor] 啟動背景處理迴圈...");
-    loop {
-        if let Err(e) = process_next_inbox(&pool).await {
-            eprintln!("[CaptureProcessor] 處理失敗: {}", e);
+use crate::db::AppState;
+
+/// 清理超過 7 天的 temp_attachment captures（對話結束後不再需要）
+async fn cleanup_temp_attachments(pool: &SqlitePool) {
+    let cutoff = (Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+    match sqlx::query(
+        "DELETE FROM captures WHERE capture_method = 'temp_attachment' AND created_at < ?",
+    )
+    .bind(&cutoff)
+    .execute(pool)
+    .await
+    {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                println!("[CaptureProcessor] 清除 {} 筆過期 temp_attachment", r.rows_affected());
+            }
         }
-        sleep(Duration::from_secs(5)).await;
+        Err(e) => eprintln!("[CaptureProcessor] 清除 temp_attachment 失敗: {}", e),
     }
 }
 
-async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
+pub async fn start_capture_processor(
+    pool: SqlitePool,
+    app: AppHandle,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    println!("[CaptureProcessor] 啟動背景處理迴圈...");
+    cleanup_temp_attachments(&pool).await;
+    loop {
+        tokio::select! {
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    println!("[CaptureProcessor] 收到停止訊號，退出。");
+                    break;
+                }
+            }
+            _ = sleep(Duration::from_secs(5)) => {
+                if let Err(e) = process_next_inbox(&pool, &app).await {
+                    eprintln!("[CaptureProcessor] 處理失敗: {}", e);
+                }
+            }
+        }
+    }
+}
+
+async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<(), String> {
     // 1. 取得下一筆 pending 的擷取任務
     let row = match sqlx::query(
         "SELECT id, content, content_type, source_exe, source_url, window_title, image_data, captured_at FROM inbox WHERE status = 'pending' ORDER BY captured_at ASC LIMIT 1"
@@ -44,19 +80,47 @@ async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    // 3. 虛擬的萃取與轉換流程（後續應呼叫 LLM 產生 title/tags、呼叫 Embedder 產生向量）
+    // 3. 萃取與轉換流程
     let source_id = Uuid::now_v7().to_string();
-    let capture_id = Uuid::now_v7().to_string();
     let now = Utc::now().to_rfc3339();
+    let settings = crate::settings::store::get_settings(pool).await.unwrap_or_default();
 
-    // 在 v2 中，剪貼簿文字或網頁需要成為一個 Source
-    let display_title = if !window_title.is_empty() {
-        window_title.clone()
-    } else if !source_exe.is_empty() {
-        source_exe.clone()
+    // URL 類型：爬取網頁或影片字幕
+    let (display_title, processed_content) = if content_type == "url" && !source_url.is_empty() {
+        let sessdata = settings.bilibili_sessdata.clone();
+        match crate::capture::file_parser::parse_content(
+            &settings.knowledge.kb_path,
+            None,
+            Some(source_url.clone()),
+            sessdata,
+        ).await {
+            Ok(doc) => {
+                let combined = doc.chunks.iter()
+                    .map(|c| c.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                let title = if doc.title.is_empty() { source_url.clone() } else { doc.title };
+                (title, combined)
+            }
+            Err(e) => {
+                eprintln!("[CaptureProcessor] URL 擷取失敗 {}: {}", source_url, e);
+                (source_url.clone(), content.clone())
+            }
+        }
     } else {
-        "無標題擷取".to_string()
+        let title = if !window_title.is_empty() {
+            window_title.clone()
+        } else if !source_exe.is_empty() {
+            source_exe.clone()
+        } else {
+            "無標題擷取".to_string()
+        };
+        (title, content.clone())
     };
+
+    // 語言標準化（繁簡轉換）
+    let normalized_content = crate::services::language_normalizer::NORMALIZER
+        .normalize(&processed_content, &settings.general);
 
     // 寫入 sources
     sqlx::query(
@@ -66,33 +130,118 @@ async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
     .bind(if content_type == "url" { "url" } else { "clipboard" })
     .bind(&display_title)
     .bind(&source_url)
-    .bind(&content)
+    .bind(&normalized_content)
     .bind(&captured_at)
     .bind(&now)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    // 寫入 captures (單一 chunk)
-    // 若為 image，我們將 bytes 儲存，之後 OCR worker 會處理
+    // 寫入 captures (按段落切分，與 create_temp_chunk 一致)
+    // 若為 image，儲存 bytes，之後 OCR worker 會處理
     let final_status = if content_type == "image" { "pending_ocr" } else { "processed" };
     
-    sqlx::query(
-        "INSERT INTO captures (id, source_id, type, raw_content, clean_content, image_data, capture_method, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    )
-    .bind(&capture_id)
-    .bind(&source_id)
-    .bind(&content_type)
-    .bind(&content)
-    .bind(&content)
-    .bind(&image_data)
-    .bind("hotkey")
-    .bind(final_status)
-    .bind(&now)
-    .bind(&now)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let mut chunk_count: i64 = 0;
+    
+    if content_type == "image" {
+        // image 不做段落切分，直接寫一筆
+        let capture_id = Uuid::now_v7().to_string();
+        sqlx::query(
+            "INSERT INTO captures (id, source_id, type, raw_content, clean_content, image_data, capture_method, chunk_index, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&capture_id)
+        .bind(&source_id)
+        .bind(&content_type)
+        .bind(&processed_content)
+        .bind(&normalized_content)
+        .bind(&image_data)
+        .bind("hotkey")
+        .bind(0i64)
+        .bind(final_status)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        chunk_count = 1;
+    } else {
+        // 文字類型：按段落切分（與 create_temp_chunk 一致）
+        let paragraphs: Vec<String> = normalized_content
+            .split("\n\n")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let paragraphs = if paragraphs.is_empty() {
+            if normalized_content.trim().is_empty() {
+                vec![]
+            } else {
+                vec![normalized_content.clone()]
+            }
+        } else {
+            paragraphs
+        };
+
+        let app_state = app.state::<AppState>();
+        
+        for (idx, para) in paragraphs.iter().enumerate() {
+            let capture_id = Uuid::now_v7().to_string();
+            
+            sqlx::query(
+                "INSERT INTO captures (id, source_id, type, raw_content, clean_content, capture_method, chunk_index, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            )
+            .bind(&capture_id)
+            .bind(&source_id)
+            .bind(&content_type)
+            .bind(para)
+            .bind(para)
+            .bind("hotkey")
+            .bind(idx as i64)
+            .bind(final_status)
+            .bind(&now)
+            .bind(&now)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            
+            // Embedding 向量化並寫入 VectorStore
+            match app_state.embedder.embed(para).await {
+                Ok(vector) => {
+                    let vector_id = capture_id_to_u64(&capture_id);
+                    if let Err(e) = app_state.vector_store.add_vector(vector_id, &vector).await {
+                        eprintln!("[CaptureProcessor] 向量寫入失敗: {}", e);
+                    } else {
+                        let _ = sqlx::query("UPDATE captures SET vector_id = ? WHERE id = ?")
+                            .bind(vector_id as i64)
+                            .bind(&capture_id)
+                            .execute(pool)
+                            .await;
+                    }
+                }
+                Err(e) => eprintln!("[CaptureProcessor] Embedding 失敗 (chunk {}): {}", idx, e),
+            }
+            
+            // Tagger：提取標籤並寫入 captures.tags + tags 表
+            let tag_pool = pool.clone();
+            let tag_cid = capture_id.clone();
+            let tag_content = para.to_string();
+            tokio::spawn(async move {
+                let tag_engine = crate::services::tag_engine::TagEngine::new(tag_pool);
+                if let Err(e) = tag_engine.process_new_capture(&tag_cid, &tag_content).await {
+                    eprintln!("[CaptureProcessor] Tag generation failed for {}: {}", &tag_cid[..8.min(tag_cid.len())], e);
+                }
+            });
+
+            // Space 聚類
+            let space_engine = crate::services::space_engine::SpaceEngine::new(pool.clone());
+            let _ = space_engine.assign_to_space(&capture_id, para).await;
+            
+            chunk_count += 1;
+        }
+        
+        // 非同步儲存向量索引到磁碟
+        let vs = app_state.vector_store.clone();
+        tokio::spawn(async move { let _ = vs.save().await; });
+    }
 
     // 4. 更新 inbox 狀態為完成
     sqlx::query("UPDATE inbox SET status = 'processed' WHERE id = ?")
@@ -101,15 +250,24 @@ async fn process_next_inbox(pool: &SqlitePool) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    // 5. 非同步背景執行標籤與聚類 (僅限非影像或已處理過的內容)
-    if final_status == "processed" {
-        let tag_engine = crate::services::tag_engine::TagEngine::new(pool.clone());
-        let _ = tag_engine.process_new_capture(&capture_id, &content).await;
+    // 更新 sources.capture_count
+    sqlx::query("UPDATE sources SET capture_count = ?, updated_at = ? WHERE id = ?")
+        .bind(chunk_count)
+        .bind(&now)
+        .bind(&source_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
-        let space_engine = crate::services::space_engine::SpaceEngine::new(pool.clone());
-        let _ = space_engine.assign_to_space(&capture_id, &content).await;
-    }
-
-    println!("[CaptureProcessor] inbox {} 處理完成，已轉換為 source {} 和 capture {}", id, source_id, capture_id);
+    println!("[CaptureProcessor] inbox {} 處理完成，source {} 產生 {} 個 chunk", id, source_id, chunk_count);
     Ok(())
+}
+
+/// 將 capture UUID 字串轉為 u64 作為向量索引 ID
+fn capture_id_to_u64(id: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    id.hash(&mut hasher);
+    hasher.finish()
 }

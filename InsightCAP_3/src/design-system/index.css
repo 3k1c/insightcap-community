@@ -1,5 +1,6 @@
-/* globals + tokens */
+/* globals + tokens + editor */
 @import './tokens.css';
+@import './editor.css';
 
 @tailwind base;
 @tailwind components;
@@ -8,20 +9,18 @@
 @layer base {
     * {
         box-sizing: border-box;
-        border-color: var(--ic-border-default);
+        border-color: var(--stroke-divider);
     }
 
     html {
-        font-family: var(--ic-font-sans);
-        font-size: 14px;
-        line-height: 1.5;
+        font: var(--type-body);
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
 
     body {
-        background-color: var(--ic-bg-base);
-        color: var(--ic-text-primary);
+        background-color: var(--surface-base);
+        color: var(--text-primary);
         margin: 0;
         padding: 0;
         overflow: hidden;
@@ -33,7 +32,7 @@
         overflow: hidden;
     }
 
-    /* Custom scrollbar */
+    /* Scrollbar */
     ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -44,76 +43,140 @@
     }
 
     ::-webkit-scrollbar-thumb {
-        background: var(--ic-border-strong);
-        border-radius: var(--ic-radius-full);
+        background: var(--stroke-control);
+        border-radius: var(--radius-full);
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: var(--ic-text-muted);
+        background: var(--stroke-strong);
     }
 
     /* Focus ring */
     :focus-visible {
-        outline: 2px solid var(--ic-border-focus);
+        outline: 2px solid var(--stroke-focus);
         outline-offset: 2px;
+    }
+
+    /* 輸入框不顯示 focus ring（含 Tauri WebView 的 :focus） */
+    textarea:focus-visible,
+    input:focus-visible,
+    textarea:focus,
+    input:focus {
+        outline: none;
+        box-shadow: none;
+    }
+
+    /* 移除 WebView autofill 黃色底色 */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 1000px var(--surface-base) inset !important;
+        box-shadow: 0 0 0 1000px var(--surface-base) inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+        transition: background-color 9999s ease-in-out 0s;
+    }
+
+    /* 主題切換平滑過渡 */
+    *,
+    *::before,
+    *::after {
+        transition:
+            background-color var(--duration-slow) var(--ease-in-out),
+            border-color var(--duration-slow) var(--ease-in-out),
+            color var(--duration-normal) var(--ease-in-out);
+    }
+
+    /* 減少動效模式 */
+    @media (prefers-reduced-motion: reduce) {
+
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            transition-duration: 0.01ms !important;
+        }
     }
 }
 
 @layer utilities {
 
-    /* 三層記憶徽章 */
+    /* 知識類型徽章 */
     .ic-badge-data {
-        color: var(--ic-memory-data-text);
-        background-color: var(--ic-memory-data-bg);
-        border: 1px solid var(--ic-memory-data);
+        color: var(--knowledge-data-text);
+        background-color: var(--knowledge-data-bg);
+        border: 1px solid var(--knowledge-data);
     }
 
     .ic-badge-pattern {
-        color: var(--ic-memory-pattern-text);
-        background-color: var(--ic-memory-pattern-bg);
-        border: 1px solid var(--ic-memory-pattern);
+        color: var(--knowledge-pattern-text);
+        background-color: var(--knowledge-pattern-bg);
+        border: 1px solid var(--knowledge-pattern);
     }
 
     .ic-badge-log {
-        color: var(--ic-memory-log-text);
-        background-color: var(--ic-memory-log-bg);
-        border: 1px solid var(--ic-memory-log);
+        color: var(--knowledge-log-text);
+        background-color: var(--knowledge-log-bg);
+        border: 1px solid var(--knowledge-log);
     }
 
-    /* 常用 bg / text shorthand */
-    .ic-bg-base {
-        background-color: var(--ic-bg-base);
+    /* Surface shorthand */
+    .ic-surface-base {
+        background-color: var(--surface-base);
     }
 
-    .ic-bg-surface {
-        background-color: var(--ic-bg-surface);
+    .ic-surface-layer {
+        background-color: var(--surface-layer);
     }
 
-    .ic-bg-elevated {
-        background-color: var(--ic-bg-elevated);
+    .ic-surface-card {
+        background-color: var(--surface-card);
     }
 
-    .ic-bg-sunken {
-        background-color: var(--ic-bg-sunken);
+    .ic-surface-flyout {
+        background-color: var(--surface-flyout);
     }
 
+    .ic-surface-control {
+        background-color: var(--surface-control);
+    }
+
+    /* Text shorthand */
     .ic-text-primary {
-        color: var(--ic-text-primary);
+        color: var(--text-primary);
     }
 
     .ic-text-secondary {
-        color: var(--ic-text-secondary);
+        color: var(--text-secondary);
     }
 
-    .ic-text-muted {
-        color: var(--ic-text-muted);
+    .ic-text-tertiary {
+        color: var(--text-tertiary);
     }
 
+    /* Stroke shorthand */
     .ic-border {
-        border-color: var(--ic-border-default);
+        border-color: var(--stroke-card);
     }
 
-    .ic-border-s {
-        border-color: var(--ic-border-strong);
+    .ic-border-control {
+        border-color: var(--stroke-control);
+    }
+
+    .ic-border-divider {
+        border-color: var(--stroke-divider);
+    }
+
+    /* Accent shorthand */
+    .ic-accent {
+        color: var(--accent-default);
+    }
+
+    .ic-accent-bg {
+        background-color: var(--accent-default);
+    }
+
+    .ic-accent-subtle {
+        background-color: var(--accent-light2);
     }
 }

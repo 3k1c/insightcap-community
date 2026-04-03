@@ -12,10 +12,10 @@ export function Card({ children, className, onClick, hoverable }: CardProps) {
     return (
         <div
             className={cn(
-                'rounded-lg border border-[var(--ic-border-default)]',
-                'bg-[var(--ic-bg-elevated)]',
+                'rounded-lg border border-stroke-divider',
+                'bg-surface-card',
                 'transition-colors duration-100',
-                hoverable && 'cursor-pointer hover:border-[var(--ic-border-strong)] hover:bg-[var(--ic-bg-surface)]',
+                hoverable && 'cursor-pointer hover:border-stroke-control hover:bg-surface-layer',
                 className
             )}
             onClick={onClick}
@@ -32,7 +32,7 @@ interface CardHeaderProps {
 
 export function CardHeader({ children, className }: CardHeaderProps) {
     return (
-        <div className={cn('px-4 py-3 border-b border-[var(--ic-border-default)]', className)}>
+        <div className={cn('px-4 py-3 border-b border-stroke-divider', className)}>
             {children}
         </div>
     );

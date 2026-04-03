@@ -15,15 +15,15 @@ interface CitationBadgeProps {
 
 const TYPE_CONFIG = {
     data: {
-        colorClass: 'ic-memory-data',
+        colorClass: 'knowledge-data',
         label: 'Data',
     },
     pattern: {
-        colorClass: 'ic-memory-pattern',
+        colorClass: 'knowledge-pattern',
         label: 'Pattern',
     },
     log: {
-        colorClass: 'ic-memory-log',
+        colorClass: 'knowledge-log',
         label: 'Log',
     },
 };
@@ -63,7 +63,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
             title={title}
         >
             <Icon className="w-3.5 h-3.5" />
-            <span className="max-w-[120px] truncate text-xs font-medium">
+            <span className="max-w-[120px] truncate text-fs-xs font-medium">
                 {title}
             </span>
             <span className="ml-1 text-[10px] opacity-70 uppercase tracking-wider">

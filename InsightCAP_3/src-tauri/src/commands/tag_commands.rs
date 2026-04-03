@@ -45,3 +45,22 @@ pub async fn suggest_tags(pool: State<'_, SqlitePool>, query: String) -> Result<
     let suggestions = rows.into_iter().map(|r| r.get("name")).collect();
     Ok(suggestions)
 }
+
+/// 取得含有指定 tag 的所有 source_id（用於前端標籤篩選）
+#[tauri::command]
+pub async fn get_source_ids_by_tag(
+    pool: State<'_, SqlitePool>,
+    tag: String,
+) -> Result<Vec<String>, String> {
+    let pattern = format!("%\"{}%", tag);
+    let rows = sqlx::query(
+        "SELECT DISTINCT source_id FROM captures WHERE source_id IS NOT NULL AND tags LIKE ? LIMIT 500"
+    )
+    .bind(pattern)
+    .fetch_all(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let ids: Vec<String> = rows.into_iter().filter_map(|r| r.try_get("source_id").ok()).collect();
+    Ok(ids)
+}

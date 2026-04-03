@@ -2,14 +2,20 @@
  * themeStore — 四主題切換
  * 主題 class 直接掛在 <html>，讓 CSS variable 生效
  * localStorage 持久化（Phase 1 先用 localStorage，Phase 2 後改用 settings 表）
+ *
+ * 主題對應：
+ *   frost → Frost Glass（亮色・冰藍，預設）
+ *   void  → Deep Void（暗色・靛紫）
+ *   warm  → Warm Parchment（亮色・琥珀）
+ *   sage  → Sage Breeze（亮色・草地綠）
  */
 
 import { create } from 'zustand';
 
-export type Theme = 'light' | 'dark' | 'casual' | 'fresh';
+export type Theme = 'frost' | 'void' | 'warm' | 'sage';
 
 const STORAGE_KEY = 'ic-theme';
-const THEME_CLASSES: Theme[] = ['light', 'dark', 'casual', 'fresh'];
+const THEME_CLASSES: Theme[] = ['frost', 'void', 'warm', 'sage'];
 
 function applyTheme(theme: Theme) {
     const html = document.documentElement;
@@ -24,7 +30,7 @@ function readStoredTheme(): Theme {
     } catch {
         // localStorage 不可用
     }
-    return 'light'; // 預設淺色系（架構文件規定）
+    return 'frost'; // 預設 Frost Glass（架構文件規定）
 }
 
 // 同步套用初始主題（index.html 的內聯 script 已先行套用，這裡確保 store 同步）

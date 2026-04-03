@@ -41,7 +41,7 @@ pub async fn parse_file(kb_path: &str, file_path: &str) -> Result<ParsedDocument
         // Plain Text types
         "txt" | "log" => {
             let content =
-                fs::read_to_string(path).map_err(|e| format!("Failed to read text file: {}", e))?;
+                crate::capture::encoding::read_text_file(path).map_err(|e| format!("Failed to read text file: {}", e))?;
             vec![FileChunk {
                 content,
                 chunk_type: "text".to_string(),
@@ -50,7 +50,7 @@ pub async fn parse_file(kb_path: &str, file_path: &str) -> Result<ParsedDocument
             }]
         }
         "md" => {
-            let content = fs::read_to_string(path)
+            let content = crate::capture::encoding::read_text_file(path)
                 .map_err(|e| format!("Failed to read markdown file: {}", e))?;
             vec![FileChunk {
                 content,
@@ -195,10 +195,24 @@ pub async fn parse_file(kb_path: &str, file_path: &str) -> Result<ParsedDocument
                 })
                 .collect()
         }
-        // Images
+        // Images — 呼叫系統 OCR 擷取文字
         "png" | "jpg" | "jpeg" | "webp" | "gif" => {
+            let image_bytes = fs::read(path)
+                .map_err(|e| format!("Failed to read image file: {}", e))?;
+
+            let ocr_text = match crate::ocr::perform_ocr(&image_bytes).await {
+                Ok(raw) => {
+                    let lang = crate::ocr::postprocess::detect_language(&raw);
+                    crate::ocr::postprocess::postprocess_ocr_text(&raw, lang)
+                }
+                Err(e) => {
+                    eprintln!("[FileParser] OCR failed for {}: {}", title, e);
+                    format!("[OCR 失敗] {}", title)
+                }
+            };
+
             vec![FileChunk {
-                content: format!("Image File: {}", title),
+                content: ocr_text,
                 chunk_type: "image".to_string(),
                 image_path: Some(file_path.to_string()),
                 status: "processed".to_string(),
@@ -208,6 +222,25 @@ pub async fn parse_file(kb_path: &str, file_path: &str) -> Result<ParsedDocument
     };
 
     Ok(ParsedDocument { chunks, title })
+}
+
+/// 統一的臨時內容解析入口（不寫 DB）
+/// - file_path：本機檔案路徑
+/// - url：網址（含 YouTube / Bilibili / 一般網頁）
+/// - sessdata：Bilibili 登入 cookie（可選）
+pub async fn parse_content(
+    kb_path: &str,
+    file_path: Option<String>,
+    url: Option<String>,
+    sessdata: Option<String>,
+) -> Result<ParsedDocument, String> {
+    if let Some(path) = file_path {
+        return parse_file(kb_path, &path).await;
+    }
+    if let Some(url_str) = url {
+        return crate::capture::video_parser::parse_url_content(&url_str, sessdata).await;
+    }
+    Err("Requires either a file path or URL".to_string())
 }
 
 pub fn take_screenshot() -> Result<String, String> {

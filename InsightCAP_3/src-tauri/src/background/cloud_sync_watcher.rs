@@ -1,12 +1,23 @@
 use std::path::PathBuf;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use std::time::Duration;
+use crate::db::AppState;
 
-pub fn start_cloud_sync_watcher(_app: AppHandle, _kb_path: PathBuf) {
+pub fn start_cloud_sync_watcher(app: AppHandle, _kb_path: PathBuf) {
+    let mut shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();
     tauri::async_runtime::spawn(async move {
         loop {
-            tokio::time::sleep(Duration::from_secs(30)).await;
-            // TODO: 偵測 SQLite 檔案的 modified time 是否與內部 cache 有異 (例如被 Dropbox 覆蓋)
+            tokio::select! {
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        println!("[CloudSyncWatcher] 收到停止訊號，退出。");
+                        break;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_secs(30)) => {
+                    // TODO: 偵測 SQLite 檔案的 modified time 是否與內部 cache 有異
+                }
+            }
         }
     });
 }

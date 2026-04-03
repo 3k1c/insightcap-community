@@ -76,27 +76,14 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
     const isLocked = countdown > 0 || lockStatus?.isPermanentlyLocked;
 
     return (
-        <div
-            className="flex h-screen w-screen items-center justify-center"
-            style={{ background: 'var(--ic-bg-base)' }}
-        >
-            <div
-                className="w-full max-w-sm rounded-2xl border p-8"
-                style={{
-                    background: 'var(--ic-bg-elevated)',
-                    borderColor: 'var(--ic-border-default)',
-                    boxShadow: 'var(--ic-shadow-lg)',
-                }}
-            >
+        <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
+            <div className="w-full max-w-sm rounded-2xl border border-stroke-divider p-8 bg-surface-card shadow-flyout">
                 {/* Icon */}
                 <div className="mb-6 text-center">
-                    <div
-                        className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3"
-                        style={{ background: 'var(--ic-accent-subtle)' }}
-                    >
-                        <Lock className="h-6 w-6" style={{ color: 'var(--ic-accent)' }} />
+                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3 bg-accent-light2">
+                        <Lock className="h-6 w-6 text-accent-default" />
                     </div>
-                    <h1 className="text-xl font-bold" style={{ color: 'var(--ic-text-primary)' }}>
+                    <h1 className="text-fs-xl font-bold text-text-primary">
                         {t('auth.login.title')}
                     </h1>
                 </div>
@@ -116,7 +103,7 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    style={{ color: 'var(--ic-text-muted)' }}
+                                    className="text-text-tertiary"
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
@@ -124,7 +111,7 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
                         />
 
                         {countdown > 0 && (
-                            <p className="text-sm" style={{ color: 'var(--ic-warning)' }}>
+                            <p className="text-fs-sm text-color-warning">
                                 {t('auth.login.locked', { seconds: countdown })}
                             </p>
                         )}
@@ -140,8 +127,7 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
 
                         <button
                             type="button"
-                            className="w-full text-xs text-center mt-2"
-                            style={{ color: 'var(--ic-text-muted)' }}
+                            className="w-full text-fs-xs text-center mt-2 text-text-tertiary"
                             onClick={() => setShowRecovery(true)}
                         >
                             {t('auth.login.forgot_password')}
@@ -185,23 +171,18 @@ function RecoveryForm({
 
     return (
         <div className="space-y-4">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--ic-text-primary)' }}>
+            <h2 className="text-fs-sm font-semibold text-text-primary">
                 {t('auth.recovery.title')}
             </h2>
             <div>
-                <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--ic-text-primary)' }}>
+                <label className="mb-1.5 block text-fs-sm font-medium text-text-primary">
                     {t('auth.recovery.mnemonic_label')}
                 </label>
                 <textarea
                     value={mnemonic}
                     onChange={e => setMnemonic(e.target.value)}
                     rows={3}
-                    className="w-full rounded-md border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1"
-                    style={{
-                        background: 'var(--ic-bg-base)',
-                        borderColor: 'var(--ic-border-default)',
-                        color: 'var(--ic-text-primary)',
-                    }}
+                    className="w-full rounded-md border border-stroke-divider px-3 py-2 text-fs-sm font-mono bg-surface-base text-text-primary focus:outline-none focus:ring-1 focus:ring-stroke-focus"
                 />
             </div>
             <Input

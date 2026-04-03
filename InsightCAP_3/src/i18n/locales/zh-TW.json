@@ -252,6 +252,7 @@
         "knowledge_tooltip": "知識庫語意搜尋",
         "web_search": "聯網搜尋",
         "web_tooltip": "聯網搜尋",
+        "normal_mode": "一般模式",
         "think_mode": "深度思考",
         "think_mode_active": "思考模式（點擊切換為一般模式）",
         "think_mode_inactive": "一般模式（點擊啟用深度推理）",
