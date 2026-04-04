@@ -10,6 +10,7 @@ import {
     Plus, Trash2, Eye, EyeOff, Database, Zap,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
 } from 'lucide-react';
+import { useT } from '../hooks/useT';
 import { save } from '@tauri-apps/plugin-dialog';
 import { toast } from 'sonner';
 
@@ -75,26 +76,23 @@ interface AllSettings {
 
 type SettingsTab = 'general' | 'provider' | 'ai' | 'knowledge' | 'other';
 
-const TABS: { id: SettingsTab; label: string; icon: React.FC<{ className?: string }> }[] = [
-    { id: 'general', label: '一般設定', icon: Settings2 },
-    { id: 'provider', label: 'LLM Provider', icon: Server },
-    { id: 'ai', label: 'AI 設置', icon: Sparkles },
-    { id: 'knowledge', label: '知識庫', icon: BookOpen },
-    { id: 'other', label: '其他', icon: Ellipsis },
+// These will be translated in the component
+const TABS: { id: SettingsTab; labelKey: string; icon: React.FC<{ className?: string }> }[] = [
+    { id: 'general', labelKey: 'settings.general', icon: Settings2 },
+    { id: 'provider', labelKey: 'settings.ai_models', icon: Server },
+    { id: 'ai', labelKey: 'settings.ai_section', icon: Sparkles },
+    { id: 'knowledge', labelKey: 'settings.knowledge', icon: BookOpen },
+    { id: 'other', labelKey: 'settings.other', icon: Ellipsis },
 ];
 
-const THEMES: { value: Theme; label: string; desc: string }[] = [
-    { value: 'frost', label: 'Frost Glass', desc: '亮色・冰藍' },
-    { value: 'void', label: 'Deep Void', desc: '暗色・靛紫' },
-    { value: 'warm', label: 'Warm Parchment', desc: '亮色・琥珀' },
-    { value: 'sage', label: 'Sage Breeze', desc: '亮色・草地綠' },
+const THEMES: { value: Theme }[] = [
+    { value: 'frost' },
+    { value: 'void' },
+    { value: 'warm' },
+    { value: 'sage' },
 ];
 
-const LANGUAGES: { value: Language; label: string }[] = [
-    { value: 'zh-TW', label: '繁體中文' },
-    { value: 'zh-CN', label: '简体中文' },
-    { value: 'en', label: 'English' },
-];
+
 
 const PROVIDER_OPTIONS: { value: string; label: string }[] = [
     { value: 'ollama', label: 'Ollama' },
@@ -108,7 +106,7 @@ const PROVIDER_OPTIONS: { value: string; label: string }[] = [
 // ── Helper Components ────────────────────────────────────
 
 const SectionCard: React.FC<{ title: string; desc?: string; children: React.ReactNode; action?: React.ReactNode }> = ({ title, desc, children, action }) => (
-    <div className="bg-surface-layer border border-stroke-divider rounded-xl p-6 mb-4">
+    <div className="bg-surface-layer border border-stroke-divider rounded-xl p-6 mb-6 shadow-sm">
         <div className="flex items-start justify-between mb-4">
             <div>
                 <h4 className="font-semibold text-text-primary">{title}</h4>
@@ -163,6 +161,7 @@ const InputField: React.FC<{ value: string; onChange: (v: string) => void; place
 // ── Main Component ───────────────────────────────────────
 
 export const SettingsPage: React.FC = () => {
+    const t = useT();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [settings, setSettings] = useState<AllSettings | null>(null);
     const [saving, setSaving] = useState(false);
@@ -172,6 +171,7 @@ export const SettingsPage: React.FC = () => {
     // Provider edit state
     const [editingProfile, setEditingProfile] = useState<ProviderProfileData | null>(null);
     const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
+    const [bilibiliLoggingIn, setBilibiliLoggingIn] = useState(false);
 
     // Export modal state
     const [exportModal, setExportModal] = useState<{
@@ -241,6 +241,24 @@ export const SettingsPage: React.FC = () => {
         const copy = JSON.parse(JSON.stringify(settings)) as AllSettings;
         updater(copy);
         setSettings(copy);
+    };
+
+    const handleBilibiliLogin = async () => {
+        setBilibiliLoggingIn(true);
+        const tid = toast.loading(t('settings.bilibili_logging_in'));
+        try {
+            const sessdata = await invoke<string>('open_bilibili_login');
+            updateSettings(s => { s.bilibiliSessdata = sessdata; });
+            const copy = JSON.parse(JSON.stringify(settings)) as AllSettings;
+            copy.bilibiliSessdata = sessdata;
+            await invoke('save_settings', { settings: copy });
+            setSettings(copy);
+            toast.success(t('settings.bilibili_login_success'), { id: tid });
+        } catch (e: any) {
+            toast.error(e.toString(), { id: tid });
+        } finally {
+            setBilibiliLoggingIn(false);
+        }
     };
 
     // ── External KB handlers ─────────────────────────────
@@ -320,7 +338,7 @@ export const SettingsPage: React.FC = () => {
     };
 
     const handleTestConnection = async (profile: ProviderProfileData) => {
-        const tid = toast.loading('正在測試連線...');
+        const tid = toast.loading(t('common.loading'));
         try {
             if (profile.provider === 'ollama') {
                 await invoke('test_ollama', { baseUrl: profile.baseUrl ?? 'http://localhost:11434' });
@@ -331,9 +349,9 @@ export const SettingsPage: React.FC = () => {
                     apiKey: profile.apiKey ?? '',
                 });
             }
-            toast.success('連線成功！', { id: tid });
+            toast.success(t('common.success'), { id: tid });
         } catch (e: any) {
-            toast.error(`連線失敗: ${e.toString()}`, { id: tid });
+            toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
         }
     };
 
@@ -342,44 +360,51 @@ export const SettingsPage: React.FC = () => {
     const renderGeneral = () => {
         if (!settings) return null;
         return (
-            <div className="max-w-2xl">
-                <h3 className="text-fs-2xl font-bold text-text-primary mb-6">一般設定</h3>
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.general_title')}</h3>
+                    <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.general_desc')}</p>
+                </div>
 
-                <SectionCard title="語言與外觀">
-                    <SettingRow label="介面語言" desc="變更後立即生效">
+                <SectionCard title={t('settings.appearance_section')}>
+                    <SettingRow label={t('language.label')} desc={t('language.desc')}>
                         <SelectField
                             value={language}
                             onChange={v => setLanguage(v as Language)}
-                            options={LANGUAGES}
+                            options={[
+                                { value: 'zh-TW', label: t('language.zh-TW') },
+                                { value: 'zh-CN', label: t('language.zh-CN') },
+                                { value: 'en', label: t('language.en') },
+                            ]}
                         />
                     </SettingRow>
-                    <SettingRow label="主題風格">
+                    <SettingRow label={t('theme.label')}>
                         <div className="flex gap-2">
-                            {THEMES.map(t => (
+                            {THEMES.map(themeOption => (
                                 <button
-                                    key={t.value}
-                                    onClick={() => setTheme(t.value)}
-                                    className={`px-3 py-1.5 rounded-lg text-fs-xs transition-colors border ${theme === t.value
+                                    key={themeOption.value}
+                                    onClick={() => setTheme(themeOption.value)}
+                                    className={`px-3 py-1.5 rounded-lg text-fs-xs transition-colors border ${theme === themeOption.value
                                         ? 'border-accent-default bg-accent-default/10 text-accent-default font-medium'
                                         : 'border-stroke-divider text-text-secondary hover:bg-surface-subtle'
                                         }`}
-                                    title={t.desc}
+                                    title={t(`theme.${themeOption.value}_desc` as any)}
                                 >
-                                    {t.label}
+                                    {t(`theme.${themeOption.value}` as any)}
                                 </button>
                             ))}
                         </div>
                     </SettingRow>
                 </SectionCard>
 
-                <SectionCard title="系統行為">
-                    <SettingRow label="開機時自動啟動" desc="系統啟動時自動開啟 InsightCAP">
+                <SectionCard title={t('settings.system_behavior')}>
+                    <SettingRow label={t('settings.launch_at_startup')} desc={t('settings.launch_at_startup_desc')}>
                         <Toggle
                             checked={settings?.general.launchAtStartup ?? false}
                             onChange={v => { updateSettings(s => { s.general.launchAtStartup = v; }); }}
                         />
                     </SettingRow>
-                    <SettingRow label="最小化至系統匣" desc="關閉視窗時最小化至系統匣">
+                    <SettingRow label={t('settings.minimize_to_tray')} desc={t('settings.minimize_to_tray_desc')}>
                         <Toggle
                             checked={settings?.general.minimizeToTray ?? true}
                             onChange={v => { updateSettings(s => { s.general.minimizeToTray = v; }); }}
@@ -387,39 +412,18 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                 </SectionCard>
 
-                <SectionCard title="快捷鍵">
-                    <SettingRow label="擷取剪貼簿" desc="全域快捷鍵">
+                <SectionCard title={t('settings.hotkeys')}>
+                    <SettingRow label={t('settings.capture_clipboard')} desc={t('settings.global_hotkey')}>
                         <InputField value={settings.hotkeys.captureClipboard} onChange={v => updateSettings(s => { s.hotkeys.captureClipboard = v; })} className="w-40" />
                     </SettingRow>
-                    <SettingRow label="快速輸入" desc="全域快捷鍵">
+                    <SettingRow label={t('settings.quick_input')} desc={t('settings.global_hotkey')}>
                         <InputField value={settings.hotkeys.quickInput} onChange={v => updateSettings(s => { s.hotkeys.quickInput = v; })} className="w-40" />
-                    </SettingRow>
-                </SectionCard>
-
-                <SectionCard title="外部服務授權">
-                    <SettingRow label="Bilibili SESSDATA" desc="需登入以提取 B 站影片字幕（可於 B 站登入後檢視 Cookie 取得）">
-                        <div className="relative">
-                            <InputField
-                                value={settings.bilibiliSessdata ?? ''}
-                                onChange={v => updateSettings(s => { s.bilibiliSessdata = v; })}
-                                type={showApiKeys['bilibili'] ? 'text' : 'password'}
-                                placeholder="請輸入 SESSDATA..."
-                                className="w-52 pr-10"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowApiKeys(p => ({ ...p, bilibili: !p.bilibili }))}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
-                            >
-                                {showApiKeys['bilibili'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                        </div>
                     </SettingRow>
                 </SectionCard>
 
                 <div className="flex justify-end mt-6">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? '儲存中...' : '儲存'}
+                        {saving ? t('common.saving') : t('common.save')}
                     </button>
                 </div>
             </div>
@@ -432,45 +436,48 @@ export const SettingsPage: React.FC = () => {
         if (!settings) return null;
         const ai = settings.aiModels;
         return (
-            <div className="max-w-3xl">
-                <h3 className="text-fs-2xl font-bold text-text-primary mb-6">LLM Provider</h3>
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.ai_models')}</h3>
+                    <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.general_desc')}</p>
+                </div>
 
                 <SectionCard
-                    title="Provider 管理"
-                    desc="新增與管理 LLM 服務商的連線設定，在 AI 設置中可選擇使用哪個 Provider。"
+                    title={t('settings.provider_management_title')}
+                    desc={t('settings.provider_management_desc')}
                     action={
                         <button
                             onClick={() => setEditingProfile({ id: crypto.randomUUID(), name: '', provider: 'ollama', baseUrl: 'http://localhost:11434', apiKey: '' })}
-                            className="flex items-center gap-1.5 bg-accent-default text-white px-3 py-1.5 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors"
+                            className="flex items-center gap-1.5 bg-accent-default text-white px-4 py-2 rounded-xl text-fs-sm hover:bg-accent-light1 transition-all shadow-md active:scale-95"
                         >
-                            <Plus className="w-4 h-4" /> 新增
+                            <Plus className="w-4 h-4" /> {t('common.add')}
                         </button>
                     }
                 >
                     {(settings?.aiModels.providerProfiles ?? []).length === 0 && !editingProfile && (
                         <div className="text-center py-8 text-text-tertiary">
                             <Server className="w-7 h-7 mx-auto mb-2 opacity-50" />
-                            <p className="text-fs-sm">尚未新增任何 Provider</p>
+                            <p className="text-fs-sm">{t('settings.provider_empty')}</p>
                         </div>
                     )}
 
                     {(settings?.aiModels.providerProfiles ?? []).map(p => (
                         <div key={p.id} className="flex items-center justify-between gap-3 bg-surface-base rounded-lg px-4 py-3 border border-stroke-divider">
                             <div className="min-w-0">
-                                <div className="font-medium text-text-primary text-fs-sm">{p.name || '(未命名)'}</div>
+                                <div className="font-medium text-text-primary text-fs-sm">{p.name || t('settings.provider_unnamed')}</div>
                                 <div className="text-fs-xs text-text-tertiary mt-0.5">
                                     {PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label ?? p.provider}
                                     {p.baseUrl ? ` · ${p.baseUrl}` : ''}
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
-                                <button onClick={() => handleTestConnection(p)} className="p-1.5 text-text-tertiary hover:text-accent-default rounded-md transition-colors" title="測試連線">
+                                <button onClick={() => handleTestConnection(p)} className="p-1.5 text-text-tertiary hover:text-accent-default rounded-md transition-colors" title={t('common.test')}>
                                     <Zap className="w-4 h-4" />
                                 </button>
-                                <button onClick={() => setEditingProfile({ ...p })} className="p-1.5 text-text-tertiary hover:text-accent-default rounded-md transition-colors" title="編輯">
+                                <button onClick={() => setEditingProfile({ ...p })} className="p-1.5 text-text-tertiary hover:text-accent-default rounded-md transition-colors" title={t('common.edit')}>
                                     <Settings2 className="w-4 h-4" />
                                 </button>
-                                <button onClick={() => handleDeleteProfile(p.id)} className="p-1.5 text-text-tertiary hover:text-red-500 rounded-md transition-colors" title="刪除">
+                                <button onClick={() => handleDeleteProfile(p.id)} className="p-1.5 text-text-tertiary hover:text-red-500 rounded-md transition-colors" title={t('common.delete')}>
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
@@ -481,21 +488,21 @@ export const SettingsPage: React.FC = () => {
                         <div className="bg-surface-base rounded-lg p-4 border border-accent-default/30 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-fs-xs text-text-secondary mb-1 block">名稱</label>
+                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_name')}</label>
                                     <InputField value={editingProfile.name} onChange={v => setEditingProfile({ ...editingProfile, name: v })} placeholder="例: My OpenAI" className="w-full" />
                                 </div>
                                 <div>
-                                    <label className="text-fs-xs text-text-secondary mb-1 block">Provider 類型</label>
+                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_type')}</label>
                                     <SelectField value={editingProfile.provider} onChange={v => setEditingProfile({ ...editingProfile, provider: v })} options={PROVIDER_OPTIONS} className="w-full" />
                                 </div>
                             </div>
                             <div>
-                                <label className="text-fs-xs text-text-secondary mb-1 block">Base URL</label>
+                                <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_base_url')}</label>
                                 <InputField value={editingProfile.baseUrl ?? ''} onChange={v => setEditingProfile({ ...editingProfile, baseUrl: v })} placeholder="http://localhost:11434" className="w-full" />
                             </div>
                             {editingProfile.provider !== 'ollama' && (
                                 <div>
-                                    <label className="text-fs-xs text-text-secondary mb-1 block">API Key</label>
+                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_apikey')}</label>
                                     <div className="relative">
                                         <InputField
                                             value={editingProfile.apiKey ?? ''}
@@ -515,23 +522,23 @@ export const SettingsPage: React.FC = () => {
                                 </div>
                             )}
                             <div className="flex justify-end gap-2 pt-1">
-                                <button onClick={() => setEditingProfile(null)} className="px-3 py-1.5 rounded-lg text-fs-sm text-text-secondary hover:bg-surface-subtle transition-colors">取消</button>
-                                <button onClick={() => handleTestConnection(editingProfile)} className="px-3 py-1.5 rounded-lg text-fs-sm text-text-secondary hover:bg-surface-subtle transition-colors">測試</button>
-                                <button onClick={handleSaveProfile} className="bg-accent-default text-white px-4 py-1.5 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors">儲存</button>
+                                <button onClick={() => setEditingProfile(null)} className="px-3 py-1.5 rounded-lg text-fs-sm text-text-secondary hover:bg-surface-subtle transition-colors">{t('common.cancel')}</button>
+                                <button onClick={() => handleTestConnection(editingProfile)} className="px-3 py-1.5 rounded-lg text-fs-sm text-text-secondary hover:bg-surface-subtle transition-colors">{t('common.test')}</button>
+                                <button onClick={handleSaveProfile} className="bg-accent-default text-white px-4 py-1.5 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors">{t('common.save')}</button>
                             </div>
                         </div>
                     )}
                 </SectionCard>
 
-                <SectionCard title="模型配置" desc="為不同功能指定使用的 LLM 模型。">
-                    {renderModelField('聊天模型', '用於對話、問答功能', ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }))}
-                    {renderModelField('內容處理模型', '用於自動分類、標籤提取等背景處理', ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }))}
-                    {renderModelField('視覺模型', '用於圖片 OCR 與視覺理解', ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }))}
-                    {renderModelField('Embedding 模型', '用於語意向量索引（RAG 檢索）', ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }))}
+                <SectionCard title={t('settings.model_config_title')} desc={t('settings.model_config_desc')}>
+                    {renderModelField(t('settings.model_chat'), t('settings.model_chat_desc'), ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }))}
+                    {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }))}
+                    {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }))}
+                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }))}
                 </SectionCard>
 
-                <SectionCard title="摘要模型">
-                    <SettingRow label="摘要模型" desc="用於對話摘要，'follow_chat' 表示跟隨聊天模型">
+                <SectionCard title={t('settings.model_summary_section')}>
+                    <SettingRow label={t('settings.model_summary')} desc={t('settings.model_summary_desc')}>
                         <InputField
                             value={ai.summaryModel ?? 'follow_chat'}
                             onChange={v => updateSettings(s => { s.aiModels.summaryModel = v; })}
@@ -542,7 +549,7 @@ export const SettingsPage: React.FC = () => {
 
                 <div className="flex justify-end mt-6">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? '儲存中...' : '儲存'}
+                        {saving ? t('common.saving') : t('common.save')}
                     </button>
                 </div>
             </div>
@@ -558,12 +565,12 @@ export const SettingsPage: React.FC = () => {
             <div className="text-fs-xs text-text-tertiary">{desc}</div>
             <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                    <label className="text-fs-xs text-text-secondary mb-1 block">Provider</label>
-                    <SelectField value={model.provider} onChange={v => onChange({ ...model, provider: v })} options={[...PROVIDER_OPTIONS, { value: 'local', label: 'Local' }]} className="w-full" />
+                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_type')}</label>
+                    <SelectField value={model.provider} onChange={v => onChange({ ...model, provider: v })} options={[...PROVIDER_OPTIONS, { value: 'local', label: t('settings.local_provider') }]} className="w-full" />
                 </div>
                 <div>
-                    <label className="text-fs-xs text-text-secondary mb-1 block">模型名稱</label>
-                    <InputField value={model.model} onChange={v => onChange({ ...model, model: v })} placeholder="模型名稱" className="w-full" />
+                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.model_name')}</label>
+                    <InputField value={model.model} onChange={v => onChange({ ...model, model: v })} placeholder={t('settings.model_name')} className="w-full" />
                 </div>
             </div>
         </div>
@@ -572,33 +579,36 @@ export const SettingsPage: React.FC = () => {
     const renderAI = () => {
         if (!settings) return null;
         return (
-            <div className="max-w-2xl">
-                <h3 className="text-fs-2xl font-bold text-text-primary mb-6">AI 設置</h3>
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.ai_section_title')}</h3>
+                    <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.ai_section_desc')}</p>
+                </div>
 
-                <SectionCard title="AI 回答偏好" desc="附加在每次 AI 回答的風格指令，例如「請用英文回答，語氣要簡潔」。系統指引優先，此設定不可覆蓋系統行為。">
+                <SectionCard title={t('settings.ai_prompt_instruction_title')} desc={t('settings.ai_prompt_instruction_desc')}>
                     <textarea
                         value={settings.chatPromptInstruction}
                         onChange={e => updateSettings(s => { s.chatPromptInstruction = e.target.value; })}
-                        placeholder="留空表示使用預設行為..."
+                        placeholder={t('settings.ai_prompt_instruction_placeholder')}
                         rows={4}
                         className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-accent-default"
                     />
                 </SectionCard>
 
-                <SectionCard title="網路搜尋">
-                    <SettingRow label="啟用網路搜尋">
+                <SectionCard title={t('settings.web_search_title')}>
+                    <SettingRow label={t('settings.web_search_enable')}>
                         <Toggle checked={settings.webSearch.enabled} onChange={v => updateSettings(s => { s.webSearch.enabled = v; })} />
                     </SettingRow>
                     {settings.webSearch.enabled && (
                         <>
-                            <SettingRow label="搜尋提供者">
+                            <SettingRow label={t('settings.web_search_provider')}>
                                 <SelectField
                                     value={settings.webSearch.provider}
                                     onChange={v => updateSettings(s => { s.webSearch.provider = v; })}
                                     options={[{ value: 'tavily', label: 'Tavily' }, { value: 'serper', label: 'Serper' }]}
                                 />
                             </SettingRow>
-                            <SettingRow label="API Key">
+                            <SettingRow label={t('settings.web_search_apikey')}>
                                 <div className="relative">
                                     <InputField
                                         value={settings.webSearch.apiKey}
@@ -619,9 +629,44 @@ export const SettingsPage: React.FC = () => {
                     )}
                 </SectionCard>
 
+                <SectionCard title={t('settings.external_services')}>
+                    <SettingRow label={t('settings.bilibili_sessdata')} desc={t('settings.bilibili_sessdata_desc')}>
+                        <div className="flex items-center gap-3">
+                            <span className={`px-2.5 py-1 rounded-md text-fs-xs flex items-center gap-1.5 ${settings.bilibiliSessdata ? 'bg-green-500/10 text-green-500' : 'bg-surface-subtle text-text-tertiary'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${settings.bilibiliSessdata ? 'bg-green-500' : 'bg-stroke-divider'}`} />
+                                {settings.bilibiliSessdata ? t('settings.status_logged_in') : t('settings.status_not_logged_in')}
+                            </span>
+
+                            {settings.bilibiliSessdata ? (
+                                <button
+                                    onClick={() => {
+                                        updateSettings(s => { s.bilibiliSessdata = ''; });
+                                        if (settings) {
+                                            const copy = JSON.parse(JSON.stringify(settings)) as AllSettings;
+                                            copy.bilibiliSessdata = '';
+                                            invoke('save_settings', { settings: copy }).catch(console.error);
+                                        }
+                                    }}
+                                    className="text-fs-xs text-red-500 hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20"
+                                >
+                                    {t('settings.logout')}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleBilibiliLogin}
+                                    disabled={bilibiliLoggingIn}
+                                    className="text-fs-xs bg-accent-default text-white hover:bg-accent-light1 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    {bilibiliLoggingIn ? t('common.loading') : t('settings.login_bilibili')}
+                                </button>
+                            )}
+                        </div>
+                    </SettingRow>
+                </SectionCard>
+
                 <div className="flex justify-end mt-6">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? '儲存中...' : '儲存'}
+                        {saving ? t('common.saving') : t('common.save')}
                     </button>
                 </div>
             </div>
@@ -633,51 +678,53 @@ export const SettingsPage: React.FC = () => {
     const renderKnowledge = () => {
         if (!settings) return null;
         return (
-            <div className="max-w-3xl">
-                <h3 className="text-fs-2xl font-bold text-text-primary mb-6">知識庫</h3>
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.knowledge_section_title')}</h3>
+                    <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.knowledge_section_desc')}</p>
+                </div>
 
-                <SectionCard title="知識庫設定">
-                    <SettingRow label="知識庫路徑" desc="本地知識庫的儲存位置">
+                <SectionCard title={t('settings.knowledge_setting')}>
+                    <SettingRow label={t('settings.knowledge_path')} desc={t('settings.knowledge_path_desc')}>
                         <InputField value={settings.knowledge.kbPath} onChange={v => updateSettings(s => { s.knowledge.kbPath = v; })} placeholder="path/to/kb" className="w-64" />
                     </SettingRow>
-                    <SettingRow label="自動分類" desc="擷取新內容時自動分類到對應空間">
+                    <SettingRow label={t('settings.auto_classify')} desc={t('settings.auto_classify_desc')}>
                         <Toggle checked={settings.knowledge.autoClassifyEnabled} onChange={v => updateSettings(s => { s.knowledge.autoClassifyEnabled = v; })} />
                     </SettingRow>
-                    <SettingRow label="自動空間模式" desc="suggest = 建議確認，auto = 直接建立">
+                    <SettingRow label={t('settings.auto_space_mode')} desc={t('settings.auto_space_mode_desc')}>
                         <SelectField
                             value={settings.knowledge.autoSpaceMode}
                             onChange={v => updateSettings(s => { s.knowledge.autoSpaceMode = v; })}
-                            options={[{ value: 'suggest', label: '建議確認' }, { value: 'auto', label: '自動建立' }]}
+                            options={[{ value: 'suggest', label: t('settings.auto_space_suggest') }, { value: 'auto', label: t('settings.auto_space_auto') }]}
                         />
                     </SettingRow>
                 </SectionCard>
 
-                <SectionCard title="知識庫管理" desc="對本地知識庫執行維護操作。">
+                <SectionCard title={t('settings.knowledge_management')} desc={t('settings.knowledge_management_desc')}>
                     <div className="grid grid-cols-2 gap-3">
                         <button
                             onClick={async () => {
-                                const tid = toast.loading('正在重建索引...');
+                                const tid = toast.loading(t('common.loading'));
                                 try {
                                     await invoke('rebuild_kb_index');
-                                    toast.success('索引重建完成', { id: tid });
+                                    toast.success(t('common.success'), { id: tid });
                                 } catch (e: any) {
-                                    toast.error(`重建失敗: ${e.toString()}`, { id: tid });
+                                    toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
                                 }
                             }}
                             className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors"
                         >
                             <RefreshCw className="w-4 h-4 text-accent-default" />
-                            重建知識庫索引
+                            {t('settings.rebuild_index')}
                         </button>
                         <button
                             onClick={async () => {
                                 try {
                                     const dest = await save({
                                         defaultPath: 'insightcap-kb-export.zip',
-                                        filters: [{ name: 'InsightCAP 知識庫封包', extensions: ['zip'] }],
+                                        filters: [{ name: 'InsightCAP KB', extensions: ['zip'] }],
                                     });
                                     if (!dest) return;
-                                    // 生成備份恢復碼後開 modal
                                     const mnemonic: string = await invoke('generate_recovery_phrase');
                                     setExportModal({ open: true, step: 'mnemonic', mnemonic, confirmed: false, destPath: dest, loading: false });
                                 } catch (e) {
@@ -687,14 +734,14 @@ export const SettingsPage: React.FC = () => {
                             className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors"
                         >
                             <Download className="w-4 h-4 text-accent-default" />
-                            匯出知識庫
+                            {t('settings.export_kb')}
                         </button>
                         <button
                             onClick={async () => {
                                 try {
                                     const selected = await open({
                                         multiple: false,
-                                        filters: [{ name: 'InsightCAP 知識庫封包', extensions: ['zip'] }],
+                                        filters: [{ name: 'InsightCAP KB', extensions: ['zip'] }],
                                     });
                                     if (!selected || typeof selected !== 'string') return;
                                     setImportModal({ open: true, step: 'input', srcPath: selected, mnemonic: '', newPassword: '', newMnemonic: '', confirmed: false, loading: false, error: '' });
@@ -705,56 +752,55 @@ export const SettingsPage: React.FC = () => {
                             className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors"
                         >
                             <Upload className="w-4 h-4 text-accent-default" />
-                            匯入知識庫
+                            {t('settings.import_kb')}
                         </button>
                         <button
                             onClick={async () => {
-                                if (!window.confirm('⚠️ 確定要刪除整個知識庫嗎？此操作無法復原！')) return;
-                                if (!window.confirm('再次確認：所有知識庫資料將被永久刪除。')) return;
-                                const tid = toast.loading('正在刪除知識庫...');
+                                if (!window.confirm(t('common.warning_irreversible'))) return;
+                                const tid = toast.loading(t('common.loading'));
                                 try {
                                     await invoke('delete_kb');
-                                    toast.success('知識庫已刪除', { id: tid });
+                                    toast.success(t('common.success'), { id: tid });
                                 } catch (e: any) {
-                                    toast.error(`刪除失敗: ${e.toString()}`, { id: tid });
+                                    toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
                                 }
                             }}
                             className="flex items-center gap-2 bg-surface-base border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-500 hover:bg-red-500/5 transition-colors"
                         >
                             <AlertTriangle className="w-4 h-4" />
-                            刪除知識庫
+                            {t('settings.delete_kb')}
                         </button>
                         <button
                             onClick={async () => {
-                                const tid = toast.loading('正在掃描並修復歷史資料...');
+                                const tid = toast.loading(t('common.loading'));
                                 try {
                                     const msg = await invoke<string>('repair_missing_local_copies');
                                     toast.success(msg, { id: tid });
                                 } catch (e: any) {
-                                    toast.error(`修復失敗: ${e.toString()}`, { id: tid });
+                                    toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
                                 }
                             }}
                             className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors"
                         >
                             <Wrench className="w-4 h-4 text-accent-default" />
-                            修復歷史檔案副本
+                            {t('settings.repair_files')}
                         </button>
                     </div>
                 </SectionCard>
 
                 <SectionCard
-                    title="外部知識庫"
-                    desc="掛載標準化的外部知識庫檔案（.db / .sqlite），啟動企業級混合 RAG 檢索。"
+                    title={t('settings.external_kb')}
+                    desc={t('settings.external_kb_desc')}
                     action={
                         <button onClick={handleAddKb} disabled={kbLoading} className="flex items-center gap-1.5 bg-accent-default text-white px-3 py-1.5 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                            <Plus className="w-4 h-4" /> 載入
+                            <Plus className="w-4 h-4" /> {t('common.add')}
                         </button>
                     }
                 >
                     {externalKbs.length === 0 ? (
                         <div className="text-center py-8 text-text-tertiary">
                             <Database className="w-7 h-7 mx-auto mb-2 opacity-50" />
-                            <p className="text-fs-sm">尚未掛載任何外部知識庫</p>
+                            <p className="text-fs-sm">{t('settings.external_kb_empty')}</p>
                         </div>
                     ) : (
                         externalKbs.map(kb => (
@@ -765,12 +811,12 @@ export const SettingsPage: React.FC = () => {
                                         <span className="font-medium text-text-primary text-fs-sm">{kb.name}</span>
                                         <span className={`text-fs-xs px-1.5 py-0.5 rounded-full flex items-center gap-1 ${kb.status === 'connected' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                                             <span className={`w-1.5 h-1.5 rounded-full ${kb.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
-                                            {kb.status === 'connected' ? '已連線' : '異常'}
+                                            {kb.status === 'connected' ? t('settings.kb_connected') : t('settings.kb_error')}
                                         </span>
                                     </div>
-                                    <p className="text-fs-xs text-text-tertiary">{kb.dbPath} · {kb.embeddingModel} ({kb.embeddingDimension}維)</p>
+                                    <p className="text-fs-xs text-text-tertiary">{kb.dbPath} · {kb.embeddingModel} ({kb.embeddingDimension}{t('common.dimension')})</p>
                                 </div>
-                                <button onClick={() => handleRemoveKb(kb.id, kb.name)} className="p-1.5 text-text-tertiary hover:text-red-500 rounded-md transition-colors" title="移除連線">
+                                <button onClick={() => handleRemoveKb(kb.id, kb.name)} className="p-1.5 text-text-tertiary hover:text-red-500 rounded-md transition-colors" title={t('common.delete')}>
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
@@ -780,7 +826,7 @@ export const SettingsPage: React.FC = () => {
 
                 <div className="flex justify-end">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? '儲存中...' : '儲存'}
+                        {saving ? t('common.saving') : t('common.save')}
                     </button>
                 </div>
             </div>
@@ -792,34 +838,41 @@ export const SettingsPage: React.FC = () => {
     const renderOther = () => {
         if (!settings) return null;
         return (
-            <div className="max-w-2xl">
-                <h3 className="text-fs-2xl font-bold text-text-primary mb-6">其他</h3>
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.other_section_title')}</h3>
+                    <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.other_section_desc')}</p>
+                </div>
 
-                <SectionCard title="編輯器設定">
-                    <SettingRow label="預設字型">
+                <SectionCard title={t('settings.editor_setting')}>
+                    <SettingRow label={t('settings.default_font')}>
                         <InputField value={settings.editor.defaultFont} onChange={v => updateSettings(s => { s.editor.defaultFont = v; })} className="w-52" />
                     </SettingRow>
-                    <SettingRow label="字型大小">
+                    <SettingRow label={t('settings.font_size')}>
                         <InputField value={settings.editor.defaultFontSize} onChange={v => updateSettings(s => { s.editor.defaultFontSize = v; })} className="w-20" />
                     </SettingRow>
-                    <SettingRow label="行距">
+                    <SettingRow label={t('settings.line_spacing')}>
                         <InputField value={settings.editor.defaultLineSpacing} onChange={v => updateSettings(s => { s.editor.defaultLineSpacing = v; })} className="w-20" />
                     </SettingRow>
-                    <SettingRow label="預設匯出格式">
+                    <SettingRow label={t('settings.export_format')}>
                         <SelectField
                             value={settings.editor.defaultExportFormat}
                             onChange={v => updateSettings(s => { s.editor.defaultExportFormat = v; })}
-                            options={[{ value: 'md', label: 'Markdown' }, { value: 'docx', label: 'Word (.docx)' }, { value: 'txt', label: '純文字' }]}
+                            options={[
+                                { value: 'md', label: t('settings.format_markdown') },
+                                { value: 'docx', label: t('settings.format_word') },
+                                { value: 'txt', label: t('settings.format_text') }
+                            ]}
                         />
                     </SettingRow>
                 </SectionCard>
 
-                <SectionCard title="自動清理">
-                    <SettingRow label="啟用自動清理" desc="自動清除過期的暫存資料">
+                <SectionCard title={t('settings.auto_cleanup')}>
+                    <SettingRow label={t('settings.auto_cleanup_enable')} desc={t('settings.auto_cleanup_desc')}>
                         <Toggle checked={settings.autoCleanup.enabled} onChange={v => updateSettings(s => { s.autoCleanup.enabled = v; })} />
                     </SettingRow>
                     {settings.autoCleanup.enabled && (
-                        <SettingRow label="保留天數">
+                        <SettingRow label={t('settings.retention_days')}>
                             <InputField
                                 value={String(settings.autoCleanup.retentionDays)}
                                 onChange={v => updateSettings(s => { s.autoCleanup.retentionDays = parseInt(v) || 0; })}
@@ -832,7 +885,7 @@ export const SettingsPage: React.FC = () => {
 
                 <div className="flex justify-end mt-6">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? '儲存中...' : '儲存'}
+                        {saving ? t('common.saving') : t('common.save')}
                     </button>
                 </div>
             </div>
@@ -844,28 +897,32 @@ export const SettingsPage: React.FC = () => {
     return (
         <div className="flex h-full w-full bg-surface-base">
             {/* Sidebar */}
-            <div className="w-56 border-r border-stroke-divider p-6 flex flex-col gap-1">
-                <h2 className="text-fs-xl font-bold mb-4 text-text-primary">設定</h2>
+            <div className="w-64 border-r border-stroke-divider bg-surface-layer/30 p-6 flex flex-col gap-1.5 overflow-y-auto">
+                <div className="px-3 mb-6">
+                    <h2 className="text-fs-xl font-bold text-text-primary">{t('settings.nav_title')}</h2>
+                    <p className="text-fs-xs text-text-tertiary">{t('settings.nav_subtitle')}</p>
+                </div>
                 {TABS.map(tab => {
                     const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
                     return (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-2.5 text-left px-3 py-2 rounded-lg transition-colors text-fs-sm ${activeTab === tab.id
-                                ? 'bg-surface-layer text-accent-default font-medium'
-                                : 'text-text-secondary hover:bg-surface-subtle'
+                            className={`flex items-center gap-3 text-left px-3.5 py-2.5 rounded-xl transition-all duration-200 text-fs-sm group ${isActive
+                                ? 'bg-accent-default text-white shadow-lg shadow-accent-default/20 font-medium active:scale-95'
+                                : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'
                                 }`}
                         >
-                            <Icon className="w-4 h-4" />
-                            {tab.label}
+                            <Icon className={`w-4.5 h-4.5 transition-colors ${isActive ? 'text-white' : 'text-text-tertiary group-hover:text-text-primary'}`} />
+                            {t(tab.labelKey as any)}
                         </button>
                     );
                 })}
             </div>
 
             {/* Content */}
-            <div className="flex-1 p-8 overflow-y-auto">
+            <div className="flex-1 p-10 overflow-y-auto bg-surface-base/50">
                 {activeTab === 'general' && renderGeneral()}
                 {activeTab === 'provider' && renderProvider()}
                 {activeTab === 'ai' && renderAI()}
@@ -877,21 +934,19 @@ export const SettingsPage: React.FC = () => {
             {exportModal.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="bg-surface-layer border border-stroke-divider rounded-xl p-6 w-[480px] max-w-full shadow-xl">
-                        <h3 className="text-fs-xl font-semibold text-text-primary mb-2">匯出知識庫</h3>
-                        <p className="text-fs-sm text-text-secondary mb-4">
-                            這是本次備份的專屬恢復碼。還原備份時需要輸入此恢復碼，<strong className="text-text-primary">請妥善保存</strong>，遺失後無法還原備份。
-                        </p>
+                        <h3 className="text-fs-xl font-semibold text-text-primary mb-2">{t('settings.export_title')}</h3>
+                        <p className="text-fs-sm text-text-secondary mb-4" dangerouslySetInnerHTML={{ __html: t('settings.export_desc') }} />
                         <div className="bg-surface-base border border-stroke-divider rounded-lg p-4 mb-4 font-mono text-fs-sm text-text-primary leading-relaxed break-words">
                             {exportModal.mnemonic}
                         </div>
                         <button
                             onClick={() => {
                                 navigator.clipboard.writeText(exportModal.mnemonic);
-                                toast.success('已複製到剪貼簿');
+                                toast.success(t('common.copied'));
                             }}
                             className="text-fs-xs text-accent-default hover:underline mb-4 block"
                         >
-                            複製恢復碼
+                            {t('settings.copy_mnemonic')}
                         </button>
                         <label className="flex items-start gap-2 text-fs-sm text-text-secondary cursor-pointer mb-5">
                             <input
@@ -900,32 +955,32 @@ export const SettingsPage: React.FC = () => {
                                 onChange={e => setExportModal(s => ({ ...s, confirmed: e.target.checked }))}
                                 className="mt-0.5 shrink-0"
                             />
-                            我已安全保存備份恢復碼，了解遺失後無法還原此備份
+                            {t('settings.save_mnemonic_confirm')}
                         </label>
                         <div className="flex gap-3 justify-end">
                             <button
                                 onClick={() => setExportModal(s => ({ ...s, open: false }))}
                                 className="px-4 py-2 text-fs-sm text-text-secondary hover:text-text-primary border border-stroke-divider rounded-lg transition-colors"
                             >
-                                取消
+                                {t('common.cancel')}
                             </button>
                             <button
                                 disabled={!exportModal.confirmed || exportModal.loading}
                                 onClick={async () => {
                                     setExportModal(s => ({ ...s, loading: true }));
-                                    const tid = toast.loading('正在匯出知識庫...');
+                                    const tid = toast.loading(t('settings.exporting'));
                                     try {
                                         await invoke('export_kb', { destPath: exportModal.destPath, mnemonic: exportModal.mnemonic });
-                                        toast.success('知識庫已匯出', { id: tid });
+                                        toast.success(t('settings.export_success'), { id: tid });
                                         setExportModal(s => ({ ...s, open: false }));
                                     } catch (e: any) {
-                                        toast.error(`匯出失敗: ${e.toString()}`, { id: tid });
+                                        toast.error(`${t('settings.export_failed')}: ${e.toString()}`, { id: tid });
                                         setExportModal(s => ({ ...s, loading: false }));
                                     }
                                 }}
                                 className="px-4 py-2 text-fs-sm bg-accent-default text-white rounded-lg hover:bg-accent-light1 transition-colors disabled:opacity-50"
                             >
-                                {exportModal.loading ? '匯出中...' : '確認匯出'}
+                                {exportModal.loading ? t('settings.exporting') : t('settings.confirm_export')}
                             </button>
                         </div>
                     </div>
@@ -938,28 +993,28 @@ export const SettingsPage: React.FC = () => {
                     <div className="bg-surface-layer border border-stroke-divider rounded-xl p-6 w-[480px] max-w-full shadow-xl">
                         {importModal.step === 'input' ? (
                             <>
-                                <h3 className="text-fs-xl font-semibold text-text-primary mb-2">匯入知識庫</h3>
+                                <h3 className="text-fs-xl font-semibold text-text-primary mb-2">{t('settings.import_title')}</h3>
                                 <p className="text-fs-sm text-text-secondary mb-4">
-                                    請輸入備份時的恢復碼，並設定新密碼。匯入後將重啟應用。
+                                    {t('settings.import_desc')}
                                 </p>
                                 <div className="space-y-3 mb-4">
                                     <div>
-                                        <label className="block text-fs-sm font-medium text-text-primary mb-1">備份恢復碼（24 個單詞）</label>
+                                        <label className="block text-fs-sm font-medium text-text-primary mb-1">{t('settings.mnemonic_label')}</label>
                                         <textarea
                                             value={importModal.mnemonic}
                                             onChange={e => setImportModal(s => ({ ...s, mnemonic: e.target.value, error: '' }))}
                                             rows={3}
-                                            placeholder="apple bridge cloud dance echo forest..."
+                                            placeholder={t('settings.import_mnemonic_placeholder')}
                                             className="w-full rounded-md border border-stroke-divider px-3 py-2 text-fs-sm font-mono bg-surface-base text-text-primary focus:outline-none focus:ring-1 focus:ring-stroke-focus resize-none"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-fs-sm font-medium text-text-primary mb-1">設定新密碼</label>
+                                        <label className="block text-fs-sm font-medium text-text-primary mb-1">{t('settings.new_password_label')}</label>
                                         <input
                                             type="password"
                                             value={importModal.newPassword}
                                             onChange={e => setImportModal(s => ({ ...s, newPassword: e.target.value, error: '' }))}
-                                            placeholder="至少 8 個字符"
+                                            placeholder={t('settings.password_placeholder')}
                                             className="w-full rounded-md border border-stroke-divider px-3 py-2 text-fs-sm bg-surface-base text-text-primary focus:outline-none focus:ring-1 focus:ring-stroke-focus"
                                         />
                                     </div>
@@ -972,7 +1027,7 @@ export const SettingsPage: React.FC = () => {
                                         onClick={() => setImportModal(s => ({ ...s, open: false }))}
                                         className="px-4 py-2 text-fs-sm text-text-secondary hover:text-text-primary border border-stroke-divider rounded-lg transition-colors"
                                     >
-                                        取消
+                                        {t('common.cancel')}
                                     </button>
                                     <button
                                         disabled={importModal.loading || importModal.mnemonic.trim().split(/\s+/).length < 24 || importModal.newPassword.length < 8}
@@ -986,21 +1041,21 @@ export const SettingsPage: React.FC = () => {
                                                 });
                                                 setImportModal(s => ({ ...s, loading: false, step: 'new_recovery', newMnemonic, confirmed: false }));
                                             } catch (e: any) {
-                                                const msg = e.toString().includes('INVALID_MNEMONIC') ? '恢復碼不正確，請確認輸入無誤' : `匯入失敗: ${e.toString()}`;
+                                                const msg = e.toString().includes('INVALID_MNEMONIC') ? t('settings.invalid_mnemonic') : `${t('common.error')}: ${e.toString()}`;
                                                 setImportModal(s => ({ ...s, loading: false, error: msg }));
                                             }
                                         }}
                                         className="px-4 py-2 text-fs-sm bg-accent-default text-white rounded-lg hover:bg-accent-light1 transition-colors disabled:opacity-50"
                                     >
-                                        {importModal.loading ? '還原中...' : '還原知識庫'}
+                                        {importModal.loading ? t('settings.restoring') : t('settings.restore_kb')}
                                     </button>
                                 </div>
                             </>
                         ) : (
                             <>
-                                <h3 className="text-fs-xl font-semibold text-text-primary mb-2">⚠️ 請保存新的恢復碼</h3>
+                                <h3 className="text-fs-xl font-semibold text-text-primary mb-2">{t('settings.import_success_title')}</h3>
                                 <p className="text-fs-sm text-text-secondary mb-4">
-                                    知識庫已還原成功。以下是新的日常恢復碼，請妥善保存後再重啟應用。
+                                    {t('settings.import_success_desc')}
                                 </p>
                                 <div className="bg-surface-base border border-stroke-divider rounded-lg p-4 mb-4 font-mono text-fs-sm text-text-primary leading-relaxed break-words">
                                     {importModal.newMnemonic}
@@ -1008,11 +1063,11 @@ export const SettingsPage: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         navigator.clipboard.writeText(importModal.newMnemonic);
-                                        toast.success('已複製到剪貼簿');
+                                        toast.success(t('common.copied'));
                                     }}
                                     className="text-fs-xs text-accent-default hover:underline mb-4 block"
                                 >
-                                    複製恢復碼
+                                    {t('settings.copy_mnemonic')}
                                 </button>
                                 <label className="flex items-start gap-2 text-fs-sm text-text-secondary cursor-pointer mb-5">
                                     <input
@@ -1021,7 +1076,7 @@ export const SettingsPage: React.FC = () => {
                                         onChange={e => setImportModal(s => ({ ...s, confirmed: e.target.checked }))}
                                         className="mt-0.5 shrink-0"
                                     />
-                                    我已安全保存新的恢復碼
+                                    {t('settings.save_new_mnemonic_confirm')}
                                 </label>
                                 <div className="flex justify-end">
                                     <button
@@ -1031,7 +1086,7 @@ export const SettingsPage: React.FC = () => {
                                         }}
                                         className="px-4 py-2 text-fs-sm bg-accent-default text-white rounded-lg hover:bg-accent-light1 transition-colors disabled:opacity-50"
                                     >
-                                        重啟應用
+                                        {t('settings.restart_app')}
                                     </button>
                                 </div>
                             </>

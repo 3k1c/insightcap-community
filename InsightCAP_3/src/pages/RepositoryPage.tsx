@@ -101,19 +101,19 @@ function walkNodes(nodes: unknown[]): string {
 }
 
 const mediaColor: Record<string, string> = {
-    url:   'text-blue-500',
+    url: 'text-blue-500',
     video: 'text-purple-500',
     image: 'text-emerald-500',
-    pdf:   'text-red-400',
-    text:  'text-text-secondary',
+    pdf: 'text-red-400',
+    text: 'text-text-secondary',
 };
 
 const mediaBg: Record<string, string> = {
-    url:   'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-500/15 dark:to-blue-600/10',
-    video: 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-500/15 dark:to-purple-600/10',
-    image: 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/15 dark:to-emerald-600/10',
-    pdf:   'bg-gradient-to-br from-red-50 to-red-100 dark:from-red-400/15 dark:to-red-500/10',
-    text:  'bg-gradient-to-br from-gray-50 to-gray-100 dark:from-white/5 dark:to-white/10',
+    url: 'bg-blue-500/10 dark:bg-blue-500/20',
+    video: 'bg-purple-500/10 dark:bg-purple-500/20',
+    image: 'bg-emerald-500/10 dark:bg-emerald-500/20',
+    pdf: 'bg-red-500/10 dark:bg-red-500/20',
+    text: 'bg-surface-subtle',
 };
 
 /* ── types ── */
@@ -510,11 +510,10 @@ export const RepositoryPage: React.FC = () => {
                                     key={f}
                                     type="button"
                                     onClick={() => setTypeFilter(f)}
-                                    className={`rounded-full px-3 py-1 text-fs-xs font-semibold transition-colors ${
-                                        active
-                                            ? 'bg-accent-default text-white'
-                                            : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
-                                    }`}
+                                    className={`rounded-full px-3 py-1 text-fs-xs font-semibold transition-colors ${active
+                                        ? 'bg-accent-default text-white'
+                                        : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
+                                        }`}
                                 >
                                     {label}
                                 </button>
@@ -531,11 +530,10 @@ export const RepositoryPage: React.FC = () => {
                                             key={tag.id}
                                             type="button"
                                             onClick={() => setSelectedTag(active ? null : tag.name)}
-                                            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-fs-xs font-semibold transition-colors ${
-                                                active
-                                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                                    : 'bg-surface-subtle text-text-tertiary hover:text-text-secondary'
-                                            }`}
+                                            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-fs-xs font-semibold transition-colors ${active
+                                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                                : 'bg-surface-subtle text-text-tertiary hover:text-text-secondary'
+                                                }`}
                                         >
                                             <Tag className="h-2.5 w-2.5" />
                                             {tag.name}
@@ -587,18 +585,16 @@ export const RepositoryPage: React.FC = () => {
                                                     ref={(el) => {
                                                         markerRefs.current[group.dateKey] = el;
                                                     }}
-                                                    className={`absolute left-[-19px] top-2.5 h-2.5 w-2.5 rounded-full border-2 ${
-                                                        isActive
-                                                            ? 'border-accent-default bg-accent-default shadow-[0_0_0_3px_rgba(37,99,235,0.12)]'
-                                                            : 'border-stroke-card bg-surface-base'
-                                                    }`}
+                                                    className={`absolute left-[-19px] top-2.5 h-2.5 w-2.5 rounded-full border-2 ${isActive
+                                                        ? 'border-accent-default bg-accent-default shadow-[0_0_0_3px_rgba(37,99,235,0.12)]'
+                                                        : 'border-stroke-card bg-surface-base'
+                                                        }`}
                                                 />
                                                 <div
-                                                    className={`cursor-pointer rounded-lg px-1.5 py-1 transition-colors ${
-                                                        isActive
-                                                            ? 'text-text-primary'
-                                                            : 'text-text-secondary hover:text-text-primary'
-                                                    } hidden lg:block`}
+                                                    className={`cursor-pointer rounded-lg px-1.5 py-1 transition-colors ${isActive
+                                                        ? 'text-text-primary'
+                                                        : 'text-text-secondary hover:text-text-primary'
+                                                        } hidden lg:block`}
                                                 >
                                                     <div className="text-fs-sm font-semibold">{formatDateLabel(group.dateKey, t)}</div>
                                                     <div className="mt-0.5 text-fs-xs text-text-tertiary">{formatDateSub(group.dateKey, t)}</div>
@@ -642,9 +638,9 @@ export const RepositoryPage: React.FC = () => {
                                                     const iconBg = mediaBg[mt] || mediaBg.text;
                                                     const icon =
                                                         mt === 'url' ? <ExternalLink className="h-6 w-6" /> :
-                                                        mt === 'video' ? <PlayCircle className="h-6 w-6" /> :
-                                                        mt === 'image' ? <ImageIcon className="h-6 w-6" /> :
-                                                        <FileText className="h-6 w-6" />;
+                                                            mt === 'video' ? <PlayCircle className="h-6 w-6" /> :
+                                                                mt === 'image' ? <ImageIcon className="h-6 w-6" /> :
+                                                                    <FileText className="h-6 w-6" />;
                                                     return (
                                                         <button
                                                             key={item.id}
@@ -682,7 +678,7 @@ export const RepositoryPage: React.FC = () => {
                                                     <button
                                                         type="button"
                                                         onClick={handleAddTodayDocument}
-                                                        className="group/card relative flex min-h-[120px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-[linear-gradient(145deg,rgba(37,99,235,0.08),rgba(37,99,235,0.03))] text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-[linear-gradient(145deg,rgba(37,99,235,0.14),rgba(37,99,235,0.06))] hover:shadow-[var(--shadow-card-hover)]"
+                                                        className="group/card relative flex min-h-[120px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-accent-default/5 text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-accent-default/10 hover:shadow-[var(--shadow-card-hover)]"
                                                     >
                                                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-accent-default/25 bg-accent-default/12 transition-transform duration-200 group-hover/card:scale-105">
                                                             <Plus className="h-4 w-4" />
@@ -716,10 +712,10 @@ export const RepositoryPage: React.FC = () => {
                                                             className="group/card relative flex min-h-[120px] flex-col overflow-hidden rounded-xl border border-stroke-card bg-surface-layer shadow-[var(--shadow-card)] transition-all duration-200 hover:scale-[1.02] hover:shadow-[var(--shadow-card-hover)] active:scale-100 cursor-pointer"
                                                         >
                                                             <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-2.5">
-                                                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 text-amber-500 dark:from-amber-500/15 dark:to-amber-600/10">
+                                                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
                                                                     <NotebookPen className="h-5 w-5" />
                                                                 </div>
-                                                <p className="line-clamp-2 w-full text-center text-fs-sm font-medium text-text-primary">
+                                                                <p className="line-clamp-2 w-full text-center text-fs-sm font-medium text-text-primary">
                                                                     {titleOf(note.title)}
                                                                 </p>
                                                             </div>

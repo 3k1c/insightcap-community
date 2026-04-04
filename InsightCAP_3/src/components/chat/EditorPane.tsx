@@ -87,13 +87,13 @@ const ImageNodePro = TiptapNode.create({
     },
 });
 import {
-    Bold, Italic, Underline as UnderlineIcon, Heading1, Heading2,
+    Bold, Italic, Underline as UnderlineIcon,
     List, ListOrdered,
     Code, Highlighter, X, Table as TableIcon, Plus, Trash2,
     AlignLeft, AlignCenter, AlignRight, AlignJustify,
     Upload, Columns, Merge, Split, LayoutTemplate, ChevronDown, Link as LinkIcon, Image as ImageIcon,
     Sparkles, Wand2, Eraser, Check, RotateCcw, RefreshCw, FileText, Languages, Smile, ChevronRight,
-    FolderOpen, History
+    FolderOpen, History as HistoryIcon
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import {
@@ -183,8 +183,6 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
     const exportMenuRef = useRef<HTMLDivElement>(null);
     const [showTurnIntoMenu, setShowTurnIntoMenu] = useState(false);
     const turnIntoMenuRef = useRef<HTMLDivElement>(null);
-    const [showListMenu, setShowListMenu] = useState(false);
-    const listMenuRef = useRef<HTMLDivElement>(null);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -197,9 +195,6 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
             }
             if (turnIntoMenuRef.current && !turnIntoMenuRef.current.contains(event.target as Node)) {
                 setShowTurnIntoMenu(false);
-            }
-            if (listMenuRef.current && !listMenuRef.current.contains(event.target as Node)) {
-                setShowListMenu(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -1855,7 +1850,7 @@ export const EditorPane: React.FC = () => {
                             className={`p-1 rounded transition-colors ${showHistoryMenu ? 'bg-surface-base text-text-primary' : 'text-text-tertiary hover:bg-surface-base hover:text-text-secondary'}`}
                             title="歷史快照（最多 20 個）"
                         >
-                            <History className="w-3.5 h-3.5" />
+                            <HistoryIcon className="w-3.5 h-3.5" />
                         </button>
                         {showHistoryMenu && (
                             <div className="absolute bottom-full right-0 mb-1 w-64 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
