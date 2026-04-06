@@ -94,6 +94,8 @@ InsightCAP 是**經驗調用系統**。
 │  │  capture_commands（quick_capture / ingest_file / create_temp_chunk） │  │
 │  │  knowledge_commands（timeline / editor document / source CRUD）      │  │
 │  │  memory_commands  project_commands  settings_commands │  │
+│  │  space_commands（get_all_spaces / get_space_insight）  │  │
+│  │  decision_commands（create / get_due / report_outcome / dismiss） │  │
 │  │  auth_commands  bilibili_auth（B 站 SESSDATA 登入）   │  │
 │  │  window commands（set_zoom）                          │  │
 │  │                         │                            │  │
@@ -113,8 +115,8 @@ InsightCAP 是**經驗調用系統**。
 │  │  usearch（主索引 + 外部 KB 索引）                    │  │
 │  │                                                      │  │
 │  │  Background Services                                 │  │
-│  │  CaptureProcessor  ConversationScheduler（Stub）     │  │
-│  │  PatternPromotion  SpaceRecluster（Stub）             │  │
+│  │  CaptureProcessor  ConversationScheduler（完整實作）  │  │
+│  │  PatternPromotion（完整實作）  SpaceRecluster（完整實作） │  │
 │  │  OCRWorker（Vision API）  CloudSyncWatcher            │  │
 │  │  HTTPAPIServer（Axum, 127.0.0.1:3030, Phase 6）      │  │
 │  └──────────────────────────────────────────────────────┘  │
@@ -254,7 +256,13 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 |---------|------|------|
 | 一般網頁 | HTTP GET + Readability 正文萃取 | 無降級 |
 | YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | yt-dlp 不存在時爬取頁面標題+描述 |
-| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 需要 SESSDATA Cookie（設定頁登入） |
+| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 需要 SESSDATA Cookie（AI 設置頁彈出視窗登入） |
+
+**Bilibili 登入驗證機制（原生彈出視窗）：**
+- 於設定頁（AI 設置分頁）點擊登入，呼叫 Rust command `open_bilibili_login`。
+- 建立 `WebviewWindow` 開啟 B站原生登入網頁，由用戶操作（支援密碼、簡訊、掃碼）。
+- 後台非同步輪詢利用 Tauri v2原生 `win.cookies()` API 繞過 HttpOnly 限制，主動擷取 `SESSDATA`。
+- 成功擷取後自動關閉彈窗並寫回 `Settings`，前端實時更新登錄狀態燈號。
 
 三個入口（對話附件、Ctrl+Alt+F、Ctrl+Alt+G）均使用同一個 `parse_url_content` 實作，差異只在觸發流程：
 - 對話輸入框「加入網址」→ `create_temp_chunk` → **立即同步**解析，結果作為臨時附件
@@ -264,13 +272,23 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 
 ## Space 設計
 
+
 Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 
 - 由 AI 自動生成名稱和聚類內容，用戶可修正名稱
 - 每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度，動態重新聚合
 - 用戶不需要手動管理 chunk 屬於哪個 Space
-- 前台作為 chunk 分類篩選，在儲存庫頁的 chunk 編輯面板中使用（Space dropdown）
+- 前台僅作為 chunk 分類篩選，在儲存庫頁的 chunk 編輯面板與 header Space dropdown 使用
 - 不在 Project 裡明確綁定，不作為 @ 引用的對象，不作為 RAG 的硬邊界
+
+### 儲存庫頁 Space 篩選與 header 結構
+
+儲存庫頁 header 現在僅包含：標題、統計數、搜尋框、filter pills（來源/筆記/全部 → Space dropdown → tag pills），無第二層區塊。
+
+- Space dropdown 選擇後會以藍色 active 樣式顯示，並觸發後端查詢，只顯示該 Space 的來源。
+- SpaceInsightPanel 元件已移除，header 下方不再有知識分佈視圖。
+
+（原 get_space_insight 僅供未來進階分析使用，現階段 UI 不再顯示知識分佈統計）
 
 ---
 
@@ -423,11 +441,16 @@ toast 顯示導入成功 / 失敗結果
 
 ### ContextHintBanner
 
-對話開始時若有相關知識，從頂部滑入（非阻塞）：
+每次 RAG 召回完成後，從頂部滑入（非阻塞），顯示具體內容預覽：
 
 ```
-◆ 發現可複用方法  ▲ 2 條風險記錄  ● 5 個相關來源
+◆ 場地選擇標準框架（Pattern）  ▲ 嘉賓確認需雙重核實（Log）  ● 5 個相關來源
 ```
+
+- 後端 `retrieve_context` 回傳 `pattern_hints` / `log_hints`（每項前 50 字元）
+- `build_prompt` 將 hints 透過 `contextHints` 欄位傳回前端（stream event / fallback response）
+- 點擊可展開查看所有 hint 明細
+- 切換對話時重置為空
 
 ---
 
@@ -506,6 +529,7 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `chat_prompt_instruction` | `string`（非 JSON） | 用戶自訂 AI 回答風格，由 `store::save_settings` 獨立寫入 |
 | `general` | `minimizeToTray` | 關閉主視窗時最小化到系統托盤（預設 true） |
 | `knowledge` | `kbPath` | 知識庫根目錄路徑 |
+| `bilibiliSessdata` | `string` | B 站登入憑證（由彈出視窗自動擷取，位於 AI 設置下） |
 | `aiModels` | `chatLlm` | 對話主模型（`provider` / `model` / `apiKey` / `baseUrl`） |
 | `aiModels` | `contentProcessorLlm` | Tagger / SpaceEngine 用的輕量模型（建議 3b 以下） |
 | `aiModels` | `visionModel` | OCR Worker 使用的 Vision 模型（處理截圖） |
@@ -804,6 +828,52 @@ CREATE TABLE external_knowledge_bases (
 );
 ```
 
+**decisions 表**（決策追蹤，定時回顧）
+
+```sql
+CREATE TABLE decisions (
+  id               TEXT PRIMARY KEY,
+  project_id       TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  conversation_id  TEXT,
+  variable_desc    TEXT NOT NULL,
+  options          TEXT DEFAULT '[]',
+  chosen_option    TEXT NOT NULL,
+  outcome_source   TEXT,
+  outcome_rating   TEXT,
+  -- good | ok | bad | critical
+  outcome_note     TEXT,
+  status           TEXT DEFAULT 'pending',
+  -- pending | reviewed | dismissed
+  trigger_at       TEXT NOT NULL,
+  -- 預設建立後 14 天觸發回顧
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+```
+
+**chunk_relations 表**（反向鏈接，chunk 語義關聯）
+
+```sql
+CREATE TABLE chunk_relations (
+  id          TEXT PRIMARY KEY,
+  from_id     TEXT NOT NULL,   -- capture_id 或 memory_chunk_id
+  to_id       TEXT NOT NULL,
+  from_type   TEXT NOT NULL,   -- 'capture' | 'memory_chunk'
+  to_type     TEXT NOT NULL,
+  relation    TEXT NOT NULL,   -- 'references' | 'contradicts' | 'extends'
+  confidence  REAL NOT NULL DEFAULT 1.0,
+  created_at  TEXT NOT NULL,
+  UNIQUE (from_id, to_id, relation)
+);
+```
+
+**spaces 表新增欄位**（Space Wiki 層）
+
+```sql
+ALTER TABLE spaces ADD COLUMN wiki_content      TEXT NOT NULL DEFAULT '';
+ALTER TABLE spaces ADD COLUMN wiki_updated_at   TEXT NOT NULL DEFAULT '';
+```
+
 ### 資料流向
 
 ```
@@ -814,6 +884,7 @@ CREATE TABLE external_knowledge_bases (
   → Tagger 提取標籤 → tags 表
   → Embedding → usearch
   → SpaceEngine 更新聚類
+  → ChunkRelationEngine 分析反向鏈接 → chunk_relations
 
 編輯器文件
   → 建立 source（type='editor', source_category='editor'）
@@ -980,6 +1051,8 @@ pub trait Embedder: Send + Sync {
   pattern：+0.05
   log：+0.08
   sources.use_frequency 高：+0.02
+  captures.is_user_edited = 1：+0.05（一手資料優先）
+  memory_chunks.placed_by = 'user'：+0.05（一手資料優先）
 ```
 
 **第二階段：組裝分層 Context**
@@ -1171,9 +1244,9 @@ src/
 │   └── locales/
 ├── components/
 │   ├── ui/                 # 基礎元件庫
-│   ├── memory/             # ContextHintBanner、CitationBadge
+│   ├── memory/             # ContextHintBanner、CitationBadge、DecisionReviewToast、PatternPromotionToast、MemoryConfirmToast
 │   ├── chat/               # 含 EditorPane.tsx（Tiptap 編輯器）、extensions/
-│   ├── knowledge/          # 儲存庫：TypeFilterBar、TimelineView、ChunkListPanel、ChunkEditPanel、DocumentPreview
+│   ├── knowledge/          # 儲存庫：TypeFilterBar、TimelineView、ChunkListPanel、ChunkEditPanel、DocumentPreview、SpaceInsightPanel
 │   └── settings/
 ├── stores/
 │   ├── themeStore.ts
@@ -1414,6 +1487,88 @@ Embedding → usearch
 - 自動識別 URL 並設定 content_type
 
 ---
+
+*版本：v2.15 | 日期：2026-04-06*
+本次更新：
+- 新增 Space Wiki 層：每個 Space 有一份 AI 持續維護的結構化知識文件
+- `spaces` 表新增 `wiki_content TEXT DEFAULT ''` + `wiki_updated_at TEXT DEFAULT ''`（010_space_wiki.sql）
+- 新增 `SpaceWikiEngine` 服務（`services/space_wiki_engine.rs`）
+  - `update_wiki_for_space(space_id)`：取最多 30 個 memory_chunks（pattern/log 優先）→ LLM 增量更新 wiki（temperature=0.3, max_tokens=1500）
+  - Wiki 結構：`## 核心框架` / `## 已掌握方法` / `## 已知風險` / `## 知識空白`
+  - LLM 輸出 `INSUFFICIENT` 時跳過寫入
+- 新增三個 commands：`get_space_wiki` / `save_space_wiki` / `regenerate_space_wiki`，已在 `lib.rs` 註冊
+- 觸發點：`conversation_scheduler.rs` `Ok(chunk_id)` 後，非同步查 `memory_chunks.space_id` → spawn `update_wiki_for_space`
+- `SpaceInsightPanel.tsx` 新增 Insight / Wiki 分頁切換
+  - Wiki 分頁：`<pre>` 渲染 Markdown、行內編輯（textarea）、「重新生成」按鈕
+  - 更新時間標示 `updated_at`
+- `prompts.rs` 新增 `SPACE_WIKI_SYSTEM` 常數
+- i18n 新增 `space_wiki` 鍵群（9 個 key）：zh-TW / zh-CN / en + `types.ts`
+
+*版本：v2.14 | 日期：2026-04-06*
+本次更新：
+- 新增反向鏈接（Chunk 關聯關係）：`chunk_relations` 表（009_chunk_relations.sql）
+  - 欄位：`from_id / to_id / from_type / to_type / relation / confidence / created_at`
+  - 關係類型：`references`（引用）| `extends`（延伸）| `contradicts`（矛盾）
+  - `UNIQUE INDEX (from_id, to_id, relation)` 防重複
+- 新增 `ChunkRelationEngine` 服務（`services/chunk_relation_engine.rs`）
+  - `analyze_and_link(chunk_id, chunk_type, content)`：向量預篩（相似度 ≥ 0.50，Top-10）→ LLM 判斷關係類型 → 寫入 `chunk_relations`
+  - `fetch_linked_chunks(chunk_ids)`：查詢已召回 chunks 的所有關聯，回傳另一端 chunk 的內容
+  - LLM prompt 輸出格式：`relation:confidence`（例如 `references:0.85`），信心度 < 0.6 視為無關係
+- `RagEngine.retrieve_context` 新增第 6 步：對已召回的 capture_ids + memory_chunk_ids 呼叫 `fetch_linked_chunks`，將關聯 chunks 補充到 `data_context`（標示 `⚠️ 矛盾觀點` / `延伸資訊` / `相關記憶`）
+- 新增 `get_chunk_relations` command，已在 `lib.rs` 註冊，供前端引用預覽查詢
+- 觸發點：`capture_processor.rs` 每個 chunk 寫入 + embedding 後，非同步 spawn 呼叫 `analyze_and_link`
+- 觸發點：`conversation_scheduler.rs` `MemoryEngine` 寫入 memory_chunk 成功後，非同步 spawn 呼叫 `analyze_and_link`
+
+*版本：v2.13 | 日期：2026-04-06*
+本次更新：
+- SpaceRecluster 完整實作：`SpaceEngine` 重構，加入 `recluster_all` 方法
+  - 計算各 Space embedding_center（已分配 chunks 向量平均），存回 `spaces.embedding_center`（BLOB）
+  - 批次重新分配 captures + memory_chunks（每批 50 筆，相似度門檻 ≥ 0.45）
+  - 完成後更新 `spaces.chunk_count`
+- `SpaceEngine::new` 加入 `embedder` + `vector_store` 參數，同步更新 `capture_processor.rs` + `editor_commands.rs` 呼叫點
+- 新增 `trigger_space_recluster` command，已在 `lib.rs` 註冊
+- `space_recluster.rs` 完整實作：監聽 `space-created` event + 每 30 分鐘定時重聚類，完成後 emit `space-reclustered` event
+
+*版本：v2.12 | 日期：2026-04-06*
+本次更新：
+- ConversationScheduler 標記為「完整實作」：已具備 30 秒輪詢 + LLM 摘要（含增量更新 + fallback）+ MemoryEngine 深度推斷 knowledge_type
+- 新增 `summary-completed` event emit：摘要完成後通知前端
+- 新增 `MemoryConfirmToast` 前端元件：處理信心度 < 0.75 的 data/log 類型 pending_confirm chunks
+- `App.tsx` main 狀態下掛載 `MemoryConfirmToast`
+- i18n `types.ts` 補充 `memory_confirm` interface（6 個 key）
+
+*版本：v2.11 | 日期：2026-04-06*
+本次更新：
+- PatternPromotion 路徑 B 完整實作：`PatternEngine` 加入標籤重疊 ≥ 2 + 向量相似度 ≥ 0.65 + ≥ 3 個不同對話三重條件篩選
+- 升格結果寫入 `memory_chunks`（`pending_confirm = 1`），取代舊版寫入 `captures` 的行為
+- Log `trigger_context` 自動擴展：掃描近似 data chunks，將相似內容關鍵字追加到 trigger_context
+- 新增 `PatternPromotionToast` 前端元件：監聽 `pattern-promoted` event，非阻塞顯示升格建議
+- `App.tsx` main 狀態下掛載 `PatternPromotionToast`（左下角，與 DecisionToast 右下角錯開）
+- Background Services 架構圖標記 PatternPromotion 為「完整實作」
+- i18n `types.ts` 補充 `pattern_promotion` interface（6 個 key）
+
+*版本：v2.10 | 日期：2026-04-06*
+本次更新：
+- 新增 Decision 層：`decisions` 表（008_decisions.sql），追蹤對話中的決策並在 14 天後觸發回顧
+- 後端 `decision_commands.rs`：`create_decision` / `get_due_decisions` / `get_project_decisions` / `report_decision_outcome` / `dismiss_decision`
+- 前端 `DecisionReviewToast` 元件：固定右下角 Toast，每 5 分鐘輪詢到期決策，支援 4 級評分 + 備註
+- `App.tsx` main 狀態下掛載 `DecisionReviewToast`
+- Schema 設計章節補充 `decisions` 表結構
+- Command Layer 補充 `decision_commands`
+- 前端模組結構補充 `DecisionReviewToast`
+- i18n `types.ts` 補充 `decision` interface（13 個 key）
+
+*版本：v2.9 | 日期：2026-04-06*
+本次更新：
+- 新增 Space 知識可用性視圖：儲存庫頁 `SpaceInsightPanel` 元件，選擇 Space 後展示 knowledge_type 分佈 + 標籤統計
+- 新增後端 `get_space_insight` command（`space_commands.rs`），統計 memory_chunks + captures 按 Space 的分佈
+- 系統架構圖 Command Layer 補充 `space_commands`
+- 前端模組結構補充 `SpaceInsightPanel`
+- RAG 內容來源分層：`captures.is_user_edited = 1` 或 `memory_chunks.placed_by = 'user'` → RAG 分數 +0.05，一手資料優先於 AI 生成內容
+- ContextHintBanner 強化：從純數量顯示改為具體內容預覽（pattern/log 前 50 字元），支援點擊展開明細
+- 後端 `retrieve_context` 新增 `pattern_hints` / `log_hints` 回傳；`build_prompt` 回傳新增 `contextHints` 欄位
+- `chatStore.ContextStats` 擴充 `patternHints` / `logHints` 欄位，切換對話時重置
+- 不改 schema，純前端 + 後端邏輯改動
 
 *版本：v2.8 | 日期：2026-03-31*
 本次更新：
