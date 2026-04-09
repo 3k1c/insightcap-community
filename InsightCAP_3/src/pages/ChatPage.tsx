@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useChatStore } from '../stores/chatStore';
 import { useKnowledgeStore } from '../stores/knowledgeStore';
 import { MessageList } from '../components/chat/MessageList';
@@ -38,6 +39,23 @@ export const ChatPage: React.FC = () => {
 
     const { loadSources } = useKnowledgeStore();
     const { isEditorOpen, toggleEditor, isSidebarOpen } = useUiStore();
+
+    const [dragPreview, setDragPreview] = useState<{ x: number; y: number; text: string } | null>(null);
+
+    // 監聽訊息拖曳預覽事件
+    useEffect(() => {
+        const onPreview = (e: Event) => {
+            const { x, y, text } = (e as CustomEvent<{ x: number; y: number; text: string }>).detail;
+            setDragPreview({ x, y, text });
+        };
+        const onClear = () => setDragPreview(null);
+        window.addEventListener('text-drag-preview', onPreview);
+        window.addEventListener('text-drag-preview-clear', onClear);
+        return () => {
+            window.removeEventListener('text-drag-preview', onPreview);
+            window.removeEventListener('text-drag-preview-clear', onClear);
+        };
+    }, []);
 
     // Resizable split: chatPct is the % width of the chat column (editor gets the rest)
     const [chatPct, setChatPct] = useState(45);
@@ -256,6 +274,7 @@ export const ChatPage: React.FC = () => {
         mentionedTagNames: string[];
         attachedFiles: { name: string; filePath: string; fileType: string; previewUrl?: string; tempChunkIds?: string[] }[];
         tempChunkIds?: string[];
+        thinkingMode?: 'normal' | 'think';
     }) => {
         if (!activeConversationId) {
             await createNewConversation(activeProjectId || undefined);
@@ -351,6 +370,7 @@ export const ChatPage: React.FC = () => {
     const noConversation = !activeConversationId && conversations.length === 0;
 
     return (
+        <>
         <div className="flex h-full w-full bg-surface-base text-text-primary overflow-hidden">
 
             {/* ── 側邊欄：項目與對話 ── */}
@@ -466,7 +486,7 @@ export const ChatPage: React.FC = () => {
                                             </div>
                                             {/* Project 快捷選單，錨定在 ⋮ 容器右下角 */}
                                             {showProjectMenu === project.id && (
-                                                <div className="absolute right-0 top-4 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-50 w-28 py-1 px-1 animate-in fade-in zoom-in duration-150"
+                                                <div className="absolute right-0 top-4 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl z-50 w-28 py-1 px-1 animate-in fade-in zoom-in duration-150"
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
                                                     <button onClick={(e) => { e.stopPropagation(); handleNewConversation(project.id); setShowProjectMenu(null); }}
@@ -556,7 +576,7 @@ export const ChatPage: React.FC = () => {
                                                                 <MoreVertical className="w-3 h-3" />
                                                             </button>
                                                             {showConvMenu === conv.id && (
-                                                                <div className="absolute right-0 top-5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-50 min-w-[100px] py-1 px-1 animate-in fade-in zoom-in duration-150">
+                                                                <div className="absolute right-0 top-5 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl z-50 min-w-[100px] py-1 px-1 animate-in fade-in zoom-in duration-150">
                                                                     <button onClick={(e) => { e.stopPropagation(); updateConversation(conv.id, !conv.isPinned); setShowConvMenu(null); }}
                                                                         className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left items-center gap-2 transition-colors">
                                                                         {conv.isPinned ? '取消置頂' : '置頂'}
@@ -733,5 +753,20 @@ export const ChatPage: React.FC = () => {
                 )}
             </div>
         </div>
+
+        {dragPreview && createPortal(
+            <div
+                style={{ position: 'fixed', left: dragPreview.x, top: dragPreview.y, transform: 'translate(-50%, -50%)', zIndex: 9999, pointerEvents: 'none' }}
+                className="max-w-[260px] rounded-xl overflow-hidden"
+            >
+                <div className="px-3.5 py-3 max-h-[140px] overflow-hidden">
+                    <p className="text-[11.5px] leading-relaxed text-text-secondary/30 whitespace-nowrap overflow-hidden text-ellipsis select-none">
+                        {dragPreview.text}
+                    </p>
+                </div>
+            </div>,
+            document.body
+        )}
+        </>
     );
 };

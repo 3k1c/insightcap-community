@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, FileText, ExternalLink, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState, useCallback, KeyboardEvent } from 'react';
+import { Search, FileText, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers, Pencil, Check, ChevronDown, Globe, FileCode, FileSpreadsheet, File, BookText } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { toast } from 'sonner';
 import { useKnowledgeStore, type TimelineSourceItem, type CaptureDetail } from '../stores/knowledgeStore';
@@ -51,16 +51,36 @@ function safeDateKey(value: string | number | undefined | null): string {
 function safeTitle(t: string | undefined | null): string {
     if (!t) return '';
 
-    const cleaned = t
-        .replace(/\s*-\s*(modified|已修改)$/i, '')
-        .replace(/\s*-\s*(visual studio code|vscode)$/i, '')
-        .replace(/\s*-\s*insightcap$/i, '')
-        .replace(/\s*-\s*(visual studio code|vscode)\s*-\s*(modified|已修改)$/i, '')
-        .replace(/\s*-\s*insightcap\s*-\s*(visual studio code|vscode)(\s*-\s*(modified|已修改))?$/i, '')
-        .replace(/\s{2,}/g, ' ')
-        .trim();
+    let cleaned = t;
 
-    return cleaned;
+    // Remove "modified" flags
+    cleaned = cleaned.replace(/\s*[-—]\s*(modified|已修改)$/i, '');
+
+    // If it contains .pdf, cut off everything after .pdf
+    const pdfIndex = cleaned.toLowerCase().lastIndexOf('.pdf');
+    if (pdfIndex !== -1 && pdfIndex + 4 < cleaned.length) {
+        const afterPdf = cleaned.slice(pdfIndex + 4);
+        if (/^\s*[-—|]/.test(afterPdf)) {
+            cleaned = cleaned.slice(0, pdfIndex + 4);
+        }
+    }
+
+    // Iteratively remove common application names from the end of the window title
+    const appNames = [
+        'visual studio code', 'vscode', 'insightcap',
+        'adobe acrobat.*', 'waterfox', 'google chrome',
+        'mozilla firefox', 'firefox', 'microsoft edge', 'edge',
+        'brave', 'safari', 'opera', 'arc'
+    ].join('|');
+
+    // We also dynamically remove anything that looks like " - SiteName.com" at the end
+    const appRegex = new RegExp(`\\s*[-—|]\\s*(${appNames}|[a-zA-Z0-9-]+\\.(com|net|org|io|tw|hk|cn))\\s*$`, 'i');
+
+    while (appRegex.test(cleaned)) {
+        cleaned = cleaned.replace(appRegex, '');
+    }
+
+    return cleaned.replace(/\s{2,}/g, ' ').trim();
 }
 
 function inferPath(item: TimelineSourceItem): string | null {
@@ -105,6 +125,9 @@ const mediaColor: Record<string, string> = {
     video: 'text-purple-500',
     image: 'text-emerald-500',
     pdf: 'text-red-400',
+    word: 'text-blue-600 dark:text-blue-400',
+    excel: 'text-emerald-600 dark:text-emerald-400',
+    code: 'text-amber-500',
     text: 'text-text-secondary',
 };
 
@@ -113,8 +136,48 @@ const mediaBg: Record<string, string> = {
     video: 'bg-purple-500/10 dark:bg-purple-500/20',
     image: 'bg-emerald-500/10 dark:bg-emerald-500/20',
     pdf: 'bg-red-500/10 dark:bg-red-500/20',
+    word: 'bg-blue-500/10 dark:bg-blue-500/20',
+    excel: 'bg-emerald-500/10 dark:bg-emerald-500/20',
+    code: 'bg-amber-500/10 dark:bg-amber-500/20',
     text: 'bg-surface-subtle',
 };
+
+function getMediaConfig(item: TimelineSourceItem) {
+    let mt = item.mediaType || 'text';
+
+    // Guess by inspecting raw title/path
+    const pathStr = (item.filePath || item.localDocPath || item.title || '').toLowerCase();
+
+    if (mt === 'url' || pathStr.startsWith('http')) {
+        mt = 'url';
+    } else if (pathStr.endsWith('.pdf')) {
+        mt = 'pdf';
+    } else if (/\.(doc|docx)$/.test(pathStr)) {
+        mt = 'word';
+    } else if (/\.(xls|xlsx|csv)$/.test(pathStr)) {
+        mt = 'excel';
+    } else if (/\.(js|ts|jsx|tsx|py|rs|go|c|cpp|h|java|json|html|css)$/.test(pathStr)) {
+        mt = 'code';
+    } else if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(pathStr)) {
+        mt = 'image';
+    } else if (/\.(mp4|mov|avi|webm)$/.test(pathStr)) {
+        mt = 'video';
+    }
+
+    const iconColor = mediaColor[mt] || mediaColor.text;
+    const iconBg = mediaBg[mt] || mediaBg.text;
+
+    let icon = <File className="h-6 w-6" />;
+    if (mt === 'url') icon = <Globe className="h-6 w-6" />;
+    else if (mt === 'video') icon = <PlayCircle className="h-6 w-6" />;
+    else if (mt === 'image') icon = <ImageIcon className="h-6 w-6" />;
+    else if (mt === 'pdf') icon = <BookText className="h-6 w-6" />;
+    else if (mt === 'word') icon = <FileText className="h-6 w-6" />;
+    else if (mt === 'excel') icon = <FileSpreadsheet className="h-6 w-6" />;
+    else if (mt === 'code') icon = <FileCode className="h-6 w-6" />;
+
+    return { mt, iconColor, iconBg, icon };
+}
 
 /* ── types ── */
 
@@ -141,8 +204,9 @@ export const RepositoryPage: React.FC = () => {
     const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
     const [previewChunks, setPreviewChunks] = useState<CaptureDetail[]>([]);
     const [isLoadingChunks, setIsLoadingChunks] = useState(false);
-    const [typeFilter, setTypeFilter] = useState<'all' | 'source' | 'note'>('all');
+    const [typeFilter, setTypeFilter] = useState<'all' | 'source' | 'note'>('source');
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
+    const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false);
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const firstRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -152,7 +216,60 @@ export const RepositoryPage: React.FC = () => {
     const isLoadingTimeline = useKnowledgeStore((s) => s.isLoadingTimeline);
     const loadTimeline = useKnowledgeStore((s) => s.loadTimeline);
     const deleteSource = useKnowledgeStore((s) => s.deleteSource);
+    const updateCapture = useKnowledgeStore((s) => s.updateCapture);
+    const spaces = useKnowledgeStore((s) => s.spaces);
+    const loadSpaces = useKnowledgeStore((s) => s.loadSpaces);
+    const spaceFilter = useKnowledgeStore((s) => s.spaceFilter);
+    const setSpaceFilter = useKnowledgeStore((s) => s.setSpaceFilter);
     const titleOf = (value: string | undefined | null) => safeTitle(value) || t('repository.untitled');
+
+    // chunk 編輯狀態
+    const [editingChunkId, setEditingChunkId] = useState<string | null>(null);
+    const [editSpaceId, setEditSpaceId] = useState<string>('');
+    const [editTags, setEditTags] = useState<string[]>([]);
+    const [editTagInput, setEditTagInput] = useState('');
+    const [isSavingChunk, setIsSavingChunk] = useState(false);
+
+    const startEditChunk = useCallback((chunk: CaptureDetail) => {
+        setEditingChunkId(chunk.id);
+        setEditSpaceId(chunk.spaceId ?? '');
+        try {
+            const parsed = JSON.parse(chunk.tags);
+            setEditTags(Array.isArray(parsed) ? parsed : []);
+        } catch {
+            setEditTags([]);
+        }
+        setEditTagInput('');
+    }, []);
+
+    const cancelEditChunk = useCallback(() => {
+        setEditingChunkId(null);
+        setEditTagInput('');
+    }, []);
+
+    const handleTagKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && editTagInput.trim()) {
+            e.preventDefault();
+            const tag = editTagInput.trim().replace(/^#/, '');
+            if (tag && !editTags.includes(tag)) {
+                setEditTags(prev => [...prev, tag]);
+            }
+            setEditTagInput('');
+        } else if (e.key === 'Backspace' && !editTagInput && editTags.length > 0) {
+            setEditTags(prev => prev.slice(0, -1));
+        }
+    }, [editTagInput, editTags]);
+
+    const saveEditChunk = useCallback(async (chunkId: string) => {
+        setIsSavingChunk(true);
+        try {
+            await updateCapture(chunkId, undefined, JSON.stringify(editTags), editSpaceId || null as unknown as string);
+            setEditingChunkId(null);
+            toast.success(t('repository.chunk_save_success'));
+        } finally {
+            setIsSavingChunk(false);
+        }
+    }, [editTags, editSpaceId, updateCapture, t]);
 
     const recentTags = useTagStore((s) => s.recentTags);
     const loadRecentTags = useTagStore((s) => s.loadRecentTags);
@@ -160,8 +277,9 @@ export const RepositoryPage: React.FC = () => {
     useEffect(() => {
         loadTimeline();
         loadRecentTags();
+        loadSpaces();
         try { setNotes(loadFiles()); } catch { /* ignore */ }
-    }, [loadTimeline, loadRecentTags]);
+    }, [loadTimeline, loadRecentTags, loadSpaces]);
 
     /* ── stats ── */
 
@@ -356,10 +474,10 @@ export const RepositoryPage: React.FC = () => {
             const failCount = results.length - successCount;
 
             if (successCount > 0) {
-                toast.success(t('repository.toast_import_success', { count: String(successCount) }));
+                toast.success(t('repository.toast_import_success', { count: successCount }));
             }
             if (failCount > 0) {
-                toast.error(t('repository.toast_import_failed', { count: String(failCount) }));
+                toast.error(t('repository.toast_import_failed', { count: failCount }));
             }
 
             await loadTimeline();
@@ -502,45 +620,92 @@ export const RepositoryPage: React.FC = () => {
 
                     {/* ── filter row ── */}
                     <div className="mt-3 flex items-center gap-2">
-                        {(['all', 'source', 'note'] as const).map((f) => {
-                            const label = f === 'all' ? t('repository.filter_all') : f === 'source' ? t('repository.filter_source') : t('repository.filter_note');
-                            const active = typeFilter === f;
-                            return (
-                                <button
-                                    key={f}
-                                    type="button"
-                                    onClick={() => setTypeFilter(f)}
-                                    className={`rounded-full px-3 py-1 text-fs-xs font-semibold transition-colors ${active
-                                        ? 'bg-accent-default text-white'
-                                        : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
-                                        }`}
-                                >
-                                    {label}
-                                </button>
-                            );
-                        })}
+                        {/* 滾動區：type filters + tags */}
+                        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none">
+                            {(['source', 'note', 'all'] as const).map((f) => {
+                                const label = f === 'all' ? t('repository.filter_all') : f === 'source' ? t('repository.filter_source') : t('repository.filter_note');
+                                const active = typeFilter === f;
+                                return (
+                                    <button
+                                        key={f}
+                                        type="button"
+                                        onClick={() => setTypeFilter(f)}
+                                        className={`shrink-0 rounded-full px-3 py-1 text-fs-xs font-semibold transition-colors ${active
+                                            ? 'bg-accent-default text-white'
+                                            : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
+                                            }`}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
 
-                        {topTags.length > 0 && (
+                            {topTags.length > 0 && (
+                                <>
+                                    <div className="mx-1 h-4 w-px shrink-0 bg-stroke-divider" />
+                                    {topTags.map((tag) => {
+                                        const active = selectedTag === tag.name;
+                                        return (
+                                            <button
+                                                key={tag.id}
+                                                type="button"
+                                                onClick={() => setSelectedTag(active ? null : tag.name)}
+                                                className={`shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-fs-xs font-semibold transition-colors ${active
+                                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                                    : 'bg-surface-subtle text-text-tertiary hover:text-text-secondary'
+                                                    }`}
+                                            >
+                                                <Tag className="h-2.5 w-2.5" />
+                                                {tag.name}
+                                                <span className="tabular-nums opacity-60">{tag.useCount}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Space dropdown：獨立在外層，不受 overflow 裁切 */}
+                        {spaces.length > 0 && (
                             <>
-                                <div className="mx-1 h-4 w-px bg-stroke-divider" />
-                                {topTags.map((tag) => {
-                                    const active = selectedTag === tag.name;
-                                    return (
-                                        <button
-                                            key={tag.id}
-                                            type="button"
-                                            onClick={() => setSelectedTag(active ? null : tag.name)}
-                                            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-fs-xs font-semibold transition-colors ${active
-                                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                                : 'bg-surface-subtle text-text-tertiary hover:text-text-secondary'
-                                                }`}
-                                        >
-                                            <Tag className="h-2.5 w-2.5" />
-                                            {tag.name}
-                                            <span className="tabular-nums opacity-60">{tag.useCount}</span>
-                                        </button>
-                                    );
-                                })}
+                                <div className="mx-1 h-4 w-px shrink-0 bg-stroke-divider" />
+                                <div className="relative shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSpaceDropdownOpen((o) => !o)}
+                                        className={`flex items-center gap-1 rounded-full border px-3 py-1 text-fs-xs font-semibold transition-colors focus:outline-none cursor-pointer ${spaceFilter
+                                            ? 'border-accent-default bg-accent-default/10 text-accent-default'
+                                            : 'border-stroke-control bg-surface-subtle text-text-secondary hover:text-text-primary'
+                                            }`}
+                                    >
+                                        <span>{spaceFilter ? spaces.find((s) => s.id === spaceFilter)?.name ?? t('space_insight.select_space') : t('space_insight.select_space')}</span>
+                                        <ChevronDown className={`h-3 w-3 transition-transform ${spaceDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {spaceDropdownOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setSpaceDropdownOpen(false)} />
+                                            <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-xl border border-stroke-control bg-surface-flyout py-1 shadow-lg backdrop-blur-sm">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setSpaceFilter(null); setSpaceDropdownOpen(false); }}
+                                                    className={`w-full px-3 py-1.5 text-left text-fs-xs font-semibold transition-colors hover:bg-surface-hover ${!spaceFilter ? 'text-accent-default' : 'text-text-secondary'}`}
+                                                >
+                                                    {t('space_insight.select_space')}
+                                                </button>
+                                                {spaces.map((s) => (
+                                                    <button
+                                                        key={s.id}
+                                                        type="button"
+                                                        onClick={() => { setSpaceFilter(s.id); setSpaceDropdownOpen(false); }}
+                                                        className={`w-full px-3 py-1.5 text-left text-fs-xs font-semibold transition-colors hover:bg-surface-hover ${spaceFilter === s.id ? 'text-accent-default' : 'text-text-primary'}`}
+                                                    >
+                                                        {s.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </>
                         )}
                     </div>
@@ -620,7 +785,7 @@ export const RepositoryPage: React.FC = () => {
                                         <span className="text-fs-xs text-text-tertiary">{formatDateSub(group.dateKey, t)}</span>
                                     </div>
 
-                                    {(group.sourceItems.length > 0 || group.dateKey === todayKey) && (
+                                    {(group.sourceItems.length > 0 || group.dateKey === todayKey) && typeFilter !== 'note' && (
                                         <div className="mb-3">
                                             <div className="mb-2 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
                                                 <FileText className="h-3 w-3" />
@@ -633,44 +798,43 @@ export const RepositoryPage: React.FC = () => {
                                                 className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4"
                                             >
                                                 {group.sourceItems.map((item) => {
-                                                    const mt = item.mediaType || 'text';
-                                                    const iconColor = mediaColor[mt] || mediaColor.text;
-                                                    const iconBg = mediaBg[mt] || mediaBg.text;
-                                                    const icon =
-                                                        mt === 'url' ? <ExternalLink className="h-6 w-6" /> :
-                                                            mt === 'video' ? <PlayCircle className="h-6 w-6" /> :
-                                                                mt === 'image' ? <ImageIcon className="h-6 w-6" /> :
-                                                                    <FileText className="h-6 w-6" />;
+                                                    const { iconColor, iconBg, icon } = getMediaConfig(item);
                                                     return (
                                                         <button
                                                             key={item.id}
                                                             type="button"
                                                             onClick={() => handleOpenSource(item)}
-                                                            className="group/card relative flex min-h-[120px] flex-col overflow-hidden rounded-xl border border-stroke-card bg-surface-layer shadow-[var(--shadow-card)] transition-all duration-200 hover:scale-[1.02] hover:shadow-[var(--shadow-card-hover)] active:scale-100 cursor-pointer"
+                                                            className="text-left group/card relative flex h-full min-h-[130px] flex-col overflow-hidden rounded-xl border border-stroke-card bg-surface-layer p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)] cursor-pointer"
                                                         >
-                                                            <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-2.5">
-                                                                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg} ${iconColor}`}>
-                                                                    <span className="scale-90">{icon}</span>
+                                                            {/* 上半部：Icon + 標題 */}
+                                                            <div className="flex items-center gap-4 flex-1 w-full">
+                                                                <div className={`shrink-0 flex h-14 w-14 items-center justify-center rounded-2xl ${iconBg} ${iconColor}`}>
+                                                                    <span className="scale-125">{icon}</span>
                                                                 </div>
-                                                                <p className="line-clamp-2 w-full text-center text-fs-sm font-medium text-text-primary">
-                                                                    {titleOf(item.title)}
-                                                                </p>
+                                                                <div className="flex-1 min-w-0 pr-1">
+                                                                    <p className="line-clamp-3 text-[13.5px] font-medium text-text-primary leading-snug break-words">
+                                                                        {titleOf(item.title)}
+                                                                    </p>
+                                                                </div>
                                                             </div>
-                                                            <div className="flex min-h-[30px] flex-wrap content-start gap-1 px-2 pb-2">
-                                                                {(item.tags && item.tags.length > 0) ? item.tags.slice(0, 3).map((tag) => (
-                                                                    <span key={tag} className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-fs-xs text-emerald-600 dark:text-emerald-400">#{tag}</span>
-                                                                )) : (
-                                                                    <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-fs-xs text-text-tertiary">{t('repository.untagged')}</span>
-                                                                )}
+                                                            {/* 下半部：標籤 */}
+                                                            <div className="mt-4 flex flex-nowrap items-center gap-1.5 overflow-hidden w-full h-[24px] pr-6">
+                                                                {(item.tags && item.tags.length > 0) ? item.tags.slice(0, 4).map((tag) => (
+                                                                    <span key={tag} className="shrink-0 max-w-[100px] truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[11px] font-medium text-text-secondary transition-colors group-hover/card:text-text-primary">#{tag}</span>
+                                                                )) : null}
                                                             </div>
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => handleDeleteSource(e, item)}
+                                                            <div
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    handleDeleteSource(e as unknown as React.MouseEvent, item);
+                                                                }}
+                                                                role="button"
                                                                 aria-label={t('repository.aria_delete_source', { title: titleOf(item.title) })}
-                                                                className="absolute bottom-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-300/40 bg-red-500/10 text-red-500 opacity-0 transition-opacity hover:bg-red-500/20 group-hover/card:opacity-100"
+                                                                className="absolute bottom-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-300/40 bg-red-500/10 text-red-500 opacity-0 transition-all hover:bg-red-500/20 hover:scale-110 group-hover/card:opacity-100 cursor-pointer z-10"
                                                             >
                                                                 <Trash2 className="h-3 w-3" />
-                                                            </button>
+                                                            </div>
                                                         </button>
                                                     );
                                                 })}
@@ -792,16 +956,111 @@ export const RepositoryPage: React.FC = () => {
                                     )}
                                     {previewChunks.length > 0 && (
                                         <div className="space-y-2">
-                                            {previewChunks.map((chunk, idx) => (
-                                                <div key={chunk.id} className="rounded-xl border border-stroke-card bg-surface-subtle p-3">
-                                                    <div className="mb-1.5 flex items-center gap-2">
-                                                        <span className="rounded-md bg-accent-default/10 px-1.5 py-0.5 text-fs-xs font-semibold text-accent-default">#{idx + 1}</span>
-                                                        <span className="rounded-md bg-surface-base px-1.5 py-0.5 text-fs-xs text-text-tertiary">{chunk.type}</span>
-                                                        <span className="rounded-md bg-surface-base px-1.5 py-0.5 text-fs-xs text-text-tertiary">{chunk.status}</span>
+                                            {previewChunks.map((chunk, idx) => {
+                                                const isEditing = editingChunkId === chunk.id;
+                                                let parsedTags: string[] = [];
+                                                try { parsedTags = JSON.parse(chunk.tags) ?? []; } catch { /* noop */ }
+                                                const spaceName = spaces.find(s => s.id === chunk.spaceId)?.name;
+                                                return (
+                                                    <div key={chunk.id} className="rounded-xl border border-stroke-card bg-surface-subtle p-3">
+                                                        {/* Header row */}
+                                                        <div className="mb-1.5 flex items-center gap-2">
+                                                            <span className="rounded-md bg-accent-default/10 px-1.5 py-0.5 text-fs-xs font-semibold text-accent-default">#{idx + 1}</span>
+                                                            <span className="rounded-md bg-surface-base px-1.5 py-0.5 text-fs-xs text-text-tertiary">{chunk.type}</span>
+                                                            <span className="rounded-md bg-surface-base px-1.5 py-0.5 text-fs-xs text-text-tertiary">{chunk.status}</span>
+                                                            <div className="ml-auto">
+                                                                {!isEditing ? (
+                                                                    <button
+                                                                        onClick={() => startEditChunk(chunk)}
+                                                                        className="flex items-center gap-1 rounded px-2 py-0.5 text-fs-xs text-text-tertiary hover:text-text-primary hover:bg-surface-card transition-colors"
+                                                                    >
+                                                                        <Pencil size={11} />
+                                                                        {t('repository.chunk_edit_tags')}
+                                                                    </button>
+                                                                ) : (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <button
+                                                                            onClick={cancelEditChunk}
+                                                                            className="rounded px-2 py-0.5 text-fs-xs text-text-tertiary hover:bg-surface-card transition-colors"
+                                                                        >
+                                                                            {t('repository.chunk_cancel')}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => saveEditChunk(chunk.id)}
+                                                                            disabled={isSavingChunk}
+                                                                            className="flex items-center gap-1 rounded px-2 py-0.5 text-fs-xs bg-accent-default text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                                                        >
+                                                                            <Check size={11} />
+                                                                            {t('repository.chunk_save')}
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Content */}
+                                                        <pre className="whitespace-pre-wrap text-fs-sm text-text-primary mb-2">{extractPlainText(chunk.cleanContent || '')}</pre>
+
+                                                        {/* View mode: space + tags */}
+                                                        {!isEditing && (
+                                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                                {spaceName && (
+                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs text-accent-default">
+                                                                        <Layers size={10} />
+                                                                        {spaceName}
+                                                                    </span>
+                                                                )}
+                                                                {parsedTags.map(tag => (
+                                                                    <span key={tag} className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-secondary">
+                                                                        #{tag}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Edit mode: space selector + tag editor */}
+                                                        {isEditing && (
+                                                            <div className="space-y-2 pt-1 border-t border-stroke-divider mt-2">
+                                                                {/* Space */}
+                                                                <div>
+                                                                    <label className="text-fs-xs text-text-tertiary mb-1 block">{t('repository.chunk_edit_space')}</label>
+                                                                    <select
+                                                                        value={editSpaceId}
+                                                                        onChange={e => setEditSpaceId(e.target.value)}
+                                                                        className="w-full rounded-md border border-stroke-control bg-surface-layer px-2 py-1 text-fs-xs text-text-primary focus:outline-none focus:border-accent-default"
+                                                                    >
+                                                                        <option value="">{t('repository.chunk_no_space')}</option>
+                                                                        {spaces.map(s => (
+                                                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                {/* Tags */}
+                                                                <div>
+                                                                    <label className="text-fs-xs text-text-tertiary mb-1 block">{t('repository.chunk_edit_tags')}</label>
+                                                                    <div className="flex flex-wrap gap-1 rounded-md border border-stroke-control bg-surface-layer px-2 py-1 focus-within:border-accent-default min-h-[32px]">
+                                                                        {editTags.map(tag => (
+                                                                            <span key={tag} className="inline-flex items-center gap-0.5 rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs text-accent-default">
+                                                                                #{tag}
+                                                                                <button onClick={() => setEditTags(prev => prev.filter(t => t !== tag))} className="hover:text-red-500 transition-colors">
+                                                                                    <X size={10} />
+                                                                                </button>
+                                                                            </span>
+                                                                        ))}
+                                                                        <input
+                                                                            value={editTagInput}
+                                                                            onChange={e => setEditTagInput(e.target.value)}
+                                                                            onKeyDown={handleTagKeyDown}
+                                                                            placeholder={editTags.length === 0 ? t('repository.chunk_tag_placeholder') : ''}
+                                                                            className="flex-1 min-w-[100px] bg-transparent text-fs-xs text-text-primary outline-none placeholder:text-text-tertiary"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <pre className="whitespace-pre-wrap text-fs-sm text-text-primary">{extractPlainText(chunk.cleanContent || '')}</pre>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

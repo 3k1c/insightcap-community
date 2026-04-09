@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ExternalKnowledgeBase, ExternalKbLoadResult } from '../lib/types';
 import { useThemeStore, type Theme } from '../stores/themeStore';
@@ -7,7 +8,7 @@ import { useLanguageStore } from '../stores/languageStore';
 import type { Language } from '../i18n';
 import {
     Settings2, Server, Sparkles, BookOpen, Ellipsis,
-    Plus, Trash2, Eye, EyeOff, Database, Zap,
+    Plus, Trash2, Eye, EyeOff, Database, ExternalLink,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
 } from 'lucide-react';
 import { useT } from '../hooks/useT';
@@ -103,6 +104,62 @@ const PROVIDER_OPTIONS: { value: string; label: string }[] = [
     { value: 'openrouter', label: 'OpenRouter' },
 ];
 
+interface ProviderCard {
+    value: string;
+    label: string;
+    desc: string;
+    defaultBaseUrl?: string;
+    apiUrl?: string;
+    emoji: string;
+    local?: boolean;
+}
+
+const PROVIDER_CARDS: ProviderCard[] = [
+    {
+        value: 'openai',
+        label: 'OpenAI',
+        desc: 'GPT-4o, o1, o3...',
+        apiUrl: 'https://platform.openai.com/api-keys',
+        emoji: '🟢',
+    },
+    {
+        value: 'anthropic',
+        label: 'Anthropic',
+        desc: 'Claude 4, Claude 3.5...',
+        apiUrl: 'https://console.anthropic.com/settings/keys',
+        emoji: '🟠',
+    },
+    {
+        value: 'google',
+        label: 'Google',
+        desc: 'Gemini 2.0, 1.5 Pro...',
+        apiUrl: 'https://aistudio.google.com/apikey',
+        emoji: '🔵',
+    },
+    {
+        value: 'xai',
+        label: 'xAI',
+        desc: 'Grok 3, Grok 2...',
+        apiUrl: 'https://console.x.ai/team/default/api-keys',
+        emoji: '⚫',
+    },
+    {
+        value: 'openrouter',
+        label: 'OpenRouter',
+        desc: '統一入口，支援數百個模型',
+        apiUrl: 'https://openrouter.ai/settings/keys',
+        emoji: '🔀',
+    },
+    {
+        value: 'ollama',
+        label: 'Ollama',
+        desc: '本地執行，無需 API Key',
+        defaultBaseUrl: 'http://localhost:11434',
+        emoji: '🦙',
+        local: true,
+    },
+];
+
 // ── Helper Components ────────────────────────────────────
 
 const SectionCard: React.FC<{ title: string; desc?: string; children: React.ReactNode; action?: React.ReactNode }> = ({ title, desc, children, action }) => (
@@ -158,6 +215,116 @@ const InputField: React.FC<{ value: string; onChange: (v: string) => void; place
     />
 );
 
+// ── Popular models per provider ──────────────────────────
+// Last updated: 2026-04-08 via official provider docs
+const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
+    openai: [
+        { value: 'gpt-4.1', label: 'GPT-4.1' },
+        { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
+        { value: 'gpt-4.1-nano', label: 'GPT-4.1 nano' },
+        { value: 'gpt-4o', label: 'GPT-4o' },
+        { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
+        { value: 'o3', label: 'o3' },
+        { value: 'o4-mini', label: 'o4-mini' },
+        { value: 'o3-mini', label: 'o3-mini' },
+    ],
+    anthropic: [
+        { value: 'claude-opus-4-5-20250929', label: 'Claude Opus 4.5' },
+        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+        { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+        { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+        { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
+    ],
+    google: [
+        { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (Preview)' },
+        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)' },
+        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+        { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+        { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
+    ],
+    xai: [
+        { value: 'grok-3-beta', label: 'Grok 3' },
+        { value: 'grok-3-mini-beta', label: 'Grok 3 mini' },
+    ],
+    openrouter: [
+        { value: 'openai/gpt-4.1', label: 'GPT-4.1 (via OpenRouter)' },
+        { value: 'openai/gpt-4o', label: 'GPT-4o (via OpenRouter)' },
+        { value: 'anthropic/claude-3-5-sonnet', label: 'Claude 3.5 Sonnet (via OpenRouter)' },
+        { value: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro (via OpenRouter)' },
+        { value: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash (via OpenRouter)' },
+        { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (via OpenRouter)' },
+        { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (via OpenRouter)' },
+    ],
+    ollama: [
+        { value: 'llama3.3', label: 'Llama 3.3' },
+        { value: 'llama3.2', label: 'Llama 3.2' },
+        { value: 'qwen3', label: 'Qwen3' },
+        { value: 'qwen2.5:14b', label: 'Qwen 2.5 14B' },
+        { value: 'gemma3', label: 'Gemma 3' },
+        { value: 'deepseek-r1', label: 'DeepSeek-R1' },
+        { value: 'mistral', label: 'Mistral' },
+        { value: 'nomic-embed-text', label: 'nomic-embed-text (embedding)' },
+        { value: 'mxbai-embed-large', label: 'mxbai-embed-large (embedding)' },
+        { value: 'bge-m3', label: 'BGE-M3 (embedding)' },
+    ],
+};
+
+// ── ModelComboField: popular presets + free text ─────────
+const ModelComboField: React.FC<{ value: string; onChange: (v: string) => void; provider: string; className?: string }> = ({ value, onChange, provider, className }) => {
+    const popular = POPULAR_MODELS[provider] ?? [];
+    const isPreset = popular.some(m => m.value === value);
+    const [showInput, setShowInput] = React.useState(!isPreset && value !== '');
+
+    // When provider changes and current value is no longer a preset, keep it as-is but show input
+    React.useEffect(() => {
+        const nowPreset = (POPULAR_MODELS[provider] ?? []).some(m => m.value === value);
+        if (!nowPreset && value !== '') setShowInput(true);
+        else setShowInput(false);
+    }, [provider]);
+
+    if (popular.length === 0) {
+        // No presets for this provider (e.g., custom), just show text input
+        return (
+            <InputField value={value} onChange={onChange} placeholder="model-name" className={className} />
+        );
+    }
+
+    const CUSTOM_VALUE = '__custom__';
+
+    const handleSelectChange = (v: string) => {
+        if (v === CUSTOM_VALUE) {
+            setShowInput(true);
+            onChange('');
+        } else {
+            setShowInput(false);
+            onChange(v);
+        }
+    };
+
+    return (
+        <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
+            <select
+                value={showInput ? CUSTOM_VALUE : (value || '')}
+                onChange={e => handleSelectChange(e.target.value)}
+                className="bg-surface-base border border-stroke-divider rounded-lg px-3 py-1.5 text-fs-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-default w-full"
+            >
+                <option value="" disabled>— 選擇模型 —</option>
+                {popular.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                <option value={CUSTOM_VALUE}>✏️ 手動輸入...</option>
+            </select>
+            {showInput && (
+                <InputField
+                    value={value}
+                    onChange={onChange}
+                    placeholder="輸入模型名稱，例: gpt-4o-2024-11-20"
+                    className="w-full"
+                />
+            )}
+        </div>
+    );
+};
+
 // ── Main Component ───────────────────────────────────────
 
 export const SettingsPage: React.FC = () => {
@@ -167,6 +334,10 @@ export const SettingsPage: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [externalKbs, setExternalKbs] = useState<ExternalKnowledgeBase[]>([]);
     const [kbLoading, setKbLoading] = useState(false);
+
+    // Rebuild source tags progress
+    const [rebuildTagsProgress, setRebuildTagsProgress] = useState<{ current: number; total: number } | null>(null);
+    const rebuildTagsUnlistenRef = useRef<(() => void) | null>(null);
 
     // Provider edit state
     const [editingProfile, setEditingProfile] = useState<ProviderProfileData | null>(null);
@@ -337,24 +508,6 @@ export const SettingsPage: React.FC = () => {
         saveSettings(updated);
     };
 
-    const handleTestConnection = async (profile: ProviderProfileData) => {
-        const tid = toast.loading(t('common.loading'));
-        try {
-            if (profile.provider === 'ollama') {
-                await invoke('test_ollama', { baseUrl: profile.baseUrl ?? 'http://localhost:11434' });
-            } else {
-                await invoke('test_provider_connection', {
-                    provider: profile.provider,
-                    baseUrl: profile.baseUrl ?? '',
-                    apiKey: profile.apiKey ?? '',
-                });
-            }
-            toast.success(t('common.success'), { id: tid });
-        } catch (e: any) {
-            toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
-        }
-    };
-
     // ── Tab: 一般設定 ────────────────────────────────────
 
     const renderGeneral = () => {
@@ -471,9 +624,6 @@ export const SettingsPage: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
-                                <button onClick={() => handleTestConnection(p)} className="p-1.5 text-text-tertiary hover:text-accent-default rounded-md transition-colors" title={t('common.test')}>
-                                    <Zap className="w-4 h-4" />
-                                </button>
                                 <button onClick={() => setEditingProfile({ ...p })} className="p-1.5 text-text-tertiary hover:text-accent-default rounded-md transition-colors" title={t('common.edit')}>
                                     <Settings2 className="w-4 h-4" />
                                 </button>
@@ -485,24 +635,87 @@ export const SettingsPage: React.FC = () => {
                     ))}
 
                     {editingProfile && (
-                        <div className="bg-surface-base rounded-lg p-4 border border-accent-default/30 space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_name')}</label>
-                                    <InputField value={editingProfile.name} onChange={v => setEditingProfile({ ...editingProfile, name: v })} placeholder="例: My OpenAI" className="w-full" />
-                                </div>
-                                <div>
-                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_type')}</label>
-                                    <SelectField value={editingProfile.provider} onChange={v => setEditingProfile({ ...editingProfile, provider: v })} options={PROVIDER_OPTIONS} className="w-full" />
-                                </div>
-                            </div>
+                        <div className="bg-surface-base rounded-lg p-4 border border-accent-default/30 space-y-4">
+                            {/* Provider 選擇卡片 */}
                             <div>
-                                <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_base_url')}</label>
-                                <InputField value={editingProfile.baseUrl ?? ''} onChange={v => setEditingProfile({ ...editingProfile, baseUrl: v })} placeholder="http://localhost:11434" className="w-full" />
+                                <label className="text-fs-xs text-text-secondary mb-2 block font-medium">{t('settings.provider_type')}</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {PROVIDER_CARDS.map(card => {
+                                        const isSelected = editingProfile.provider === card.value;
+                                        return (
+                                            <button
+                                                key={card.value}
+                                                type="button"
+                                                onClick={() => setEditingProfile({
+                                                    ...editingProfile,
+                                                    provider: card.value,
+                                                    baseUrl: card.defaultBaseUrl ?? '',
+                                                })}
+                                                className={`flex flex-col items-start gap-1 rounded-xl p-3 border text-left transition-all ${isSelected
+                                                    ? 'border-accent-default bg-accent-default/8 shadow-sm'
+                                                    : 'border-stroke-divider hover:border-accent-default/40 hover:bg-surface-subtle'
+                                                    }`}
+                                            >
+                                                <div className="flex items-center justify-between w-full">
+                                                    <span className="text-base leading-none">{card.emoji}</span>
+                                                    {card.apiUrl && (
+                                                        <a
+                                                            href={card.apiUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={e => e.stopPropagation()}
+                                                            className="text-text-tertiary hover:text-accent-default transition-colors"
+                                                            title="取得 API Key"
+                                                        >
+                                                            <ExternalLink className="w-3 h-3" />
+                                                        </a>
+                                                    )}
+                                                </div>
+                                                <div className={`text-fs-sm font-semibold ${isSelected ? 'text-accent-default' : 'text-text-primary'}`}>{card.label}</div>
+                                                <div className="text-fs-xs text-text-tertiary leading-snug">{card.desc}</div>
+                                                {card.local && (
+                                                    <span className="text-fs-xs text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full">本地</span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
+
+                            {/* 名稱 */}
+                            <div>
+                                <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_name')}</label>
+                                <InputField value={editingProfile.name} onChange={v => setEditingProfile({ ...editingProfile, name: v })} placeholder="例: My OpenAI" className="w-full" />
+                            </div>
+
+                            {/* Base URL（Ollama 或自訂） */}
+                            {(editingProfile.provider === 'ollama' || editingProfile.baseUrl) && (
+                                <div>
+                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_base_url')}</label>
+                                    <InputField value={editingProfile.baseUrl ?? ''} onChange={v => setEditingProfile({ ...editingProfile, baseUrl: v })} placeholder="http://localhost:11434" className="w-full" />
+                                </div>
+                            )}
+
+                            {/* API Key（非 Ollama） */}
                             {editingProfile.provider !== 'ollama' && (
                                 <div>
-                                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_apikey')}</label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-fs-xs text-text-secondary">{t('settings.provider_apikey')}</label>
+                                        {(() => {
+                                            const card = PROVIDER_CARDS.find(c => c.value === editingProfile.provider);
+                                            return card?.apiUrl ? (
+                                                <a
+                                                    href={card.apiUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-1 text-fs-xs text-accent-default hover:underline"
+                                                >
+                                                    <ExternalLink className="w-3 h-3" />
+                                                    取得 API Key
+                                                </a>
+                                            ) : null;
+                                        })()}
+                                    </div>
                                     <div className="relative">
                                         <InputField
                                             value={editingProfile.apiKey ?? ''}
@@ -521,9 +734,9 @@ export const SettingsPage: React.FC = () => {
                                     </div>
                                 </div>
                             )}
+
                             <div className="flex justify-end gap-2 pt-1">
                                 <button onClick={() => setEditingProfile(null)} className="px-3 py-1.5 rounded-lg text-fs-sm text-text-secondary hover:bg-surface-subtle transition-colors">{t('common.cancel')}</button>
-                                <button onClick={() => handleTestConnection(editingProfile)} className="px-3 py-1.5 rounded-lg text-fs-sm text-text-secondary hover:bg-surface-subtle transition-colors">{t('common.test')}</button>
                                 <button onClick={handleSaveProfile} className="bg-accent-default text-white px-4 py-1.5 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors">{t('common.save')}</button>
                             </div>
                         </div>
@@ -534,7 +747,7 @@ export const SettingsPage: React.FC = () => {
                     {renderModelField(t('settings.model_chat'), t('settings.model_chat_desc'), ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }))}
                     {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }))}
                     {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }))}
-                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }))}
+                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }), true)}
                 </SectionCard>
 
                 <SectionCard title={t('settings.model_summary_section')}>
@@ -559,22 +772,89 @@ export const SettingsPage: React.FC = () => {
 
 
 
-    const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void) => (
-        <div className="bg-surface-base rounded-lg px-4 py-3 border border-stroke-divider space-y-2">
-            <div className="text-fs-sm font-medium text-text-primary">{label}</div>
-            <div className="text-fs-xs text-text-tertiary">{desc}</div>
-            <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_type')}</label>
-                    <SelectField value={model.provider} onChange={v => onChange({ ...model, provider: v })} options={[...PROVIDER_OPTIONS, { value: 'local', label: t('settings.local_provider') }]} className="w-full" />
-                </div>
-                <div>
-                    <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.model_name')}</label>
-                    <InputField value={model.model} onChange={v => onChange({ ...model, model: v })} placeholder={t('settings.model_name')} className="w-full" />
+    const handleTestModel = async (model: ModelSettings) => {
+        if (!model.provider || !model.model) {
+            toast.error('請先選擇供應商與模型');
+            return;
+        }
+
+        const tid = toast.loading(`正在測試模型 ${model.model}...`);
+
+        let baseUrl = undefined;
+        let apiKey = undefined;
+
+        // 尋找對應的 profile
+        const profile = settings?.aiModels.providerProfiles.find(p => p.provider === model.provider);
+        if (profile) {
+            baseUrl = profile.baseUrl;
+            apiKey = profile.apiKey;
+        } else if (model.provider === 'ollama') {
+            baseUrl = 'http://localhost:11434';
+        }
+
+        try {
+            const res = await invoke<string>('test_model_connection', {
+                provider: model.provider,
+                model: model.model,
+                baseUrl: baseUrl,
+                apiKey: apiKey
+            });
+            toast.success(`連線成功: 收到回應 "${res}"`, { id: tid });
+        } catch (e: any) {
+            toast.error(`連線失敗: ${e.toString()}`, { id: tid });
+        }
+    };
+
+    const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void, includeLocal?: boolean) => {
+        const profiles = settings?.aiModels.providerProfiles ?? [];
+        const providerOptions = profiles.map(p => ({
+            value: p.provider,
+            label: p.name || PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label || p.provider,
+        }));
+        // 去重（同 provider 可能有多個 profile，只保留一個選項）
+        const seen = new Set<string>();
+        const uniqueOptions = providerOptions.filter(o => {
+            if (seen.has(o.value)) return false;
+            seen.add(o.value);
+            return true;
+        });
+        if (includeLocal) {
+            uniqueOptions.push({ value: 'local', label: t('settings.local_provider') });
+        }
+        return (
+            <div className="bg-surface-base rounded-lg px-4 py-3 border border-stroke-divider space-y-2">
+                <div className="text-fs-sm font-medium text-text-primary">{label}</div>
+                <div className="text-fs-xs text-text-tertiary">{desc}</div>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                        <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_type')}</label>
+                        <SelectField
+                            value={model.provider}
+                            onChange={v => {
+                                const popular = POPULAR_MODELS[v] ?? [];
+                                const newModel = popular.length > 0 ? popular[0].value : '';
+                                onChange({ ...model, provider: v, model: newModel });
+                            }}
+                            options={uniqueOptions}
+                            className="w-full"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.model_name')}</label>
+                        <div className="flex gap-2 items-start">
+                            <ModelComboField value={model.model} onChange={v => onChange({ ...model, model: v })} provider={model.provider} className="flex-1" />
+                            <button
+                                onClick={() => handleTestModel(model)}
+                                className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
+                            >
+                                測試
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const renderAI = () => {
         if (!settings) return null;
@@ -716,6 +996,48 @@ export const SettingsPage: React.FC = () => {
                         >
                             <RefreshCw className="w-4 h-4 text-accent-default" />
                             {t('settings.rebuild_index')}
+                        </button>
+                        <button
+                            disabled={rebuildTagsProgress !== null}
+                            onClick={async () => {
+                                const cleanup = () => {
+                                    setRebuildTagsProgress(null);
+                                    if (rebuildTagsUnlistenRef.current) {
+                                        rebuildTagsUnlistenRef.current();
+                                        rebuildTagsUnlistenRef.current = null;
+                                    }
+                                };
+                                // 訂閱進度事件
+                                const unlisten = await listen<{ current: number; total: number; done: boolean }>(
+                                    'rebuild-tags-progress',
+                                    (event) => {
+                                        const { current, total, done } = event.payload;
+                                        if (done) {
+                                            cleanup();
+                                        } else {
+                                            setRebuildTagsProgress({ current, total });
+                                        }
+                                    }
+                                );
+                                rebuildTagsUnlistenRef.current = unlisten;
+                                // 設初始 loading 狀態（避免 listener 在 invoke 前就清掉）
+                                setRebuildTagsProgress({ current: 0, total: 0 });
+                                try {
+                                    const count: number = await invoke('rebuild_source_tags');
+                                    toast.success(`${t('settings.rebuild_source_tags')} ${t('common.success')} (${count})`);
+                                } catch (e: any) {
+                                    toast.error(`${t('common.error')}: ${e.toString()}`);
+                                } finally {
+                                    cleanup();
+                                }
+                            }}
+                            className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            <RefreshCw className={`w-4 h-4 text-accent-default ${rebuildTagsProgress ? 'animate-spin' : ''}`} />
+                            {rebuildTagsProgress
+                                ? `${rebuildTagsProgress.current} / ${rebuildTagsProgress.total}`
+                                : t('settings.rebuild_source_tags')
+                            }
                         </button>
                         <button
                             onClick={async () => {
@@ -1094,6 +1416,7 @@ export const SettingsPage: React.FC = () => {
                     </div>
                 </div>
             )}
+
         </div>
     );
 };

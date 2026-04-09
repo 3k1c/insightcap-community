@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use sqlx::Row;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::sleep;
 use uuid::Uuid;
 
@@ -24,6 +24,7 @@ async fn call_summary_llm(
         cfg.api_key.clone().unwrap_or_default(),
         cfg.base_url.clone(),
         cfg.model.clone(),
+        cfg.provider.clone(),
     );
 
     tokio::time::timeout(
@@ -34,6 +35,7 @@ async fn call_summary_llm(
                 temperature: 0.2,
                 max_tokens: 600,
                 stream: false,
+                think_mode: None,
             },
         ),
     )
@@ -302,6 +304,65 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
                 "[ConversationScheduler] 對話 {} 總結完成，memory_chunk: {}",
                 conversation_id, chunk_id
             );
+            // 通知前端摘要完成（觸發 pending confirmation toast）
+            let _ = app.emit("summary-completed", serde_json::json!({
+                "conversationId": conversation_id,
+                "chunkId": chunk_id,
+            }));
+
+            // 非同步為 memory_chunk 分配 Space（向量相似度，不呼叫 LLM）
+            let pool_space = pool.clone();
+            let embedder_space = state.embedder.clone();
+            let vs_space = state.vector_store.clone();
+            let summary_for_space = summary.clone();
+            let chunk_id_for_space = chunk_id.clone();
+            tauri::async_runtime::spawn(async move {
+                let se = crate::services::space_engine::SpaceEngine::new(
+                    pool_space, embedder_space, vs_space,
+                );
+                if let Err(e) = se.assign_memory_chunk_to_space(&chunk_id_for_space, &summary_for_space).await {
+                    eprintln!("[ConversationScheduler] Space 分配失敗: {}", e);
+                }
+            });
+
+            // 非同步分析反向鏈接（不阻塞主流程）
+            let pool_rel = pool.clone();
+            let embedder_rel = state.embedder.clone();
+            let vs_rel = state.vector_store.clone();
+            let summary_clone = summary.clone();
+            let chunk_id_clone = chunk_id.clone();
+            tauri::async_runtime::spawn(async move {
+                let rel_engine = crate::services::chunk_relation_engine::ChunkRelationEngine::new(
+                    pool_rel, embedder_rel, vs_rel,
+                );
+                if let Err(e) = rel_engine.analyze_and_link(&chunk_id_clone, "memory_chunk", &summary_clone).await {
+                    eprintln!("[ChunkRelation] 分析失敗: {}", e);
+                }
+            });
+
+            // 非同步更新 Space Wiki（不阻塞主流程）
+            let pool_wiki = pool.clone();
+            let chunk_id_wiki = chunk_id.clone();
+            tauri::async_runtime::spawn(async move {
+                // 查 memory_chunk 的 space_id
+                let space_id: Option<String> = sqlx::query_scalar(
+                    "SELECT space_id FROM memory_chunks WHERE id = ?"
+                )
+                .bind(&chunk_id_wiki)
+                .fetch_optional(&pool_wiki)
+                .await
+                .ok()
+                .flatten();
+
+                if let Some(sid) = space_id {
+                    if !sid.is_empty() {
+                        let wiki_engine = crate::services::space_wiki_engine::SpaceWikiEngine::new(pool_wiki);
+                        if let Err(e) = wiki_engine.update_wiki_for_space(&sid).await {
+                            eprintln!("[SpaceWiki] 更新失敗 (space {}): {}", &sid, e);
+                        }
+                    }
+                }
+            });
         }
         Err(e) => {
             eprintln!("[ConversationScheduler] MemoryEngine 失敗: {}", e);

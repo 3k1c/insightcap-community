@@ -78,6 +78,7 @@ interface KnowledgeState {
     categoryFilter: CategoryFilter;
     mediaFilter: MediaFilter;
     searchQuery: string;
+    spaceFilter: string | null;
     isLoadingTimeline: boolean;
     expandedSourceId: string | null;
     expandedCaptures: CaptureDetail[];
@@ -93,6 +94,7 @@ interface KnowledgeState {
     setCategoryFilter: (f: CategoryFilter) => void;
     setMediaFilter: (f: MediaFilter) => void;
     setSearchQuery: (q: string) => void;
+    setSpaceFilter: (id: string | null) => void;
     loadTimeline: () => Promise<void>;
     expandSource: (id: string | null) => Promise<void>;
 
@@ -149,6 +151,7 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     categoryFilter: 'all',
     mediaFilter: null,
     searchQuery: '',
+    spaceFilter: null,
     isLoadingTimeline: false,
     expandedSourceId: null,
     expandedCaptures: [],
@@ -213,14 +216,20 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
         get().loadTimeline();
     },
 
+    setSpaceFilter: (id) => {
+        set({ spaceFilter: id });
+        get().loadTimeline();
+    },
+
     loadTimeline: async () => {
         set({ isLoadingTimeline: true });
         try {
-            const { categoryFilter, mediaFilter, searchQuery } = get();
+            const { categoryFilter, mediaFilter, searchQuery, spaceFilter } = get();
             const items = await invoke<TimelineSourceItem[]>('get_sources_timeline', {
                 category: categoryFilter === 'all' ? null : categoryFilter,
                 mediaType: mediaFilter,
                 searchQuery: searchQuery || null,
+                spaceId: spaceFilter || null,
                 limit: 100,
                 offset: 0,
             });

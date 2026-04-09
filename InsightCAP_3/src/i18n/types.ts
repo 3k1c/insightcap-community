@@ -45,6 +45,13 @@ export interface TranslationKeys {
         stat_total_data: string;
         stat_total_patterns: string;
         stat_total_logs: string;
+        chunk_edit_space: string;
+        chunk_edit_tags: string;
+        chunk_save: string;
+        chunk_cancel: string;
+        chunk_tag_placeholder: string;
+        chunk_save_success: string;
+        chunk_no_space: string;
     };
 
     common: {
@@ -128,6 +135,91 @@ export interface TranslationKeys {
             pattern: string;
             log: string;
         };
+    };
+
+    space_insight: {
+        title: string;
+        select_space: string;
+        no_spaces: string;
+        ready_label: string;
+        caution_label: string;
+        gap_label: string;
+        pattern_count: string;
+        log_count: string;
+        data_count: string;
+        capture_count: string;
+        total_chunks: string;
+        top_tags: string;
+        no_chunks: string;
+        collapse: string;
+        expand: string;
+    };
+
+    context_hint: {
+        injecting: string;
+        pattern_short: string;
+        log_short: string;
+        data_short: string;
+    };
+
+    decision: {
+        review_title: string;
+        review_desc: string;
+        variable: string;
+        chosen: string;
+        rating_good: string;
+        rating_ok: string;
+        rating_bad: string;
+        rating_critical: string;
+        note_placeholder: string;
+        dismiss: string;
+        submit: string;
+        days_ago: string;
+        no_pending: string;
+    };
+
+    pattern_promotion: {
+        title: string;
+        desc: string;
+        confidence: string;
+        remaining: string;
+        accept: string;
+        reject: string;
+    };
+
+    memory_confirm: {
+        title: string;
+        desc: string;
+        confidence: string;
+        remaining: string;
+        accept: string;
+        reject: string;
+    };
+
+    pending_drawer: {
+        title: string;
+        empty: string;
+        select_all: string;
+        deselect_all: string;
+        accept_selected: string;
+        reject_selected: string;
+        confidence: string;
+        type_data: string;
+        type_pattern: string;
+        type_log: string;
+        close: string;
+    };
+
+    space_wiki: {
+        tab_insight: string;
+        tab_wiki: string;
+        empty: string;
+        edit: string;
+        save: string;
+        cancel: string;
+        regenerate: string;
+        regenerating: string;
+        updated_at: string;
     };
 
     settings: {

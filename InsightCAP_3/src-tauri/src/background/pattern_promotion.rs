@@ -1,4 +1,3 @@
-use sqlx::SqlitePool;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, Emitter};
 use crate::db::AppState;
@@ -20,11 +19,10 @@ pub fn start_pattern_promotion_worker(app: AppHandle) {
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_secs(60 * 5)) => {
-                    let pool = match app.try_state::<SqlitePool>() {
-                        Some(p) => p.inner().clone(),
-                        None => continue,
-                    };
-                    let engine = PatternEngine::new(pool);
+                    let app_state = app.state::<AppState>();
+                    let pool = app_state.db.clone();
+                    let embedder = app_state.embedder.clone();
+                    let engine = PatternEngine::new(pool, embedder);
                     match engine.detect_and_promote_patterns().await {
                         Ok(count) if count > 0 => {
                             println!("[PATTERN-PROMOTION] 成功升格 {} 筆跨對話概念！", count);

@@ -476,7 +476,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                                     </div>
                                     <span className="text-fs-base font-medium text-text-primary">{tag.name}</span>
                                     {tag.useCount !== undefined && (
-                                        <span className="ml-auto text-fs-sm text-text-tertiary">{t('chat.tag_use_count', { count: String(tag.useCount) })}</span>
+                                        <span className="ml-auto text-fs-sm text-text-tertiary">{t('chat.tag_use_count', { count: tag.useCount })}</span>
                                     )}
                                 </button>
                             ))
@@ -737,12 +737,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                         <span>{t('chat.web_search')}</span>
                     </button>
 
-                    <div className="flex-1" />
-
-                    <span className="text-[11px] text-text-tertiary select-none">
-                        {t('chat.hint_at_tag')}
-                    </span>
-
                     {/* Think 模式切換（與知識庫/聯網按鈕同規格：Subtle rest / accent-light2 active）*/}
                     <button
                         onClick={() => setThinkingMode(thinkingMode === 'think' ? 'normal' : 'think')}
@@ -755,6 +749,12 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                         <Brain className="w-3 h-3" />
                         <span>{thinkingMode === 'think' ? t('chat.think_mode') : t('chat.normal_mode')}</span>
                     </button>
+
+                    <div className="flex-1" />
+
+                    <span className="text-[11px] text-text-tertiary select-none">
+                        {t('chat.hint_at_tag')}
+                    </span>
                 </div>
             </div>
         </div>

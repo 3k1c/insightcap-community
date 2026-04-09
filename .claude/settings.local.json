@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"require\\('./node_modules/@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('./src/pages/RepositoryPage.tsx','utf8'\\),{sourceType:'module',plugins:['typescript','jsx']}\\); console.log\\('OK'\\)\")"
+    ]
+  }
+}

@@ -185,12 +185,14 @@ pub async fn save_editor_to_knowledge(
         let pool_clone = pool.inner().clone();
         let capture_id_clone = capture_id.clone();
         let chunk_text_clone = chunk_text.clone();
+        let embedder_clone = state.embedder.clone();
+        let vs_clone = state.vector_store.clone();
         tauri::async_runtime::spawn(async move {
             let tag_engine = crate::services::tag_engine::TagEngine::new(pool_clone.clone());
             let _ = tag_engine.process_new_capture(&capture_id_clone, &chunk_text_clone).await;
-            
-            let space_engine = crate::services::space_engine::SpaceEngine::new(pool_clone);
-            let _ = space_engine.assign_to_space(&capture_id_clone, &chunk_text_clone).await;
+
+            let space_engine = crate::services::space_engine::SpaceEngine::new(pool_clone, embedder_clone, vs_clone);
+            let _ = space_engine.assign_to_space(&capture_id_clone, &chunk_text_clone).await; // (space_id, is_new) — editor 頻率低，不 emit event
         });
     }
 

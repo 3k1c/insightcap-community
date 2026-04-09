@@ -1,6 +1,7 @@
 pub mod auth_commands;
 pub mod bilibili_auth;
 pub mod capture_commands;
+pub mod chunk_relation_commands;
 pub mod settings_commands;
 pub mod knowledge_commands;
 pub mod memory_commands;
@@ -10,3 +11,5 @@ pub mod rag_commands;
 pub mod tag_commands;
 pub mod space_commands;
 pub mod editor_commands;
+pub mod decision_commands;
+pub mod seed_commands; // TODO: 測試用，上線前移除

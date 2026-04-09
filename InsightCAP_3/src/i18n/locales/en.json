@@ -75,7 +75,14 @@
         "stat_total_chunks": "Chunks",
         "stat_total_data": "Data",
         "stat_total_patterns": "Patterns",
-        "stat_total_logs": "Logs"
+        "stat_total_logs": "Logs",
+        "chunk_edit_space": "Change Space",
+        "chunk_edit_tags": "Edit Tags",
+        "chunk_save": "Save",
+        "chunk_cancel": "Cancel",
+        "chunk_tag_placeholder": "Type a tag and press Enter",
+        "chunk_save_success": "Updated",
+        "chunk_no_space": "No Space"
     },
     "common": {
         "confirm": "Confirm",
@@ -185,6 +192,23 @@
             "log": "Risk Log"
         }
     },
+    "space_insight": {
+        "title": "Knowledge Overview",
+        "select_space": "Space",
+        "no_spaces": "No Spaces created yet",
+        "ready_label": "Ready to handle:",
+        "caution_label": "Be careful with:",
+        "gap_label": "No experience yet:",
+        "pattern_count": "{{count}} Pattern(s)",
+        "log_count": "{{count}} Risk Log(s)",
+        "data_count": "{{count}} Data item(s)",
+        "capture_count": "{{count}} Capture(s)",
+        "total_chunks": "{{count}} chunk(s) total",
+        "top_tags": "Top Tags",
+        "no_chunks": "No knowledge in this Space yet",
+        "collapse": "Collapse",
+        "expand": "View Insights"
+    },
     "settings": {
         "title": "Settings",
         "nav_title": "Preferences",
@@ -263,6 +287,7 @@
         "knowledge_management": "KB Management",
         "knowledge_management_desc": "Perform maintenance on local knowledge base.",
         "rebuild_index": "Rebuild KB Index",
+        "rebuild_source_tags": "Rebuild Source Tags",
         "export_kb": "Export KB",
         "import_kb": "Import KB",
         "delete_kb": "Delete KB",
@@ -365,6 +390,66 @@
         "ai_discard": "Discard",
         "ai_retry": "Regenerate"
     },
+    "decision": {
+        "review_title": "Decision Review",
+        "review_desc": "You made this decision {{days}} days ago. How did it turn out?",
+        "variable": "Decision",
+        "chosen": "Chosen option",
+        "rating_good": "Good",
+        "rating_ok": "Okay",
+        "rating_bad": "Bad",
+        "rating_critical": "Critical issue",
+        "note_placeholder": "Additional notes (optional)...",
+        "submit": "Report outcome",
+        "dismiss": "Dismiss",
+        "no_pending": "No pending decision reviews"
+    },
+    "pattern_promotion": {
+        "title": "Reusable Pattern Detected",
+        "desc": "A recurring pattern was detected across multiple conversations. Promote to official Pattern?",
+        "confidence": "Confidence: {{value}}%",
+        "remaining": "{{count}} more pending",
+        "accept": "Promote",
+        "reject": "Dismiss"
+    },
+    "memory_confirm": {
+        "title": "Memory Confirmation",
+        "desc": "AI extracted a \"{{type}}\" knowledge from conversation with low confidence. Keep it?",
+        "confidence": "Confidence: {{value}}%",
+        "remaining": "{{count}} more pending",
+        "accept": "Keep",
+        "reject": "Remove"
+    },
+    "pending_drawer": {
+        "title": "Pending Memories",
+        "empty": "No memories pending review",
+        "select_all": "Select All",
+        "deselect_all": "Deselect All",
+        "accept_selected": "Keep Selected ({{count}})",
+        "reject_selected": "Remove Selected ({{count}})",
+        "confidence": "Confidence {{value}}%",
+        "type_data": "Data",
+        "type_pattern": "Pattern",
+        "type_log": "Log",
+        "close": "Close"
+    },
+    "space_wiki": {
+        "tab_insight": "Insight",
+        "tab_wiki": "Wiki",
+        "empty": "Not enough memories to generate Wiki yet. It will be created automatically after conversations.",
+        "edit": "Edit",
+        "save": "Save",
+        "cancel": "Cancel",
+        "regenerate": "Regenerate",
+        "regenerating": "Generating…",
+        "updated_at": "Updated {{time}}"
+    },
+    "context_hint": {
+        "injecting": "Retrieving context...",
+        "pattern_short": "{{count}} Pattern(s)",
+        "log_short": "{{count}} Risk Log(s)",
+        "data_short": "{{count}} source(s)"
+    },
     "chat": {
         "placeholder": "Ask anything, @ to cite sources, # to filter tags...",
         "add_file": "Add File",
@@ -381,6 +466,7 @@
         "think_mode": "Deep Think",
         "think_mode_active": "Think Mode (click to switch to Normal)",
         "think_mode_inactive": "Normal Mode (click to enable deep reasoning)",
+        "thinking_process": "Thinking Process",
         "hint_at_tag": "@ Source · # Tag",
         "tag_search_title": "Search tag \"{{query}}\"",
         "tag_recent_title": "Recent Tags",

@@ -1,11 +1,7 @@
-import React from 'react';
-import { Database, Network, LayoutList } from 'lucide-react';
-
-interface ContextStats {
-    dataCount: number;
-    patternCount: number;
-    logCount: number;
-}
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import type { ContextStats } from '../../stores/chatStore';
+import { useT } from '../../hooks/useT';
 
 interface ContextHintBannerProps {
     stats: ContextStats;
@@ -16,44 +12,84 @@ export const ContextHintBanner: React.FC<ContextHintBannerProps> = ({
     stats,
     isInjecting = false
 }) => {
+    const t = useT();
     const total = stats.dataCount + stats.patternCount + stats.logCount;
+    const [isExpanded, setIsExpanded] = useState(false);
 
     if (total === 0 && !isInjecting) {
-        return null; /* 不顯示，以免干擾 */
+        return null;
     }
 
     return (
-        <div className="flex items-center justify-between px-3 py-2 bg-surface-subtle border-y border-stroke-divider text-fs-xs text-text-tertiary animate-in fade-in slide-in-from-top-2 duration-300">
-            <div className="flex items-center gap-2">
-                {isInjecting ? (
-                    <span className="flex items-center gap-2 text-accent-default">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
+        <div className="border-y border-stroke-divider bg-surface-subtle animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* Summary row */}
+            <div
+                className="flex items-center justify-between px-3 py-2 text-fs-xs text-text-tertiary cursor-pointer select-none"
+                onClick={() => !isInjecting && total > 0 && setIsExpanded(v => !v)}
+            >
+                <div className="flex items-center gap-2">
+                    {isInjecting ? (
+                        <span className="flex items-center gap-2 text-accent-default">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
+                            </span>
+                            {t('context_hint.injecting')}
                         </span>
-                        檢索上下文擴充中...
-                    </span>
-                ) : (
-                    <span>已注入 {total} 條相關脈絡：</span>
+                    ) : (
+                        <span className="flex items-center gap-3">
+                            {stats.patternCount > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <span className="text-[var(--knowledge-pattern)]">◆</span>
+                                    {stats.patternHints.length > 0
+                                        ? <span className="text-text-secondary">{stats.patternHints[0]}{stats.patternHints[0].length >= 50 ? '…' : ''}</span>
+                                        : <span>{t('context_hint.pattern_short', { count: stats.patternCount })}</span>
+                                    }
+                                </span>
+                            )}
+                            {stats.logCount > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <span className="text-[var(--knowledge-log)]">▲</span>
+                                    {stats.logHints.length > 0
+                                        ? <span className="text-text-secondary">{stats.logHints[0]}{stats.logHints[0].length >= 50 ? '…' : ''}</span>
+                                        : <span>{t('context_hint.log_short', { count: stats.logCount })}</span>
+                                    }
+                                </span>
+                            )}
+                            {stats.dataCount > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <span className="text-[var(--knowledge-data)]">●</span>
+                                    <span>{t('context_hint.data_short', { count: stats.dataCount })}</span>
+                                </span>
+                            )}
+                        </span>
+                    )}
+                </div>
+
+                {!isInjecting && total > 0 && (
+                    isExpanded
+                        ? <ChevronUp size={14} className="text-text-tertiary" />
+                        : <ChevronDown size={14} className="text-text-tertiary" />
                 )}
             </div>
 
-            <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5" title="Data (原始資料/事實)">
-                    <Database className="w-3.5 h-3.5 text-knowledge-data" />
-                    <span className="font-semibold">{stats.dataCount}</span>
+            {/* Expanded detail */}
+            {isExpanded && !isInjecting && (
+                <div className="px-3 pb-2 space-y-1.5">
+                    {stats.patternHints.map((hint, i) => (
+                        <div key={`p-${i}`} className="flex items-start gap-1.5 text-fs-xs">
+                            <span className="text-[var(--knowledge-pattern)] mt-0.5">◆</span>
+                            <span className="text-text-secondary">{hint}{hint.length >= 50 ? '…' : ''}</span>
+                        </div>
+                    ))}
+                    {stats.logHints.map((hint, i) => (
+                        <div key={`l-${i}`} className="flex items-start gap-1.5 text-fs-xs">
+                            <span className="text-[var(--knowledge-log)] mt-0.5">▲</span>
+                            <span className="text-text-secondary">{hint}{hint.length >= 50 ? '…' : ''}</span>
+                        </div>
+                    ))}
                 </div>
-
-                <div className="flex items-center gap-1.5" title="Pattern (觀點/模式/模型)">
-                    <Network className="w-3.5 h-3.5 text-knowledge-pattern" />
-                    <span className="font-semibold">{stats.patternCount}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5" title="Log (行為日誌/操作)">
-                    <LayoutList className="w-3.5 h-3.5 text-knowledge-log" />
-                    <span className="font-semibold">{stats.logCount}</span>
-                </div>
-            </div>
+            )}
         </div>
     );
 };

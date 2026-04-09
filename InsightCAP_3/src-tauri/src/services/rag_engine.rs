@@ -26,6 +26,7 @@ const BONUS_SAME_PROJECT: f32 = 0.06;
 const BONUS_PATTERN: f32 = 0.05;
 const BONUS_LOG: f32 = 0.08;
 const BONUS_USE_FREQUENCY: f32 = 0.02;
+const BONUS_USER_PLACED: f32 = 0.05;
 
 pub struct RagEngine {
     pool: SqlitePool,
@@ -61,10 +62,11 @@ impl RagEngine {
 
         let mut data_context: Vec<String> = Vec::new();
         let mut citation_sources: Vec<String> = Vec::new();
+        let mut retrieved_capture_ids: Vec<String> = Vec::new();
         for (vec_id, score) in &capture_ids {
             // 動態組合查詢：@ source_ids 和 # tag_filter 可同時生效（OR 關係）
             let mut sql = String::from(
-                "SELECT c.clean_content, s.title AS source_title, s.use_frequency \
+                "SELECT c.id, c.clean_content, c.is_user_edited, s.title AS source_title, s.use_frequency \
                  FROM captures c LEFT JOIN sources s ON c.source_id = s.id \
                  WHERE c.vector_id = ? AND c.status = 'processed'"
             );
@@ -106,14 +108,19 @@ impl RagEngine {
             };
 
             for r in rows {
+                let capture_id: String = r.try_get("id").unwrap_or_default();
                 let content: String = r.try_get("clean_content").unwrap_or_default();
                 let source_title = r.try_get::<String, _>("source_title").ok();
                 let use_freq: i32 = r.try_get("use_frequency").unwrap_or(0);
+                let is_user_edited: i32 = r.try_get("is_user_edited").unwrap_or(0);
 
-                // use_frequency 加分
-                let adjusted = score + if use_freq > 0 { BONUS_USE_FREQUENCY } else { 0.0 };
+                // use_frequency 加分 + 用戶編輯加分
+                let adjusted = score
+                    + if use_freq > 0 { BONUS_USE_FREQUENCY } else { 0.0 }
+                    + if is_user_edited == 1 { BONUS_USER_PLACED } else { 0.0 };
 
                 if !content.is_empty() && adjusted >= CAPTURES_THRESHOLD {
+                    if !capture_id.is_empty() { retrieved_capture_ids.push(capture_id); }
                     if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
                         data_context.push(format!("[來源: {}]\n{}", title, content));
                     } else {
@@ -133,11 +140,14 @@ impl RagEngine {
 
         let mut pattern_context: Vec<String> = Vec::new();
         let mut log_context: Vec<String> = Vec::new();
+        let mut pattern_hints: Vec<String> = Vec::new();
+        let mut log_hints: Vec<String> = Vec::new();
+        let mut retrieved_memory_chunk_ids: Vec<String> = Vec::new();
 
         for (vec_id, score) in &memory_results {
             // 動態組合查詢：@ source_ids 和 # tag_filter 可同時生效（OR 關係）
             let mut msql = String::from(
-                "SELECT m.content, m.knowledge_type, m.project_id, m.trigger_context, s.title AS source_title \
+                "SELECT m.id, m.content, m.knowledge_type, m.project_id, m.trigger_context, m.placed_by, s.title AS source_title \
                  FROM memory_chunks m \
                  LEFT JOIN sources s ON m.source_id = s.id \
                  WHERE m.vector_id = ?"
@@ -180,15 +190,18 @@ impl RagEngine {
             };
 
             for r in rows {
+                let mc_id: String = r.try_get("id").unwrap_or_default();
                 let knowledge_type: String = r.try_get("knowledge_type").unwrap_or_default();
                 let content: String = r.try_get("content").unwrap_or_default();
                 let chunk_project: Option<String> = r.try_get("project_id").unwrap_or(None);
                 let source_title: Option<String> = r.try_get("source_title").ok();
+                let placed_by: String = r.try_get("placed_by").unwrap_or_else(|_| "ai".to_string());
 
                 // 計算加分後分數
                 let mut adjusted = *score;
                 if knowledge_type == "pattern" { adjusted += BONUS_PATTERN; }
                 if knowledge_type == "log" { adjusted += BONUS_LOG; }
+                if placed_by == "user" { adjusted += BONUS_USER_PLACED; }
                 if let (Some(pid), Some(cpid)) = (project_id, &chunk_project) {
                     if pid == cpid { adjusted += BONUS_SAME_PROJECT; }
                 }
@@ -196,7 +209,11 @@ impl RagEngine {
                 match knowledge_type.as_str() {
                     "pattern" if adjusted >= MEMORY_PATTERN_THRESHOLD
                         && pattern_context.len() < MEMORY_PATTERN_LIMIT => {
+                        // 取前 50 字元作為 hint 預覽
+                        let hint = content.chars().take(50).collect::<String>();
+                        pattern_hints.push(hint);
                         pattern_context.push(content);
+                        if !mc_id.is_empty() { retrieved_memory_chunk_ids.push(mc_id); }
                         if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
                             if !citation_sources.iter().any(|s| s == title) {
                                 citation_sources.push(title.clone());
@@ -205,6 +222,7 @@ impl RagEngine {
                     }
                     "data" if adjusted >= MEMORY_DATA_THRESHOLD
                         && data_context.len() < MEMORY_DATA_LIMIT => {
+                        if !mc_id.is_empty() { retrieved_memory_chunk_ids.push(mc_id); }
                         if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
                             data_context.push(format!("[來源: {}]\\n{}", title, content));
                             if !citation_sources.iter().any(|s| s == title) {
@@ -270,6 +288,8 @@ impl RagEngine {
             let triggered = trigger.split('|').any(|t| query_lower.contains(&t.trim().to_lowercase()));
             if triggered {
                 let content: String = r.try_get("content").unwrap_or_default();
+                let hint = content.chars().take(50).collect::<String>();
+                log_hints.push(hint);
                 log_context.push(content);
                 if let Ok(title) = r.try_get::<String, _>("source_title") {
                     if !title.is_empty() && !citation_sources.iter().any(|s| s == &title) {
@@ -310,12 +330,38 @@ impl RagEngine {
             }
         }
 
+        // 6. 反向鏈接擴展：找出已召回 chunks 的關聯 chunks，補充到 data_context
+        let mut all_retrieved_ids: Vec<String> = retrieved_capture_ids;
+        all_retrieved_ids.extend(retrieved_memory_chunk_ids);
+
+        if !all_retrieved_ids.is_empty() {
+            let relation_engine = crate::services::chunk_relation_engine::ChunkRelationEngine::new(
+                self.pool.clone(),
+                self.embedder.clone(),
+                self.vector_store.clone(),
+            );
+            if let Ok(linked) = relation_engine.fetch_linked_chunks(&all_retrieved_ids).await {
+                for lc in linked {
+                    if !lc.content.is_empty() && data_context.len() < CAPTURES_LIMIT + MEMORY_DATA_LIMIT {
+                        let label = match lc.relation.as_str() {
+                            "contradicts" => "⚠️ 矛盾觀點",
+                            "extends" => "延伸資訊",
+                            _ => "相關記憶",
+                        };
+                        data_context.push(format!("[{label}]\n{}", lc.content));
+                    }
+                }
+            }
+        }
+
         Ok(json!({
             "pattern": pattern_context,
             "log": log_context,
             "data": data_context,
             "external": external_context,
             "citation_sources": citation_sources,
+            "pattern_hints": pattern_hints,
+            "log_hints": log_hints,
         }))
     }
 
@@ -332,7 +378,7 @@ impl RagEngine {
         tag_filter: Option<Vec<String>>,
         rag_enabled: bool,
         temp_chunk_ids: Option<Vec<String>>,
-    ) -> Result<(String, Vec<(String, String)>, Vec<String>), String> {
+    ) -> Result<(String, Vec<(String, String)>, Vec<String>, serde_json::Value), String> {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
@@ -534,7 +580,15 @@ impl RagEngine {
             }
         }
 
-        Ok((system_prompt, history, citation_sources))
+        let context_hints = json!({
+            "patternCount": ctx["pattern"].as_array().map(|a| a.len()).unwrap_or(0),
+            "logCount": ctx["log"].as_array().map(|a| a.len()).unwrap_or(0),
+            "dataCount": ctx["data"].as_array().map(|a| a.len()).unwrap_or(0),
+            "patternHints": ctx.get("pattern_hints").cloned().unwrap_or(json!([])),
+            "logHints": ctx.get("log_hints").cloned().unwrap_or(json!([])),
+        });
+
+        Ok((system_prompt, history, citation_sources, context_hints))
     }
 
     /// 組裝分層 system prompt context，呼叫 LLM 生成回答
@@ -550,6 +604,7 @@ impl RagEngine {
         rag_enabled: bool,
         temp_chunk_ids: Option<Vec<String>>,
         think_mode: bool,
+        web_context: Option<String>,
     ) -> Result<serde_json::Value, String> {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
@@ -559,12 +614,12 @@ impl RagEngine {
         let is_ollama = cfg.provider == "ollama";
         let api_key = cfg.api_key.clone().unwrap_or_default();
         let opt_provider = if !api_key.is_empty() || is_ollama {
-            Some(OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model.clone()))
+            Some(OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model.clone(), cfg.provider.clone()))
         } else {
             None
         };
 
-        let (base_prompt, history_vec, citation_sources) = self.build_prompt(
+        let (base_prompt, history_vec, citation_sources, context_hints) = self.build_prompt(
             query,
             history,
             conversation_summary,
@@ -575,16 +630,31 @@ impl RagEngine {
             temp_chunk_ids,
         ).await?;
 
-        let system_prompt = if think_mode {
-            format!("{}{}", crate::prompts::THINK_MODE_PREFIX, base_prompt)
+        // 若有聯網搜尋結果，附加到 base_prompt 後
+        let base_prompt_with_web = if let Some(web_ctx) = &web_context {
+            format!(
+                "{}\n\n{}\n{}",
+                base_prompt,
+                crate::prompts::RAG_CONTEXT_WEB_SEARCH,
+                web_ctx
+            )
         } else {
             base_prompt
         };
 
-        let llm_opts = if think_mode {
-            LLMOptions { temperature: 0.6, max_tokens: 8192, stream: false }
+        // 只有非原生推理模型才注入 THINK_MODE_PREFIX
+        let reasoning_style = crate::providers::llm::model_caps::detect(&cfg.model, &cfg.provider);
+        let has_native_reasoning = reasoning_style != crate::providers::llm::model_caps::ReasoningStyle::None;
+        let system_prompt = if think_mode && !has_native_reasoning {
+            format!("{}{}", crate::prompts::THINK_MODE_PREFIX, base_prompt_with_web)
         } else {
-            LLMOptions::default()
+            base_prompt_with_web
+        };
+
+        let llm_opts = if think_mode {
+            LLMOptions { temperature: 0.6, max_tokens: 8192, stream: false, think_mode: Some(true) }
+        } else {
+            LLMOptions { think_mode: Some(false), ..LLMOptions::default() }
         };
 
         let is_simulated = opt_provider.is_none();
@@ -600,6 +670,7 @@ impl RagEngine {
             "answer": answer,
             "is_simulated": is_simulated,
             "citationSources": citation_sources,
+            "contextHints": context_hints,
         }))
     }
 }

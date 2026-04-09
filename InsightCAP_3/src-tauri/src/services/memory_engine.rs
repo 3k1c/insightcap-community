@@ -57,8 +57,8 @@ impl MemoryEngine {
             content = content
         );
 
-        let provider = OpenAiProvider::new(api_key, cfg.base_url, cfg.model.clone());
-        let opts = LLMOptions { temperature: 0.1, max_tokens: 200, stream: false };
+        let provider = OpenAiProvider::new(api_key, cfg.base_url, cfg.model.clone(), cfg.provider.clone());
+        let opts = LLMOptions { temperature: 0.1, max_tokens: 200, stream: false, think_mode: None };
 
         // 15 秒超時
         let result = tokio::time::timeout(
@@ -249,8 +249,8 @@ impl MemoryEngine {
             content = content
         );
 
-        let provider = OpenAiProvider::new(api_key.to_string(), Some(base_url), model);
-        let opts = LLMOptions { temperature: 0.1, max_tokens: 300, stream: false };
+        let provider = OpenAiProvider::new(api_key.to_string(), Some(base_url), model, String::new());
+        let opts = LLMOptions { temperature: 0.1, max_tokens: 300, stream: false, think_mode: None };
 
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(20),

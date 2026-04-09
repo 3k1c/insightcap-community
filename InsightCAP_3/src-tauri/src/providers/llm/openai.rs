@@ -2,20 +2,30 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 
-use crate::providers::llm::{LLMError, LLMOptions, LLMProvider};
+use crate::providers::llm::{LLMError, LLMOptions, LLMProvider, StreamResult, StreamToken};
+use crate::providers::llm::model_caps::{self, ReasoningStyle};
 
 pub struct OpenAiProvider {
     api_key: String,
     base_url: String,
     model: String,
+    provider_name: String,
     client: Client,
 }
 
 impl OpenAiProvider {
-    pub fn new(api_key: String, base_url_opt: Option<String>, model: String) -> Self {
+    pub fn new(api_key: String, base_url_opt: Option<String>, model: String, provider_name: String) -> Self {
         let mut base_url = base_url_opt
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "http://localhost:11434/v1".to_string()); // 預設降級為本地 ollama (如果在前端沒有設定)
+            .unwrap_or_else(|| {
+                match provider_name.as_str() {
+                    "openai" => "https://api.openai.com/v1".to_string(),
+                    "google" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+                    "xai" => "https://api.x.ai/v1".to_string(),
+                    "openrouter" => "https://openrouter.ai/api/v1".to_string(),
+                    _ => "http://localhost:11434/v1".to_string(),
+                }
+            });
 
         let trimmed = base_url.trim_end_matches('/');
         if trimmed.contains("localhost") || trimmed.contains("127.0.0.1") || trimmed.contains(":11434") {
@@ -31,24 +41,154 @@ impl OpenAiProvider {
             api_key,
             base_url,
             model,
+            provider_name,
             client: Client::new(),
         }
     }
+
+    /// 根據模型能力建構 messages 陣列（system vs developer role）
+    fn build_messages(&self, system_prompt: &str, history: &[(String, String)], user_query: &str) -> Vec<serde_json::Value> {
+        let style = model_caps::detect(&self.model, &self.provider_name);
+        let system_role = if style == ReasoningStyle::OpenAiReasoning { "developer" } else { "system" };
+
+        let mut messages = vec![json!({ "role": system_role, "content": system_prompt })];
+        for (role, content) in history {
+            messages.push(json!({ "role": role, "content": content }));
+        }
+        messages.push(json!({ "role": "user", "content": user_query }));
+        messages
+    }
+
+    /// 根據模型能力建構 request body 參數
+    fn build_request_body(&self, messages: Vec<serde_json::Value>, options: &LLMOptions, stream: bool) -> serde_json::Value {
+        let style = model_caps::detect(&self.model, &self.provider_name);
+
+        match style {
+            ReasoningStyle::OpenAiReasoning => {
+                // o-series：不支援 temperature，用 max_completion_tokens，加入 reasoning_effort
+                json!({
+                    "model": self.model,
+                    "messages": messages,
+                    "max_completion_tokens": options.max_tokens,
+                    "reasoning_effort": "high",
+                    "stream": stream,
+                })
+            }
+            ReasoningStyle::OllamaThinkTag => {
+                // Ollama think-capable 模型（DeepSeek-R1、Qwen3、Gemma4 等）
+                // OpenAI 相容端點（/v1/chat/completions）的 think 參數放在 options 物件內
+                let mut body = json!({
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": options.temperature,
+                    "max_tokens": options.max_tokens,
+                    "stream": stream,
+                });
+                if let Some(think) = options.think_mode {
+                    body["options"] = json!({ "think": think });
+                }
+                body
+            }
+            _ => {
+                json!({
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": options.temperature,
+                    "max_tokens": options.max_tokens,
+                    "stream": stream,
+                })
+            }
+        }
+    }
+
+    fn reasoning_style(&self) -> ReasoningStyle {
+        model_caps::detect(&self.model, &self.provider_name)
+    }
 }
+
+// ── Ollama <think> tag 狀態機 ─────────────────────────────────────────────
+
+/// 解析 Ollama 模型 content 中的 <think>...</think> tag
+struct ThinkTagParser {
+    in_think: bool,
+    tag_buffer: String,
+}
+
+impl ThinkTagParser {
+    fn new() -> Self {
+        Self { in_think: false, tag_buffer: String::new() }
+    }
+
+    /// 處理一段 content token，回傳分類後的 StreamToken 列表
+    fn parse(&mut self, raw: &str) -> Vec<StreamToken> {
+        let mut tokens = Vec::new();
+        let mut chars = raw.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if ch == '<' {
+                // 開始可能是 tag，先緩衝
+                self.tag_buffer.push(ch);
+            } else if !self.tag_buffer.is_empty() {
+                self.tag_buffer.push(ch);
+
+                // 檢查是否已完成 tag
+                if self.tag_buffer == "<think>" {
+                    self.in_think = true;
+                    self.tag_buffer.clear();
+                } else if self.tag_buffer == "</think>" {
+                    self.in_think = false;
+                    self.tag_buffer.clear();
+                } else if self.tag_buffer.len() > 8 {
+                    // 不是有效 tag，flush buffer 為內容
+                    let buf = std::mem::take(&mut self.tag_buffer);
+                    self.emit(&buf, &mut tokens);
+                } else {
+                    // 可能是 partial tag，看看是否還有可能匹配
+                    let potential = if self.in_think { "</think>" } else { "<think>" };
+                    if !potential.starts_with(&self.tag_buffer) {
+                        let buf = std::mem::take(&mut self.tag_buffer);
+                        self.emit(&buf, &mut tokens);
+                    }
+                }
+            } else {
+                // 一般字元
+                let s = ch.to_string();
+                self.emit(&s, &mut tokens);
+            }
+        }
+
+        tokens
+    }
+
+    /// 串流結束時 flush 殘留 buffer
+    fn flush(&mut self) -> Vec<StreamToken> {
+        if self.tag_buffer.is_empty() {
+            return vec![];
+        }
+        let buf = std::mem::take(&mut self.tag_buffer);
+        let mut tokens = Vec::new();
+        self.emit(&buf, &mut tokens);
+        tokens
+    }
+
+    fn emit(&self, text: &str, tokens: &mut Vec<StreamToken>) {
+        if text.is_empty() { return; }
+        if self.in_think {
+            tokens.push(StreamToken::Reasoning(text.to_string()));
+        } else {
+            tokens.push(StreamToken::Content(text.to_string()));
+        }
+    }
+}
+
+// ── LLMProvider 實作 ─────────────────────────────────────────────────────
 
 impl LLMProvider for OpenAiProvider {
     async fn complete(&self, prompt: &str, options: LLMOptions) -> Result<String, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let req_body = json!({
-            "model": self.model,
-            "messages": [
-                { "role": "user", "content": prompt }
-            ],
-            "temperature": options.temperature,
-            "max_tokens": options.max_tokens,
-            "stream": options.stream,
-        });
+        let messages = vec![json!({ "role": "user", "content": prompt })];
+        let req_body = self.build_request_body(messages, &options, options.stream);
 
         let res = self.client.post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -81,19 +221,8 @@ impl LLMProvider for OpenAiProvider {
     ) -> Result<String, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let mut messages = vec![json!({ "role": "system", "content": system_prompt })];
-        for (role, content) in history {
-            messages.push(json!({ "role": role, "content": content }));
-        }
-        messages.push(json!({ "role": "user", "content": user_query }));
-
-        let req_body = json!({
-            "model": self.model,
-            "messages": messages,
-            "temperature": options.temperature,
-            "max_tokens": options.max_tokens,
-            "stream": false,
-        });
+        let messages = self.build_messages(system_prompt, history, user_query);
+        let req_body = self.build_request_body(messages, &options, false);
 
         let res = self.client.post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -122,23 +251,13 @@ impl LLMProvider for OpenAiProvider {
         history: &[(String, String)],
         user_query: &str,
         options: LLMOptions,
-        on_token: impl Fn(String) + Send + 'static,
-    ) -> Result<String, LLMError> {
+        on_token: impl Fn(StreamToken) + Send + 'static,
+    ) -> Result<StreamResult, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        let style = self.reasoning_style();
 
-        let mut messages = vec![json!({ "role": "system", "content": system_prompt })];
-        for (role, content) in history {
-            messages.push(json!({ "role": role, "content": content }));
-        }
-        messages.push(json!({ "role": "user", "content": user_query }));
-
-        let req_body = json!({
-            "model": self.model,
-            "messages": messages,
-            "temperature": options.temperature,
-            "max_tokens": options.max_tokens,
-            "stream": true,
-        });
+        let messages = self.build_messages(system_prompt, history, user_query);
+        let req_body = self.build_request_body(messages, &options, true);
 
         let res = self.client.post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -155,8 +274,9 @@ impl LLMProvider for OpenAiProvider {
         }
 
         let mut stream = res.bytes_stream();
-        let mut full_text = String::new();
+        let mut result = StreamResult::default();
         let mut buffer = String::new();
+        let mut think_parser = ThinkTagParser::new();
 
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| LLMError::Network(e.to_string()))?;
@@ -173,10 +293,47 @@ impl LLMProvider for OpenAiProvider {
                     if data.is_empty() { continue; }
 
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(token) = v["choices"][0]["delta"]["content"].as_str() {
-                            if !token.is_empty() {
-                                full_text.push_str(token);
-                                on_token(token.to_string());
+                        let delta = &v["choices"][0]["delta"];
+
+                        match style {
+                            ReasoningStyle::OpenAiReasoning | ReasoningStyle::DeepSeekReasoning => {
+                                // 先處理 reasoning_content
+                                if let Some(r) = delta["reasoning_content"].as_str() {
+                                    if !r.is_empty() {
+                                        result.reasoning.push_str(r);
+                                        on_token(StreamToken::Reasoning(r.to_string()));
+                                    }
+                                }
+                                // 再處理 content
+                                if let Some(c) = delta["content"].as_str() {
+                                    if !c.is_empty() {
+                                        result.content.push_str(c);
+                                        on_token(StreamToken::Content(c.to_string()));
+                                    }
+                                }
+                            }
+                            ReasoningStyle::OllamaThinkTag => {
+                                // Ollama：reasoning 包在 <think> tag 中
+                                if let Some(c) = delta["content"].as_str() {
+                                    if !c.is_empty() {
+                                        let parsed = think_parser.parse(c);
+                                        for tok in parsed {
+                                            match &tok {
+                                                StreamToken::Reasoning(r) => result.reasoning.push_str(r),
+                                                StreamToken::Content(ct) => result.content.push_str(ct),
+                                            }
+                                            on_token(tok);
+                                        }
+                                    }
+                                }
+                            }
+                            ReasoningStyle::None => {
+                                if let Some(token) = delta["content"].as_str() {
+                                    if !token.is_empty() {
+                                        result.content.push_str(token);
+                                        on_token(StreamToken::Content(token.to_string()));
+                                    }
+                                }
                             }
                         }
                     }
@@ -184,22 +341,26 @@ impl LLMProvider for OpenAiProvider {
             }
         }
 
-        Ok(full_text)
+        // Flush Ollama think tag parser 殘留
+        if style == ReasoningStyle::OllamaThinkTag {
+            for tok in think_parser.flush() {
+                match &tok {
+                    StreamToken::Reasoning(r) => result.reasoning.push_str(r),
+                    StreamToken::Content(c) => result.content.push_str(c),
+                }
+                on_token(tok);
+            }
+        }
+
+        Ok(result)
     }
 
     async fn complete_json(&self, prompt: &str, options: LLMOptions) -> Result<serde_json::Value, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let req_body = json!({
-            "model": self.model,
-            "messages": [
-                { "role": "user", "content": prompt }
-            ],
-            "temperature": options.temperature,
-            "max_tokens": options.max_tokens,
-            "stream": options.stream,
-            "response_format": { "type": "json_object" }
-        });
+        let messages = vec![json!({ "role": "user", "content": prompt })];
+        let mut req_body = self.build_request_body(messages, &options, options.stream);
+        req_body["response_format"] = json!({ "type": "json_object" });
 
         let res = self.client.post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -223,7 +384,7 @@ impl LLMProvider for OpenAiProvider {
             } else if clean_text.starts_with("```") {
                 clean_text = clean_text.trim_start_matches("```").trim_end_matches("```").trim();
             }
-            
+
             let parsed: serde_json::Value = serde_json::from_str(clean_text)
                 .map_err(|e| LLMError::Parse(format!("Failed to parse JSON string from LLM: {}\nRaw: {}", e, clean_text)))?;
             Ok(parsed)

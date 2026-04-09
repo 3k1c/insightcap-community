@@ -6,6 +6,8 @@ import { LoginPage } from './pages/LoginPage';
 import { MigratePage } from './pages/MigratePage';
 import { MainLayout } from './components/layout/MainLayout';
 import { QuickCapturePage } from './pages/QuickCapturePage';
+import { DecisionReviewToast } from './components/memory/DecisionToast';
+import { PatternPromotionToast } from './components/memory/PatternPromotionToast';
 
 // 偵測當前視窗 label
 const windowLabel = (window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } }).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? '';
@@ -120,6 +122,8 @@ export default function App() {
         return (
             <>
                 <MainLayout />
+                <DecisionReviewToast />
+                <PatternPromotionToast />
                 <Toaster position="bottom-right" />
             </>
         );

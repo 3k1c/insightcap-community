@@ -178,6 +178,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
         ("005", include_str!("../../migrations/005_conversation_pin_lock.sql")),
         ("006", include_str!("../../migrations/006_repository_timeline.sql")),
         ("007", include_str!("../../migrations/007_fix_local_doc_path.sql")),
+        ("008", include_str!("../../migrations/008_decisions.sql")),
+        ("009", include_str!("../../migrations/009_chunk_relations.sql")),
+        ("010", include_str!("../../migrations/010_space_wiki.sql")),
+        ("011", include_str!("../../migrations/011_source_tags.sql")),
     ];
 
     for (id, sql) in migrations {

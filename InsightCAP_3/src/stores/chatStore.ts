@@ -33,12 +33,15 @@ export interface Message {
     attachedFiles?: { name: string; filePath: string; fileType: string; previewUrl?: string }[];
     mentionedSources?: { id: string; title: string }[];
     citationSources?: string[];
+    reasoningContent?: string;
 }
 
-interface ContextStats {
+export interface ContextStats {
     dataCount: number;
     patternCount: number;
     logCount: number;
+    patternHints: string[];
+    logHints: string[];
 }
 
 interface ChatState {
@@ -76,6 +79,7 @@ interface ChatState {
         tempChunkIds?: string[];
         thinkingMode?: 'normal' | 'think';
     }) => Promise<void>;
+    autoTitleConversation: (conversationId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -87,7 +91,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     isGenerating: false,
     streamingContent: '',
     expandedProjectIds: new Set(),
-    contextStats: { dataCount: 0, patternCount: 0, logCount: 0 },
+    contextStats: { dataCount: 0, patternCount: 0, logCount: 0, patternHints: [], logHints: [] },
     conversationTempChunkIds: [],
 
     loadProjects: async () => {
@@ -149,6 +153,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 c.id === conversationId ? { ...c, title } : c
             ),
         }));
+    },
+
+    autoTitleConversation: async (conversationId: string) => {
+        try {
+            const conv = get().conversations.find(c => c.id === conversationId);
+            if (!conv || conv.title !== '新對話') return; // 已改名，跳過
+            const title = await invoke<string>('auto_title_conversation', { conversationId });
+            if (title && title !== '新對話') {
+                set(state => ({
+                    conversations: state.conversations.map(c =>
+                        c.id === conversationId ? { ...c, title } : c
+                    ),
+                }));
+            }
+        } catch (e) {
+            console.error('[chatStore] Auto-title failed:', e);
+        }
     },
 
     deleteConversation: async (conversationId: string) => {
@@ -261,24 +282,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
             const conv = get().conversations.find(c => c.id === conversationId);
             // 切換對話時先清空，稍後從 metadata 恢復
-            set({ activeConversationId: conversationId, activeProjectId: conv?.projectId ?? null, conversationTempChunkIds: [], streamingContent: '' });
+            set({ activeConversationId: conversationId, activeProjectId: conv?.projectId ?? null, conversationTempChunkIds: [], streamingContent: '', contextStats: { dataCount: 0, patternCount: 0, logCount: 0, patternHints: [], logHints: [] } });
             const raw = await invoke<(Message & { metadata?: string })[]>('get_messages', { conversationId });
             let restoredTempChunkIds: string[] = [];
             const messages: Message[] = raw.map(m => {
                 let attachedFiles: Message['attachedFiles'];
                 let citationSources: Message['citationSources'];
                 let mentionedSources: Message['mentionedSources'];
+                let reasoningContent: Message['reasoningContent'];
                 try {
                     const meta = JSON.parse(m.metadata || '{}');
                     if (Array.isArray(meta.attachedFiles)) attachedFiles = meta.attachedFiles;
                     if (Array.isArray(meta.citationSources)) citationSources = meta.citationSources;
                     if (Array.isArray(meta.mentionedSources)) mentionedSources = meta.mentionedSources;
+                    if (typeof meta.reasoningContent === 'string') reasoningContent = meta.reasoningContent;
                     // 從最後一則含 tempChunkIds 的 user 訊息恢復（累積式，取最新即可）
                     if (m.role === 'user' && Array.isArray(meta.tempChunkIds)) {
                         restoredTempChunkIds = meta.tempChunkIds;
                     }
                 } catch { /* ignore */ }
-                return { ...m, attachedFiles, mentionedSources, citationSources };
+                return { ...m, attachedFiles, mentionedSources, citationSources, reasoningContent };
             });
             set({ messages, conversationTempChunkIds: restoredTempChunkIds });
         } catch (error) {
@@ -364,6 +387,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             // 6. 訂閱 streaming events
             let accumulated = '';
+            let accumulatedReasoning = '';
+
             const unlistenToken = await listen<{ conversationId: string; token: string }>(
                 'rag-stream-token',
                 (event) => {
@@ -378,30 +403,62 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 }
             );
 
-            const unlistenDone = await listen<{ conversationId: string; fullAnswer: string; citationSources?: string[] }>(
+            const unlistenReasoning = await listen<{ conversationId: string; token: string }>(
+                'rag-stream-reasoning',
+                (event) => {
+                    if (event.payload.conversationId !== activeConversationId) return;
+                    accumulatedReasoning += event.payload.token;
+                    set(state => ({
+                        messages: state.messages.map(m =>
+                            m.id === placeholderMsgId ? { ...m, reasoningContent: accumulatedReasoning } : m
+                        ),
+                    }));
+                }
+            );
+
+            const unlistenDone = await listen<{ conversationId: string; fullAnswer: string; reasoning?: string | null; citationSources?: string[]; contextHints?: { patternCount?: number; logCount?: number; dataCount?: number; patternHints?: string[]; logHints?: string[] } }>(
                 'rag-stream-done',
                 (event) => {
                     if (event.payload.conversationId !== activeConversationId) return;
                     const finalAnswer = event.payload.fullAnswer || accumulated;
+                    const finalReasoning = event.payload.reasoning || accumulatedReasoning || undefined;
                     const citationSources = Array.isArray(event.payload.citationSources) ? event.payload.citationSources : [];
+                    const hints = event.payload.contextHints;
 
                     // 7. 先更新 UI，再非同步存 DB
                     set(state => ({
                         isGenerating: false,
                         streamingContent: '',
+                        contextStats: hints ? {
+                            patternCount: hints.patternCount ?? 0,
+                            logCount: hints.logCount ?? 0,
+                            dataCount: hints.dataCount ?? 0,
+                            patternHints: hints.patternHints ?? [],
+                            logHints: hints.logHints ?? [],
+                        } : state.contextStats,
                         messages: state.messages.map(m =>
-                            m.id === placeholderMsgId ? { ...m, content: finalAnswer, citationSources } : m
+                            m.id === placeholderMsgId ? { ...m, id: placeholderMsgId.replace('streaming-', ''), content: finalAnswer, citationSources, reasoningContent: finalReasoning } : m
                         ),
                     }));
+
+                    const metaObj: Record<string, unknown> = { citationSources };
+                    if (finalReasoning) metaObj.reasoningContent = finalReasoning;
 
                     invoke('add_message', {
                         conversationId: activeConversationId,
                         role: 'assistant',
                         content: finalAnswer,
-                        metadata: JSON.stringify({ citationSources }),
+                        metadata: JSON.stringify(metaObj),
+                    }).then(() => {
+                        // 首 2 輪對話完成後，自動生成標題（messages 含本輪 user+assistant ≤ 4 條）
+                        const msgCount = get().messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
+                        if (msgCount <= 4) {
+                            get().autoTitleConversation(activeConversationId!);
+                        }
                     }).catch(e => console.error('Failed to save assistant message:', e));
 
                     unlistenToken();
+                    unlistenReasoning();
                     unlistenDone();
                 }
             );
@@ -428,6 +485,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             Promise.race([streamPromise, timeoutPromise]).catch(async (err) => {
                 console.error('rag_query_stream failed:', err);
                 unlistenToken();
+                unlistenReasoning();
                 unlistenDone();
 
                 // fallback：用 non-streaming
@@ -446,6 +504,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     });
                     const fallbackAnswer = ragResponse.answer || '（無回應）';
                     const fallbackCitations = Array.isArray(ragResponse.citationSources) ? ragResponse.citationSources : [];
+                    const fbHints = ragResponse.contextHints;
                     await invoke('add_message', {
                         conversationId: activeConversationId,
                         role: 'assistant',
@@ -455,8 +514,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     set(state => ({
                         isGenerating: false,
                         streamingContent: '',
+                        contextStats: fbHints ? {
+                            patternCount: fbHints.patternCount ?? 0,
+                            logCount: fbHints.logCount ?? 0,
+                            dataCount: fbHints.dataCount ?? 0,
+                            patternHints: fbHints.patternHints ?? [],
+                            logHints: fbHints.logHints ?? [],
+                        } : state.contextStats,
                         messages: state.messages.map(m =>
-                            m.id === placeholderMsgId ? { ...m, content: fallbackAnswer, citationSources: fallbackCitations } : m
+                            m.id === placeholderMsgId ? { ...m, id: placeholderMsgId.replace('streaming-', ''), content: fallbackAnswer, citationSources: fallbackCitations } : m
                         ),
                     }));
                 } catch (fallbackErr) {
@@ -465,7 +531,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         isGenerating: false,
                         streamingContent: '',
                         messages: state.messages.map(m =>
-                            m.id === placeholderMsgId ? { ...m, content: errMsg } : m
+                            m.id === placeholderMsgId ? { ...m, id: placeholderMsgId.replace('streaming-', ''), content: errMsg } : m
                         ),
                     }));
                 }

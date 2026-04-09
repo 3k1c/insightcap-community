@@ -165,7 +165,7 @@ pub async fn summarize_conversation(
     let api_key = cfg.api_key.unwrap_or_default();
 
     if !api_key.is_empty() || is_ollama {
-        opt_provider = Some(OpenAiProvider::new(api_key, cfg.base_url, cfg.model));
+        opt_provider = Some(OpenAiProvider::new(api_key, cfg.base_url, cfg.model, cfg.provider.clone()));
     }
 
     let summary = if let Some(llm) = opt_provider {
@@ -259,6 +259,109 @@ pub async fn update_conversation(
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// 自動為對話生成標題（根據前 2 條訊息，由 LLM 產出）
+#[tauri::command]
+pub async fn auto_title_conversation(
+    pool: State<'_, SqlitePool>,
+    conversation_id: String,
+) -> Result<String, String> {
+    // 1. 檢查是否仍為預設標題「新對話」
+    let current_title: String = sqlx::query_scalar(
+        "SELECT title FROM conversations WHERE id = ?"
+    )
+    .bind(&conversation_id)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?
+    .unwrap_or_default();
+
+    if current_title != "新對話" {
+        return Ok(current_title); // 已手動改名，不覆蓋
+    }
+
+    // 2. 取前 4 條訊息（最多 2 輪對話）
+    let msgs = sqlx::query(
+        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 4"
+    )
+    .bind(&conversation_id)
+    .fetch_all(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if msgs.len() < 2 {
+        return Ok(current_title); // 訊息不足，不生成
+    }
+
+    let mut dialogue = String::new();
+    for m in &msgs {
+        let role: String = m.get("role");
+        let content: String = m.get("content");
+        // 每條訊息最多取前 300 字，避免 token 浪費
+        let truncated: String = content.chars().take(300).collect();
+        dialogue.push_str(&format!("{}: {}\n", role, truncated));
+    }
+
+    // 3. 呼叫 LLM 生成標題
+    let settings = crate::settings::store::get_settings(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+    let cfg = settings.ai_models.chat_llm;
+    let api_key = cfg.api_key.clone().unwrap_or_default();
+    let is_ollama = cfg.provider == "ollama";
+
+    let title = if !api_key.is_empty() || is_ollama {
+        let prompt = format!(
+            "{}\n\n【對話內容】\n{}",
+            crate::prompts::AUTO_TITLE_SYSTEM,
+            dialogue
+        );
+
+        let provider = OpenAiProvider::new(
+            api_key,
+            cfg.base_url.clone(),
+            cfg.model.clone(),
+            cfg.provider.clone(),
+        );
+
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            provider.complete(
+                &prompt,
+                LLMOptions { temperature: 0.3, max_tokens: 60, stream: false, think_mode: None },
+            ),
+        )
+        .await
+        {
+            Ok(Ok(raw)) => {
+                // 清理：去掉引號、換行、多餘空白
+                let cleaned = raw.trim()
+                    .trim_matches(|c| c == '"' || c == '「' || c == '」' || c == '\'' )
+                    .trim()
+                    .to_string();
+                if cleaned.is_empty() { current_title } else { cleaned }
+            }
+            _ => current_title.clone(),
+        }
+    } else {
+        // 無 LLM：從第一條 user 訊息截取前 20 字
+        let first_content: String = msgs[0].get("content");
+        let fallback: String = first_content.chars().take(20).collect();
+        if fallback.is_empty() { current_title } else { fallback }
+    };
+
+    // 4. 寫回 DB
+    let now = Utc::now().to_rfc3339();
+    sqlx::query("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?")
+        .bind(&title)
+        .bind(&now)
+        .bind(&conversation_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(title)
 }
 
 /// 前端對話切換 / 關閉時呼叫，將對話加入總結佇列

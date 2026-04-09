@@ -16,6 +16,7 @@ import Link from '@tiptap/extension-link';
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import BubbleMenuExtension from '@tiptap/extension-bubble-menu';
 import { Node as TiptapNode, Extension, mergeAttributes, nodeInputRule } from '@tiptap/core';
+
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import ImageNodeView from './extensions/ImageNodeView';
 // import { ImageNodePro } from './extensions/ImageNodePro';
@@ -373,7 +374,7 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
                     <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showExportMenu ? 'rotate-180' : ''}`} />
                 </button>
                 {showExportMenu && (
-                    <div className="absolute left-0 top-full mt-1 w-40 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 px-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
+                    <div className="absolute left-0 top-full mt-1 w-40 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 px-1.5 animate-in fade-in zoom-in duration-150">
                         {(['txt', 'md', 'html', 'docx', 'pdf'] as const).map(fmt => {
                             const label = fmt === 'html' ? 'HTML' : t(`editor.export_${fmt}` as any);
                             return (
@@ -411,7 +412,7 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
                     );
                 })()}
                 {showTurnIntoMenu && (
-                    <div className="absolute left-0 top-full mt-1 w-44 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1 px-1 ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
+                    <div className="absolute left-0 top-full mt-1 w-44 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1 px-1 animate-in fade-in zoom-in duration-150">
                         {([
                             { key: 'text1', label: t('turn_into.text1'), icon: 'T1', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text1' }).run(), isActive: menuStates.text1 },
                             { key: 'text2', label: t('turn_into.text2'), icon: 'T2', action: () => editor.chain().focus().setParagraph().updateAttributes('paragraph', { variant: 'text2' }).run(), isActive: menuStates.text2 },
@@ -528,7 +529,7 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
                 </button>
 
                 {showTableMenu && (
-                    <div className="absolute left-0 top-full mt-1 w-56 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 px-1.5 overflow-hidden ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
+                    <div className="absolute left-0 top-full mt-1 w-56 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 px-1.5 overflow-hidden animate-in fade-in zoom-in duration-150">
                         <div className="px-3 py-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">
                             行列管理
                         </div>
@@ -870,6 +871,7 @@ export const EditorPane: React.FC = () => {
 
     const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
+    const [isDragOver, setIsDragOver] = useState(false);
 
     const commitRename = useCallback((tabId: string) => {
         const trimmed = renameValue.trim();
@@ -914,6 +916,29 @@ export const EditorPane: React.FC = () => {
     useEffect(() => {
         saveSession({ activeTabId, tabs: tabs.map(t => ({ id: t.id, title: t.title })), tabCounter });
     }, [tabs, activeTabId]);
+
+    // ── 從對話拖入編輯器 ──────────────────────────────────────────────────────
+    useEffect(() => {
+        const onEnter = () => setIsDragOver(true);
+        const onLeave = () => setIsDragOver(false);
+        const onDrop = (e: Event) => {
+            const { content, x, y } = (e as CustomEvent<{ content: string; x: number; y: number }>).detail;
+            if (!editor || !content) return;
+            setIsDragOver(false);
+            const coords = editor.view.posAtCoords({ left: x, top: y });
+            const insertPos = coords ? coords.pos : editor.state.doc.content.size;
+            editor.chain().focus().insertContentAt(insertPos, content).run();
+        };
+        window.addEventListener('editor-drag-enter', onEnter);
+        window.addEventListener('editor-drag-leave', onLeave);
+        window.addEventListener('drop-to-editor', onDrop);
+        return () => {
+            window.removeEventListener('editor-drag-enter', onEnter);
+            window.removeEventListener('editor-drag-leave', onLeave);
+            window.removeEventListener('drop-to-editor', onDrop);
+        };
+    }, [editor]);
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Periodic history snapshot every 5 minutes
     useEffect(() => {
@@ -1346,7 +1371,7 @@ export const EditorPane: React.FC = () => {
                         placement: 'top',
                     }}
                 >
-                    <div className="flex items-center gap-0.5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200 z-[100] mx-6">
+                    <div className="flex items-center gap-0.5 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200 z-[100] mx-6">
                         <button
                             onClick={() => editor.chain().focus().updateAttributes('imageNodePro', { textAlign: 'left' }).run()}
                             className={`p-1.5 rounded hover:bg-surface-subtle transition-colors ${popupStates.imageAlignLeft ? 'text-accent-default bg-accent-light2' : 'text-text-secondary'}`}
@@ -1414,7 +1439,7 @@ export const EditorPane: React.FC = () => {
                         e.stopPropagation();
                     }}
                 >
-                    <div className="flex items-center gap-0.5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl p-1 animate-in fade-in zoom-in duration-200 z-[100] whitespace-nowrap">
+                    <div className="flex items-center gap-0.5 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl p-1 animate-in fade-in zoom-in duration-200 z-[100] whitespace-nowrap">
                         <div className="flex items-center gap-0.5 flex-nowrap">
                             {/* Improve Dropdown Trigger */}
                             <div className="relative" ref={aiDropdownRef}>
@@ -1431,7 +1456,7 @@ export const EditorPane: React.FC = () => {
                                 {/* Custom Dropdown Menu */}
                                 {showAiDropdown && (
                                     <div
-                                        className={`absolute left-0 top-full mt-1 whitespace-normal bg-surface-base border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200 ${aiDropdownType === 'custom' ? 'w-72' : 'w-52'} ${aiDropdownType === 'tone' ? 'max-h-72 overflow-y-auto' : ''}`}
+                                        className={`absolute left-0 top-full mt-1 whitespace-normal bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200 ${aiDropdownType === 'custom' ? 'w-72' : 'w-52'} ${aiDropdownType === 'tone' ? 'max-h-72 overflow-y-auto' : ''}`}
                                         onMouseDown={e => {
                                             e.stopPropagation();
                                             if (aiDropdownType !== 'custom') {
@@ -1584,7 +1609,7 @@ export const EditorPane: React.FC = () => {
                                 </button>
                                 {showBubbleTurnInto && (
                                     <div
-                                        className="absolute left-0 top-full mt-1 w-44 bg-surface-base border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200"
+                                        className="absolute left-0 top-full mt-1 w-44 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200"
                                         onMouseDown={e => e.stopPropagation()}
                                     >
                                         {([
@@ -1719,7 +1744,7 @@ export const EditorPane: React.FC = () => {
                         zIndex: 9999,
                     }}
                     onMouseDown={e => e.stopPropagation()}
-                    className="flex items-center gap-0.5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200"
+                    className="flex items-center gap-0.5 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200"
                 >
                     <button onClick={() => editor.chain().focus().addColumnBefore().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title="左側加一欄">
                         <Plus className="w-3 h-3" /><Columns className="w-4 h-4 rotate-180" />
@@ -1755,14 +1780,17 @@ export const EditorPane: React.FC = () => {
             )}
 
 
-            <div className="flex-1 overflow-y-auto">
+            <div
+                className={`flex-1 overflow-y-auto relative transition-colors ${isDragOver ? 'ring-2 ring-inset ring-accent-default/50 bg-accent-default/5' : ''}`}
+                data-editor-drop="true"
+            >
                 <EditorContent editor={editor} />
             </div>
 
             {/* AI Result Panel - position fixed, independent of BubbleMenu */}
             {(isAiImproving || aiImproveResult) && aiPanelAnchor && (
                 <div ref={aiPanelRef} style={calcPanelStyle(aiPanelAnchor)}
-                    className="bg-surface-base border border-stroke-divider rounded-lg shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    className="bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
                     <div className="flex flex-col">
                         {/* Header */}
                         <div className="flex items-center justify-between px-3 py-2 border-b border-stroke-divider">
@@ -1853,7 +1881,7 @@ export const EditorPane: React.FC = () => {
                             <HistoryIcon className="w-3.5 h-3.5" />
                         </button>
                         {showHistoryMenu && (
-                            <div className="absolute bottom-full right-0 mb-1 w-64 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in duration-150">
+                            <div className="absolute bottom-full right-0 mb-1 w-64 bg-surface-flyout backdrop-blur-sm border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 animate-in fade-in zoom-in duration-150">
                                 <div className="px-3 py-1.5 text-[10px] font-medium text-text-tertiary border-b border-stroke-divider mb-1">
                                     歷史快照（{tabs.find(t => t.id === activeTabId)?.title}）
                                 </div>

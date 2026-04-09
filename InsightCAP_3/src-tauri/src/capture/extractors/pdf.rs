@@ -7,6 +7,28 @@
 use crate::error::AppError;
 use pdfium_render::prelude::*;
 
+/// 依序嘗試以下路徑來載入 pdfium 動態函式庫：
+/// 1. 執行檔同目錄（dev: target/debug/，prod: 安裝目錄）
+/// 2. 系統 PATH
+fn bind_pdfium() -> Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
+    // 取得執行檔目錄
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    if let Some(dir) = exe_dir {
+        let result = Pdfium::bind_to_library(
+            Pdfium::pdfium_platform_library_name_at_path(dir.to_string_lossy().as_ref()),
+        );
+        if result.is_ok() {
+            return result;
+        }
+    }
+
+    // 最後嘗試系統函式庫
+    Pdfium::bind_to_system_library()
+}
+
 pub struct PdfChunk {
     pub page_num: usize,
     pub clean_content: String,
@@ -32,8 +54,7 @@ pub async fn extract_pdf(
     let doc_content = tokio::task::spawn_blocking(
         move || -> Result<Vec<(usize, Option<Vec<u8>>, String, String)>, AppError> {
             let pdfium = Pdfium::new(
-                Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
-                    .or_else(|_| Pdfium::bind_to_system_library())
+                bind_pdfium()
                     .map_err(|e| AppError::Capture(format!("Pdfium 綁定失敗: {}", e)))?,
             );
 
@@ -172,8 +193,7 @@ pub async fn render_specific_page(file_path: &str, page_num: usize) -> Result<Ve
 
     let img_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
-                .or_else(|_| Pdfium::bind_to_system_library())
+            bind_pdfium()
                 .map_err(|e| AppError::Capture(format!("Pdfium 綁定失敗: {}", e)))?,
         );
 

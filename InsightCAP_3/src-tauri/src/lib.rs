@@ -16,6 +16,7 @@ pub mod utils;
 pub mod vector_store;
 pub mod error;
 pub mod http_server;
+pub mod tray_status;
 
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -194,6 +195,7 @@ pub fn run() {
             // 管理 Pool 和 AppState
             app.manage(pool.clone());
             app.manage(db::AppState::new(pool.clone(), effective_kb_path.clone(), vector_store, embedder, shutdown_tx));
+            app.manage(tray_status::TrayState::new());
 
             // 啟動背景任務
             let processor_pool = pool.clone();
@@ -205,6 +207,27 @@ pub fn run() {
             background::space_recluster::start_recluster_worker(app.handle().clone());
             background::conversation_scheduler::start_scheduler(app.handle().clone());
             background::ocr_worker::start_ocr_worker(app.handle().clone());
+
+            // 啟動時清理超過 30 天未處理的 pending_confirm chunks
+            {
+                let cleanup_pool = pool.clone();
+                tauri::async_runtime::spawn(async move {
+                    let cutoff = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+                    match sqlx::query(
+                        "DELETE FROM memory_chunks WHERE pending_confirm = 1 AND created_at < ?"
+                    )
+                    .bind(&cutoff)
+                    .execute(&cleanup_pool)
+                    .await {
+                        Ok(r) => {
+                            if r.rows_affected() > 0 {
+                                println!("[Cleanup] 已自動移除 {} 筆超過 30 天的 pending chunks", r.rows_affected());
+                            }
+                        }
+                        Err(e) => eprintln!("[Cleanup] pending chunk cleanup 失敗: {}", e),
+                    }
+                });
+            }
             background::cloud_sync_watcher::start_cloud_sync_watcher(app.handle().clone(), effective_kb_path.clone());
 
             // 啟動 HTTP 服務 (Phase 6 基礎)
@@ -222,12 +245,16 @@ pub fn run() {
                 .item(&quit_i)
                 .build()?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(
-                    app.default_window_icon()
-                        .expect("default window icon missing")
-                        .clone()
-                )
+            // 用自訂月亮圖示作為托盤初始圖示（Idle 狀態）
+            let initial_icon = {
+                let img = tray_status::compose_icon_pub(tray_status::TrayStatus::Idle);
+                let w = img.width();
+                let h = img.height();
+                tauri::image::Image::new_owned(img.into_raw(), w, h)
+            };
+
+            let _tray = TrayIconBuilder::with_id("main_tray")
+                .icon(initial_icon)
                 .tooltip("InsightCAP")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -336,6 +363,7 @@ pub fn run() {
             commands::settings_commands::switch_kb_path,
             commands::settings_commands::test_ollama,
             commands::settings_commands::test_provider_connection,
+            commands::settings_commands::test_model_connection,
             // Capture
             commands::capture_commands::quick_capture,
             commands::capture_commands::ingest_file,
@@ -356,6 +384,7 @@ pub fn run() {
             commands::knowledge_commands::process_source,
             commands::knowledge_commands::get_repository_stats,
             commands::knowledge_commands::rebuild_kb_index,
+            commands::knowledge_commands::rebuild_source_tags,
             commands::knowledge_commands::export_kb,
             commands::knowledge_commands::import_kb,
             commands::knowledge_commands::delete_kb,
@@ -365,6 +394,9 @@ pub fn run() {
             commands::memory_commands::get_pending_memory_chunks,
             commands::memory_commands::get_pending_patterns,
             commands::memory_commands::confirm_pattern,
+            commands::memory_commands::batch_confirm_memory_chunks,
+            commands::memory_commands::cleanup_expired_pending_chunks,
+            commands::memory_commands::update_memory_chunk,
             // Conversation
             commands::conversation_commands::get_conversations,
             commands::conversation_commands::create_conversation,
@@ -373,6 +405,7 @@ pub fn run() {
             commands::conversation_commands::summarize_conversation,
             commands::conversation_commands::enqueue_summary,
             commands::conversation_commands::rename_conversation,
+            commands::conversation_commands::auto_title_conversation,
             commands::conversation_commands::delete_conversation,
             commands::conversation_commands::update_conversation,
             // Project
@@ -389,6 +422,19 @@ pub fn run() {
             commands::tag_commands::get_source_ids_by_tag,
             // Space
             commands::space_commands::get_all_spaces,
+            commands::space_commands::get_space_insight,
+            commands::space_commands::trigger_space_recluster,
+            commands::space_commands::get_space_wiki,
+            commands::space_commands::save_space_wiki,
+            commands::space_commands::regenerate_space_wiki,
+            // Decision
+            commands::decision_commands::create_decision,
+            commands::decision_commands::get_due_decisions,
+            commands::decision_commands::get_project_decisions,
+            commands::decision_commands::report_decision_outcome,
+            commands::decision_commands::dismiss_decision,
+            // Chunk Relations
+            commands::chunk_relation_commands::get_chunk_relations,
             // Editor
             commands::editor_commands::open_document,
             commands::editor_commands::save_document,
@@ -404,6 +450,9 @@ pub fn run() {
             knowledge_source::enterprise::remove_external_kb,
             // Bilibili
             commands::bilibili_auth::open_bilibili_login,
+            // Seed (TODO: 測試用，上線前移除)
+            commands::seed_commands::seed_test_data,
+            commands::seed_commands::clear_seed_data,
             // RAG
             commands::rag_commands::rag_query,
             commands::rag_commands::rag_query_stream,

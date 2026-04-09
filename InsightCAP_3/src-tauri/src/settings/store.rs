@@ -268,6 +268,37 @@ impl AllSettings {
             }
         }
     }
+
+    /// 將各個 model settings 中缺少的 api_key 或 base_url 從對應的 provider_profiles 補上。
+    /// 這樣下游使用時不需要再手動查找 profile。
+    pub fn resolve_profiles(&mut self) {
+        let profiles = &self.ai_models.provider_profiles;
+
+        let resolve_model = |model: &mut ModelSettings| {
+            // 如果 api_key 為 None 或空字串，嘗試從 profile 補齊
+            let needs_key = model.api_key.as_ref().map_or(true, |k| k.is_empty());
+            let needs_url = model.base_url.as_ref().map_or(true, |u| u.is_empty());
+
+            if needs_key || needs_url {
+                if let Some(profile) = profiles.iter().find(|p| p.provider == model.provider) {
+                    if needs_key {
+                        model.api_key = profile.api_key.clone();
+                    }
+                    if needs_url {
+                        model.base_url = profile.base_url.clone();
+                    }
+                } else if model.provider == "ollama" && needs_url {
+                    // Ollama 預設值
+                    model.base_url = Some("http://localhost:11434".to_string());
+                }
+            }
+        };
+
+        resolve_model(&mut self.ai_models.chat_llm);
+        resolve_model(&mut self.ai_models.content_processor_llm);
+        resolve_model(&mut self.ai_models.vision_model);
+        resolve_model(&mut self.ai_models.embedding_model);
+    }
 }
 
 fn is_path_safe(path: &str) -> bool {
@@ -359,6 +390,7 @@ pub async fn get_settings(pool: &SqlitePool) -> Result<AllSettings, sqlx::Error>
 
     // Decrypt API keys after loading from DB
     settings.decrypt_all();
+    settings.resolve_profiles();
 
     Ok(settings)
 }

@@ -1,3 +1,4 @@
+pub mod model_caps;
 pub mod openai;
 pub mod vision;
 
@@ -6,6 +7,8 @@ pub struct LLMOptions {
     pub temperature: f32,
     pub max_tokens: usize,
     pub stream: bool,
+    /// 僅對 Ollama think-capable 模型有效：Some(true) 開思考，Some(false) 關思考，None 不傳參數
+    pub think_mode: Option<bool>,
 }
 
 impl Default for LLMOptions {
@@ -14,8 +17,23 @@ impl Default for LLMOptions {
             temperature: 0.7,
             max_tokens: 2048,
             stream: false,
+            think_mode: None,
         }
     }
+}
+
+/// Streaming 時區分推理 token 與內容 token
+#[derive(Debug, Clone)]
+pub enum StreamToken {
+    Reasoning(String),
+    Content(String),
+}
+
+/// Streaming 完成後的完整結果
+#[derive(Debug, Clone, Default)]
+pub struct StreamResult {
+    pub reasoning: String,
+    pub content: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -59,6 +77,6 @@ pub trait LLMProvider: Send + Sync {
         history: &[(String, String)],
         user_query: &str,
         options: LLMOptions,
-        on_token: impl Fn(String) + Send + 'static,
-    ) -> impl std::future::Future<Output = Result<String, LLMError>> + Send;
+        on_token: impl Fn(StreamToken) + Send + 'static,
+    ) -> impl std::future::Future<Output = Result<StreamResult, LLMError>> + Send;
 }

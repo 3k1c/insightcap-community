@@ -1,5 +1,5 @@
 use sqlx::{Row, SqlitePool};
-use tauri::State;
+use tauri::{Emitter, State};
 use crate::db::AppState;
 
 #[derive(Debug, serde::Serialize)]
@@ -166,6 +166,7 @@ pub async fn get_sources_timeline(
     category: Option<String>,
     media_type: Option<String>,
     search_query: Option<String>,
+    space_id: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<TimelineSourceItem>, String> {
@@ -222,6 +223,10 @@ pub async fn get_sources_timeline(
         let like = format!("%{}%", q);
         binds.push(like.clone());
         binds.push(like);
+    }
+    if let Some(ref sid) = space_id {
+        sql.push_str(" AND EXISTS (SELECT 1 FROM captures c2 WHERE c2.source_id = s.id AND c2.space_id = ?)");
+        binds.push(sid.clone());
     }
 
     sql.push_str(" ORDER BY s.captured_at DESC LIMIT ? OFFSET ?");
@@ -674,22 +679,28 @@ pub async fn process_source(
         for (idx, para) in paragraphs.into_iter().enumerate() {
             let chunk_id = uuid::Uuid::now_v7().to_string();
             
-            // 產生 embedding（使用確定性 hash 作為 vector_id）
-            let vec = state.embedder.embed(&para).await.map_err(|e| e.to_string())?;
-            let vector_id = {
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                chunk_id.hash(&mut hasher);
-                hasher.finish()
-            };
-            state.vector_store.add_vector(vector_id, &vec).await
-                .map_err(|e| format!("vector store error: {}", e))?;
+            let mut vector_id = 0i64;
+            
+            // 只有當 status 不是 pending_ocr 時，才產生 embedding 與標籤
+            if f_chunk.status != "pending_ocr" {
+                // 產生 embedding
+                match state.embedder.embed(&para).await {
+                    Ok(vec) => {
+                        use std::collections::hash_map::DefaultHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut hasher = DefaultHasher::new();
+                        chunk_id.hash(&mut hasher);
+                        vector_id = hasher.finish() as i64;
+                        let _ = state.vector_store.add_vector(vector_id as u64, &vec).await;
+                    }
+                    Err(e) => eprintln!("[ProcessSource] vector store error: {}", e),
+                }
+            }
             
             sqlx::query(
                 "INSERT INTO captures (id, source_id, type, raw_content, clean_content, \
                  capture_method, chunk_index, status, vector_id, created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, 'source_import', ?, 'processed', ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, 'source_import', ?, ?, ?, ?, ?)"
             )
             .bind(&chunk_id)
             .bind(&source_id)
@@ -697,23 +708,26 @@ pub async fn process_source(
             .bind(&para)
             .bind(&para)
             .bind(idx as i64)
-            .bind(vector_id as i64)
+            .bind(&f_chunk.status)
+            .bind(vector_id)
             .bind(&now)
             .bind(&now)
             .execute(db)
             .await
             .map_err(|e| format!("DB error: {}", e))?;
 
-            // Tagger：非同步提取標籤（不阻塞主流程）
-            let tag_pool = db.clone();
-            let tag_cid = chunk_id.clone();
-            let tag_content = para.clone();
-            tokio::spawn(async move {
-                let tag_engine = crate::services::tag_engine::TagEngine::new(tag_pool);
-                if let Err(e) = tag_engine.process_new_capture(&tag_cid, &tag_content).await {
-                    eprintln!("[ProcessSource] Tag generation failed for {}: {}", &tag_cid[..8.min(tag_cid.len())], e);
-                }
-            });
+            if f_chunk.status != "pending_ocr" {
+                // Tagger：非同步提取標籤（不阻塞主流程）
+                let tag_pool = db.clone();
+                let tag_cid = chunk_id.clone();
+                let tag_content = para.clone();
+                tokio::spawn(async move {
+                    let tag_engine = crate::services::tag_engine::TagEngine::new(tag_pool);
+                    if let Err(e) = tag_engine.process_new_capture(&tag_cid, &tag_content).await {
+                        eprintln!("[ProcessSource] Tag generation failed for {}: {}", &tag_cid[..8.min(tag_cid.len())], e);
+                    }
+                });
+            }
             
             chunk_count += 1;
         }
@@ -850,6 +864,66 @@ pub async fn rebuild_kb_index(
     // 3. 儲存索引到磁碟
     state.vector_store.save().await?;
     println!("[RebuildIndex] Done. {} vectors rebuilt.", count);
+    Ok(count)
+}
+
+/// 對所有歷史 sources 重新生成 Source 層級標籤（帶進度回報，串行）
+/// 只處理 tags 為空或 '[]' 的 source，跳過已有標籤者
+#[tauri::command]
+pub async fn rebuild_source_tags(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<usize, String> {
+    let db = &state.db;
+
+    // 只取尚未有標籤的 source（tags 為 NULL、'[]' 或空字串）
+    let rows = sqlx::query(
+        "SELECT id, clean_content FROM sources \
+         WHERE (tags IS NULL OR tags = '[]' OR tags = '') \
+         AND (clean_content IS NOT NULL AND clean_content != '') \
+         ORDER BY captured_at ASC"
+    )
+    .fetch_all(db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let total = rows.len();
+    println!("[RebuildSourceTags] 需要處理 {} 個 source（無標籤）", total);
+
+    let _ = app.emit("rebuild-tags-progress", serde_json::json!({
+        "current": 0, "total": total, "done": false
+    }));
+
+    if total == 0 {
+        let _ = app.emit("rebuild-tags-progress", serde_json::json!({
+            "current": 0, "total": 0, "done": true
+        }));
+        return Ok(0);
+    }
+
+    let mut count: usize = 0;
+    for (i, row) in rows.iter().enumerate() {
+        let id: String = row.get("id");
+        let content: String = row.get("clean_content");
+
+        let tag_engine = crate::services::tag_engine::TagEngine::new(db.clone());
+        match tag_engine.process_source(&id, &content).await {
+            Ok(_) => { count += 1; }
+            Err(e) => {
+                eprintln!("[RebuildSourceTags] source {} 失敗: {}", &id[..8.min(id.len())], e);
+            }
+        }
+
+        let _ = app.emit("rebuild-tags-progress", serde_json::json!({
+            "current": i + 1, "total": total, "done": false
+        }));
+    }
+
+    let _ = app.emit("rebuild-tags-progress", serde_json::json!({
+        "current": total, "total": total, "done": true
+    }));
+
+    println!("[RebuildSourceTags] 完成，成功 {}/{} 個 source", count, total);
     Ok(count)
 }
 

@@ -128,3 +128,30 @@ pub async fn test_provider_connection(
         }
     }
 }
+
+/// 測試指定模型的對話連線
+#[tauri::command]
+pub async fn test_model_connection(
+    provider: String,
+    model: String,
+    base_url: Option<String>,
+    api_key: Option<String>,
+) -> Result<String, String> {
+    use crate::providers::llm::openai::OpenAiProvider;
+    use crate::providers::llm::{LLMProvider, LLMOptions};
+
+    let base_url_str = base_url.unwrap_or_default();
+    let api_key_str = api_key.unwrap_or_default();
+
+    let ai_provider = OpenAiProvider::new(api_key_str, Some(base_url_str), model, provider);
+    let options = LLMOptions { max_tokens: 20, stream: false, temperature: 0.1, think_mode: None };
+    
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        ai_provider.complete("Hi", options)
+    ).await {
+        Ok(Ok(res)) => Ok(res),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err("Timeout".to_string()),
+    }
+}

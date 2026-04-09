@@ -49,7 +49,7 @@
         "delete_source": "删除文件",
         "chunk_content": "内容",
         "chunk_tags": "标签",
-        "chunk_space": "Space",
+        "chunk_space": "空间",
         "confirm_delete": "确定要删除吗？",
         "search_placeholder": "搜索文件...",
         "section_sources": "来源文件",
@@ -75,7 +75,14 @@
         "stat_total_chunks": "已入库 Chunk",
         "stat_total_data": "已入库 Data",
         "stat_total_patterns": "Pattern",
-        "stat_total_logs": "Log"
+        "stat_total_logs": "Log",
+        "chunk_edit_space": "更改空间",
+        "chunk_edit_tags": "编辑标签",
+        "chunk_save": "保存",
+        "chunk_cancel": "取消",
+        "chunk_tag_placeholder": "输入标签后按 Enter",
+        "chunk_save_success": "已更新",
+        "chunk_no_space": "未分配空间"
     },
     "common": {
         "confirm": "确认",
@@ -185,6 +192,23 @@
             "log": "风险记录"
         }
     },
+    "space_insight": {
+        "title": "知识概览",
+        "select_space": "空间",
+        "no_spaces": "尚未建立任何空间",
+        "ready_label": "你现在可以直接处理：",
+        "caution_label": "需要小心的：",
+        "gap_label": "还没有经验的：",
+        "pattern_count": "{{count}} 个方法论",
+        "log_count": "{{count}} 个风险记录",
+        "data_count": "{{count}} 个数据",
+        "capture_count": "{{count}} 个撷取",
+        "total_chunks": "共 {{count}} 个知识点",
+        "top_tags": "热门标签",
+        "no_chunks": "此空间 尚无知识点",
+        "collapse": "收起",
+        "expand": "展开洞察"
+    },
     "settings": {
         "title": "设置",
         "nav_title": "偏好设置",
@@ -263,6 +287,7 @@
         "knowledge_management": "知识库管理",
         "knowledge_management_desc": "對本地知识库執行维护操作。",
         "rebuild_index": "重建知識庫索引",
+        "rebuild_source_tags": "重建来源标签",
         "export_kb": "导出知識庫",
         "import_kb": "导入知識庫",
         "delete_kb": "删除知識庫",
@@ -365,6 +390,66 @@
         "ai_discard": "舍弃",
         "ai_retry": "重新生成"
     },
+    "decision": {
+        "review_title": "决策回顾",
+        "review_desc": "你在 {{days}} 天前做了这个决策，结果如何？",
+        "variable": "决策事项",
+        "chosen": "当时选择",
+        "rating_good": "效果好",
+        "rating_ok": "普通",
+        "rating_bad": "效果差",
+        "rating_critical": "造成问题",
+        "note_placeholder": "补充说明（选填）...",
+        "submit": "回报结果",
+        "dismiss": "略过",
+        "no_pending": "目前没有待回顾的决策"
+    },
+    "pattern_promotion": {
+        "title": "发现可复用规律",
+        "desc": "系统在多个对话中检测到重复出现的模式，建议升格为正式 Pattern：",
+        "confidence": "信心度：{{value}}%",
+        "remaining": "还有 {{count}} 笔待确认",
+        "accept": "确认升格",
+        "reject": "不适用"
+    },
+    "memory_confirm": {
+        "title": "记忆确认",
+        "desc": "AI 从对话中萃取了一笔「{{type}}」类型的知识，信心度较低，请确认是否保留：",
+        "confidence": "信心度：{{value}}%",
+        "remaining": "还有 {{count}} 笔待确认",
+        "accept": "保留",
+        "reject": "移除"
+    },
+    "pending_drawer": {
+        "title": "待确认记忆",
+        "empty": "目前没有待确认的记忆",
+        "select_all": "全选",
+        "deselect_all": "取消全选",
+        "accept_selected": "保留所选（{{count}}）",
+        "reject_selected": "移除所选（{{count}}）",
+        "confidence": "信心度 {{value}}%",
+        "type_data": "数据",
+        "type_pattern": "规律",
+        "type_log": "记录",
+        "close": "关闭"
+    },
+    "space_wiki": {
+        "tab_insight": "知识概览",
+        "tab_wiki": "Wiki",
+        "empty": "尚无足够记忆生成 Wiki，对话后将自动建立。",
+        "edit": "编辑",
+        "save": "保存",
+        "cancel": "取消",
+        "regenerate": "重新生成",
+        "regenerating": "生成中…",
+        "updated_at": "更新于 {{time}}"
+    },
+    "context_hint": {
+        "injecting": "检索上下文扩充中...",
+        "pattern_short": "{{count}} 个方法论",
+        "log_short": "{{count}} 条风险记录",
+        "data_short": "{{count}} 个相关来源"
+    },
     "chat": {
         "placeholder": "询问任何问题，@ 引用来源，# 筛选标签...",
         "add_file": "加入文件",
@@ -380,6 +465,7 @@
         "think_mode": "深度思考",
         "think_mode_active": "思考模式（点击切换为普通模式）",
         "think_mode_inactive": "普通模式（点击启用深度推理）",
+        "thinking_process": "思考过程",
         "hint_at_tag": "@ 文档 · # 标签",
         "tag_search_title": "搜索标签「{{query}}」",
         "tag_recent_title": "最近使用标签",

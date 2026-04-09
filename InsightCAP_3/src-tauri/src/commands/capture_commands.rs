@@ -142,7 +142,7 @@ pub async fn ingest_file(
     let now = Utc::now().to_rfc3339();
     let source_id = Uuid::now_v7().to_string();
 
-    let title = if parsed.title.trim().is_empty() {
+    let raw_title = if parsed.title.trim().is_empty() {
         Path::new(&file_path)
             .file_name()
             .and_then(|s| s.to_str())
@@ -151,6 +151,7 @@ pub async fn ingest_file(
     } else {
         parsed.title.clone()
     };
+    let title = crate::utils::title_cleaner::clean_window_title(&raw_title);
 
     let source_clean_content = parsed
         .chunks

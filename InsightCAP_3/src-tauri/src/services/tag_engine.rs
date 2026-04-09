@@ -18,7 +18,7 @@ impl TagEngine {
         let api_key = cfg.api_key.unwrap_or_default();
 
         if !api_key.is_empty() || is_ollama {
-            opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(api_key, cfg.base_url, cfg.model));
+            opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(api_key, cfg.base_url, cfg.model, cfg.provider.clone()));
         }
 
         use crate::providers::llm::LLMProvider;
@@ -69,6 +69,67 @@ impl TagEngine {
             .await
             .map_err(|e| e.to_string())?;
         }
+
+        Ok(generated_tags)
+    }
+
+    /// 以 Source 為單位生成標籤（輸入整份文件內容，標籤存入 sources.tags）
+    pub async fn process_source(&self, source_id: &str, full_content: &str) -> Result<Vec<String>, String> {
+        let settings = crate::settings::store::get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let cfg = settings.ai_models.content_processor_llm;
+
+        let mut opt_provider: Option<crate::providers::llm::openai::OpenAiProvider> = None;
+        let is_ollama = cfg.provider == "ollama";
+        let api_key = cfg.api_key.unwrap_or_default();
+
+        if !api_key.is_empty() || is_ollama {
+            opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(api_key, cfg.base_url, cfg.model, cfg.provider.clone()));
+        }
+
+        use crate::providers::llm::LLMProvider;
+        // 取前 3000 bytes，但確保切在 char boundary
+        let byte_limit = full_content.len().min(3000);
+        let safe_limit = full_content.floor_char_boundary(byte_limit);
+        let sample = &full_content[..safe_limit];
+        let generated_tags = if let Some(llm) = opt_provider {
+            let prompt = format!(
+                "請分析以下文件，提取 3-5 個能代表整份文件核心主題的標籤。\
+                 要求：標籤必須反映文件的主要知識領域，而非單一句子的細節。\
+                 只回傳逗號分隔的繁體中文標籤，不含其他文字。\n\n文件內容：\n{}",
+                sample
+            );
+            match llm.complete(&prompt, crate::providers::llm::LLMOptions::default()).await {
+                Ok(response) => {
+                    let tags: Vec<String> = response
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty() && s.len() < 30)
+                        .take(5)
+                        .collect();
+                    if tags.is_empty() { extract_keyword_tags(full_content) } else { tags }
+                }
+                Err(e) => {
+                    eprintln!("[TagEngine] Source LLM failed, fallback: {}", e);
+                    extract_keyword_tags(full_content)
+                }
+            }
+        } else {
+            extract_keyword_tags(full_content)
+        };
+
+        // 寫入 sources.tags
+        let tags_json = serde_json::to_string(&generated_tags).unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE sources SET tags = ?, updated_at = ? WHERE id = ?")
+            .bind(&tags_json)
+            .bind(&now)
+            .bind(source_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 同步 upsert 到全域 tags 表
+        self.upsert_tags(&generated_tags).await?;
 
         Ok(generated_tags)
     }
