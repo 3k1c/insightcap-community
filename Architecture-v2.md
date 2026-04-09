@@ -276,8 +276,9 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 
 - 由 AI 自動生成名稱和聚類內容，用戶可修正名稱
-- 每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度，動態重新聚合
+- 每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度，**自動合併相似空間（embedding cosine similarity >= 0.82）**，動態重新聚合
 - 用戶不需要手動管理 chunk 屬於哪個 Space
+- 空 Space 自動歸檔（`is_archived = 1`），不顯示於 UI
 - 前台僅作為 chunk 分類篩選，在儲存庫頁的 chunk 編輯面板與 header Space dropdown 使用
 - 不在 Project 裡明確綁定，不作為 @ 引用的對象，不作為 RAG 的硬邊界
 
@@ -1114,8 +1115,8 @@ rag_commands 傳給 RAGEngine：
 | MemoryEngine | memory_chunks CRUD、tagger、pending_confirm 流程；`process_conversation_summary` 寫入摘要 chunk |
 | RAGEngine | 統一召回，調用 KnowledgeSource trait，組裝分層 context；`rag_query_stream` 支援 SSE streaming |
 | PatternEngine | 路徑 B 跨對話識別，升格建議 |
-| SpaceEngine | AI 聚類管理，維護 embedding_center |
-| TagEngine | 標籤 CRUD、頻率統計、推薦 |
+| SpaceEngine | AI 聚類管理；`assign_to_space()` 為新 capture 分配 space；`merge_similar_spaces()` 根據 embedding center 相似度自動合併近似 space；`assign_memory_chunk_to_space()` 為 memory_chunk 向量分配 space |
+| TagEngine | per-source 標籤生成 + per-capture 標籤生成、CRUD、頻率統計、推薦；`process_source()` 輸入整份文件產出 3-5 代表標籤，跳過已有標籤以提升效率 |
 | AuthService | 認證、加密、健康檢查 |
 | LanguageNormalizer | 多語言文字正規化，供 Tagger / embedding 前處理使用 |
 
@@ -1123,13 +1124,30 @@ rag_commands 傳給 RAGEngine：
 
 | 服務 | 職責 | 觸發方式 |
 |------|------|---------|
-| CaptureProcessor | inbox → sources + captures；image 寫入後標記 `pending_ocr` | inbox 有新項目，每 5 秒輪詢 |
-| ConversationScheduler | 處理 `conversation_summary_queue`，生成摘要→memory_chunks（**Stub**） | 每 30 秒輪詢佇列 |
+| CaptureProcessor | inbox → sources + captures；重用既有 source（URL 完全匹配、剪貼簿 30 分鐘內同標題）；image 寫入後標記 `pending_ocr`；源層級標籤延後由 TagEngine.process_source() 統一處理 | inbox 有新項目，每 5 秒輪詢 |
+| ConversationScheduler | 處理 `conversation_summary_queue`，生成摘要→memory_chunks，非同步為 memory_chunk 分配 space，分析反向鏈接，更新 Space Wiki | 每 30 秒輪詢佇列 |
 | PatternPromotion | 掃描新 memory_chunk，判斷升格（每 5 分鐘輪詢） | 背景定時 |
-| SpaceRecluster | 重新計算聚類（**Stub**） | 新 Space 建立後 |
+| SpaceRecluster | 定期重新計算所有 chunk embedding，重新聚類、合併相似 space、更新 chunk_count、自動歸檔空 space | 每 30 分鐘，或接收 `space-created` event 後 3 秒延遲 |
 | OCRWorker | 掃描 `pending_ocr` captures，呼叫 `vision_model` 解析圖片文字，完成後更新 `clean_content` 並觸發 TagEngine/SpaceEngine | 每 30 秒輪詢，每次最多 5 筆 |
 | CloudSyncWatcher | 偵測 SQLite 檔案 modified time 異動（例如 Dropbox 覆蓋）| 30 秒輪詢（TODO：異動時觸發重載） |
 | HTTPAPIServer | 本地 REST API（Axum，`127.0.0.1:3030`），Phase 6 基礎，目前僅 `/api/health` | 啟動時常駐 |
+
+---
+
+## Command Layer（Tauri 呼叫）
+
+| 命令 | 職責 |
+|------|------|
+| rebuild_source_tags | 批量重新生成歷史 source 標籤；串行執行、跳過已有標籤、UTF-8 安全切割、進度報告（current/total/done） |
+
+---
+
+## Tauri Events
+
+| 事件名 | 觸發條件 | 聽眾 |
+|------|--------|------|
+| `space-created` | `assign_to_space()` 新建 space 時 | SpaceRecluster（延遲 3 秒開始重新聚類） |
+| `summary-completed` | ConversationScheduler 完成對話摘要時 | 前端 toast 反饋 |
 
 ---
 
@@ -1487,6 +1505,21 @@ Embedding → usearch
 - 自動識別 URL 並設定 content_type
 
 ---
+
+*版本：v2.16 | 日期：2026-04-07*
+本次更新：
+- 新增對話自動命名功能：新對話在前 2 輪對話完成後，由 AI 自動生成 4-15 字標題
+  - 後端 `auto_title_conversation` command（`conversation_commands.rs`）
+    - 僅在 title === '新對話' 時觸發（避免覆蓋手動命名）
+    - 取前 4 條訊息，每條截取 300 字，呼叫 LLM 生成標題（timeout 15s）
+    - 無 LLM 配置時 fallback：截取第一條 user 訊息前 20 字
+  - `prompts.rs` 新增 `AUTO_TITLE_SYSTEM` 常數（標題生成規則）
+  - 前端 `chatStore.autoTitleConversation()`：rag-stream-done 後若訊息數 ≤ 4 條則觸發
+  - 已在 `lib.rs` `generate_handler!` 註冊
+- SpaceInsightPanel 設計精簡（commit 34d1d98）：移除知識分佈視圖，保留 Wiki 分頁
+  - v2.15 記載的「Insight / Wiki 分頁切換」已調整為純 Wiki 顯示
+- RAG commands 新增 `thinking_mode` 參數（normal/think），已實作 Think Mode 系統 prompt 前綴注入
+- RAG commands 新增 `_web_enabled` 參數 stub（佔位，尚未實作 Web 搜尋功能）
 
 *版本：v2.15 | 日期：2026-04-06*
 本次更新：
