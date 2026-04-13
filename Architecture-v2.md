@@ -67,6 +67,9 @@ InsightCAP 是**經驗調用系統**。
 | 文本編輯器 | Tiptap（ProseMirror） | 內建文件編輯器 |
 | 本地 LLM | Ollama HTTP API | 可選本地模型 |
 | 雲端 AI | OpenAI / Gemini / OpenAI-compatible | 可選雲端模型 |
+| 手機框架 | React Native 0.76 (Android) | Phase 6 手機端 |
+| 手機推理 | LiteRT-LM（`com.google.mediapipe:tasks-genai`）| On-device Gemma 4 推理 |
+| 手機 HTTP | Axum `0.0.0.0:3030` | 桌面本地 API，供手機連入 |
 
 ---
 
@@ -91,13 +94,20 @@ InsightCAP 是**經驗調用系統**。
 │  │                                                      │  │
 │  │  Command Layer（IPC 邊界，只做參數驗證和服務調用）     │  │
 │  │  conversation_commands  rag_commands（含 stream）     │  │
-│  │  capture_commands（quick_capture / ingest_file / create_temp_chunk） │  │
-│  │  knowledge_commands（timeline / editor document / source CRUD）      │  │
-│  │  memory_commands  project_commands  settings_commands │  │
-│  │  space_commands（get_all_spaces / get_space_insight）  │  │
-│  │  decision_commands（create / get_due / report_outcome / dismiss） │  │
-│  │  auth_commands  bilibili_auth（B 站 SESSDATA 登入）   │  │
-│  │  window commands（set_zoom）                          │  │
+│  │  capture_commands（quick_capture / ingest_file / create_temp_chunk │  │
+│  │                    / get_mobile_access_info）                       │  │
+│  │  knowledge_commands（timeline / editor document / source CRUD）    │  │
+│  │  memory_commands  project_commands  settings_commands              │  │
+│  │    └─ get_chat_llm_supports_thinking（推理能力偵測）                │  │
+│  │  space_commands（get_all_spaces / get_space_insight               │  │
+│  │                  / trigger_space_recluster                         │  │
+│  │                  / get_space_wiki / save_space_wiki                │  │
+│  │                  / regenerate_space_wiki）                         │  │
+│  │  decision_commands（create / get_due / report_outcome / dismiss）  │  │
+│  │  chunk_relation_commands（get_chunk_relations）                    │  │
+│  │  seed_commands（開發用種子資料）                                    │  │
+│  │  auth_commands  bilibili_auth（B 站 SESSDATA 登入）                │  │
+│  │  window commands（set_zoom）                                       │  │
 │  │                         │                            │  │
 │  │  Core Services                                       │  │
 │  │  CaptureEngine  ConversationEngine  MemoryEngine     │  │
@@ -117,8 +127,9 @@ InsightCAP 是**經驗調用系統**。
 │  │  Background Services                                 │  │
 │  │  CaptureProcessor  ConversationScheduler（完整實作）  │  │
 │  │  PatternPromotion（完整實作）  SpaceRecluster（完整實作） │  │
+│  │  DeepSynthesisEngine（深度合成 + 編譯知識生成）       │  │
 │  │  OCRWorker（Vision API）  CloudSyncWatcher            │  │
-│  │  HTTPAPIServer（Axum, 127.0.0.1:3030, Phase 6）      │  │
+│  │  HTTPAPIServer（Axum, 0.0.0.0:3030，Phase 6 已完整實作） │  │
 │  └──────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -155,6 +166,15 @@ MemoryEngine.process_conversation_summary
                      推送用戶確認 toast（非阻塞）
                      確認 → 更新 knowledge_type
                      忽略 → 保持 data
+    ↓ （非阻塞 spawn，以下三步平行/串行背景執行）
+    SpaceEngine.assign_memory_chunk_to_space
+        → 對 memory_chunk content 做 Embedding
+        → 向量相似度 >= 0.45 → 更新 memory_chunks.space_id
+    ChunkRelationEngine.analyze_for_chunk
+        → 分析此 chunk 與既有 chunk 的語意關聯
+        → 寫入 chunk_relations（references / contradicts / extends）
+    SpaceWikiEngine.update_wiki
+        → 根據 space 內最新 chunk 自動更新 spaces.wiki_content
 ```
 
 ### 記憶產生——路徑 B（跨對話積累識別）
@@ -181,6 +201,12 @@ PatternPromotion 掃描：
 
 ```
 你是 InsightCAP，一個本地優先的 AI 助理。
+
+{% if compiled_knowledge %}
+## 已編譯核心知識（最高優先）
+以下是經過多次驗證與交叉分析後萃取的核心知識摘要，應優先作為回答的知識基礎：
+{{ compiled_knowledge }}
+{% endif %}
 
 {% if pattern_context %}
 ## 可複用方法框架
@@ -214,6 +240,14 @@ PatternPromotion 掃描：
 
 用戶問題：{{ user_query }}
 ```
+
+**Context 優先順序（由高到低）：**
+1. 已編譯核心知識（Compiled Knowledge）— 由 DeepSynthesisEngine 背景生成
+2. 可複用方法框架（Pattern）
+3. 已知風險（Log）
+4. 參考資料（Data）
+5. 外部知識庫（External）
+6. 即時網路搜尋結果（Web Search）
 
 **Prompt 管理原則：**
 - 所有系統段常數集中在 `src-tauri/src/prompts.rs`，不散落在各 service
@@ -402,7 +436,7 @@ toast 顯示導入成功 / 失敗結果
 ├────────────────────────────────────────────────────────┤
 │ 輸入問題... #標籤 @來源                      [傳送]    │
 ├────────────────────────────────────────────────────────┤
-│ [+] [知識庫 ●] [聯網搜尋]  @ 文件 · # 標籤  [Normal ▾] │
+│ [+] [知識庫 ●] [聯網搜尋]  [一般模式 ▾]  @ 文件 · # 標籤 │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -533,10 +567,11 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `bilibiliSessdata` | `string` | B 站登入憑證（由彈出視窗自動擷取，位於 AI 設置下） |
 | `aiModels` | `chatLlm` | 對話主模型（`provider` / `model` / `apiKey` / `baseUrl`） |
 | `aiModels` | `contentProcessorLlm` | Tagger / SpaceEngine 用的輕量模型（建議 3b 以下） |
-| `aiModels` | `visionModel` | OCR Worker 使用的 Vision 模型（處理截圖） |
+| `aiModels` | `visionModel` | 可選 Vision 模型，用於增強圖片和 PDF 掃描頁的 OCR 結果；若配置會在 parse_file / parse_content / ocr_worker 中自動探測能力並增強 |
 | `aiModels` | `embeddingModel` | Embedding 模型（預設 MultilingualE5Small，local） |
 | `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm） |
 | `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單） |
+| `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |
 
 ---
 
@@ -760,6 +795,8 @@ CREATE TABLE memory_chunks (
   promoted_capture_id TEXT REFERENCES captures(id) ON DELETE SET NULL,
   -- 紀錄從哪一筆 capture 升格而來
   placed_by        TEXT DEFAULT 'ai',
+  last_synthesized_at TEXT DEFAULT NULL,
+  -- 上次被深度合成引擎處理的時間（防重複，12 小時內不再處理）
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL
 );
@@ -875,6 +912,22 @@ ALTER TABLE spaces ADD COLUMN wiki_content      TEXT NOT NULL DEFAULT '';
 ALTER TABLE spaces ADD COLUMN wiki_updated_at   TEXT NOT NULL DEFAULT '';
 ```
 
+**compiled_knowledge 表**（編譯後知識，由 DeepSynthesisEngine 背景生成）
+
+```sql
+CREATE TABLE compiled_knowledge (
+  id                  TEXT PRIMARY KEY,
+  space_id            TEXT REFERENCES spaces(id) ON DELETE CASCADE,
+  content             TEXT NOT NULL,
+  source_chunk_count  INTEGER DEFAULT 0,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+-- 每個 space 最多一份，全域（space_id=NULL）也保留一份
+CREATE UNIQUE INDEX idx_compiled_knowledge_space
+  ON compiled_knowledge(COALESCE(space_id, '__global__'));
+```
+
 ### 資料流向
 
 ```
@@ -907,6 +960,14 @@ ALTER TABLE spaces ADD COLUMN wiki_updated_at   TEXT NOT NULL DEFAULT '';
 
 外部 KB（商業版）
   → 不寫入本地，查詢時直接讀外部 DB + 外部向量索引
+
+深度合成（背景，每 30 分鐘）
+  → DeepSynthesisEngine 描揇近 24 小時更新的 pattern/log chunks
+  → 僅在無活躍對話時執行（Ollama 單模型保護）
+  → 使用 content_processor_llm 呼叫 DEEP_SYNTHESIS_PROMPT
+  → 解析 JSON → 寫入 entity/concept tags、新 synthesis chunk、矛盾關係
+  → 呼叫 COMPILED_KNOWLEDGE_PROMPT → 精煉知識 UPSERT 到 compiled_knowledge 表
+  → 結果於下次 RAG 查詢時直接讀取（零額外延遲）
 ```
 
 **inbox 表（擷取佇列）**
@@ -1015,6 +1076,7 @@ pub struct LLMOptions {
     pub temperature: f32,
     pub max_tokens: usize,
     pub stream: bool,
+    pub think_mode: Option<String>, // 思考模式指令（None = 不啟用）
 }
 ```
 
@@ -1058,8 +1120,21 @@ pub trait Embedder: Send + Sync {
 
 **第二階段：組裝分層 Context**
 
-按語意角色分組（pattern / log / data / external），注入 system prompt（見三層記憶理論章節）。
+按語意角色分組（compiled_knowledge / pattern / log / data / external），注入 system prompt（見三層記憶理論章節）。
 在 Phase 5 企業版架構中，RAG 引擎的 `retrieve_context` 將另外查詢狀態為 `connected` 的所有外部 SQLite 資料庫（掛載於 `external_knowledge_bases`），動態獲取其 `captures` 表中相關的知識片段，前綴加上 `[外部知識庫]` 並與本地結果一同交給 LLM 推理。
+
+**第三階段：編譯後知識注入（最高優先）**
+
+```
+retrieve_context 第 7 步：
+  查詢 compiled_knowledge 表
+  → 全域知識（space_id IS NULL）
+  → 與當前 project 相關 space 的知識
+  → 以「## 已編譯核心知識（最高優先）」注入 system prompt
+  → 排在 Pattern / Log / Data 之前
+
+來源：DeepSynthesisEngine 背景生成，RAG 查詢時只做 DB 讀取，零額外 LLM 呼叫
+```
 
 **臨時附件 Context（最優先注入）**
 
@@ -1069,9 +1144,11 @@ pub trait Embedder: Send + Sync {
 用戶選擇附件
     ↓
 create_temp_chunk → file_parser::parse_content（統一入口）
-    → 文件：parse_file（支援 pdf/docx/xlsx/csv/md/txt/圖片 OCR 等）
+    → 文件：parse_file（支援 pdf/docx/xlsx/csv/md/txt/圖片等）
+        PDF 掃描頁 → 原生 PDF 文字提取 → OCR → （可選）Vision 增強
+        圖片 → 原生 OS OCR → （可選）Vision 增強
     → URL：video_parser::parse_url_content（網頁/YouTube/Bilibili）
-    → 圖片：走 OCR pipeline（crate::ocr::perform_ocr）
+    → 圖片：走 OCR pipeline（crate::ocr::perform_ocr）→ （可選）Vision 增強
     ↓
 切段落 → Embedding → 寫入 captures（capture_method = 'temp_attachment'）
     ↓
@@ -1112,11 +1189,16 @@ rag_commands 傳給 RAGEngine：
 |------|------|
 | CaptureEngine | 擷取、清洗、OCR、寫入 sources + captures；`file_parser::parse_content` 為統一解析入口 |
 | ConversationEngine | 對話管理、多輪歷史（sliding window + summary 注入）、訊息儲存；`enqueue_summary` 觸發非同步摘要 |
-| MemoryEngine | memory_chunks CRUD、tagger、pending_confirm 流程；`process_conversation_summary` 寫入摘要 chunk |
+| MemoryEngine | memory_chunks CRUD、tagger、pending_confirm 流程；`process_conversation_summary` 寫入摘要 chunk；INSERT 前自動驗證 `project_id` 存在性（sqlx 0.8 預設啟用 `PRAGMA foreign_keys = ON`，不存在則降為 NULL） |
 | RAGEngine | 統一召回，調用 KnowledgeSource trait，組裝分層 context；`rag_query_stream` 支援 SSE streaming |
 | PatternEngine | 路徑 B 跨對話識別，升格建議 |
 | SpaceEngine | AI 聚類管理；`assign_to_space()` 為新 capture 分配 space；`merge_similar_spaces()` 根據 embedding center 相似度自動合併近似 space；`assign_memory_chunk_to_space()` 為 memory_chunk 向量分配 space |
 | TagEngine | per-source 標籤生成 + per-capture 標籤生成、CRUD、頻率統計、推薦；`process_source()` 輸入整份文件產出 3-5 代表標籤，跳過已有標籤以提升效率 |
+| VisionEngine | Vision model 可選增強層，對圖片與掃描頁 OCR 結果進一步理解；`probe_vision_support()` 探測模型能力（4×4 紅色測試圖，結果快取整個 App 生命週期），`try_vision_enhance()` 非阻塞調用 vision model 增強辨識 |
+| ChunkRelationEngine | 分析 chunk 之間的語意關聯（references / contradicts / extends），寫入 `chunk_relations` 表 |
+| SpaceWikiEngine | 根據 space 內最新 chunk 自動生成/更新 `spaces.wiki_content` |
+| DeepSynthesisEngine | 背景深度合成引擎：多目標合成（entity/concept/synthesis/contradiction）+ 編譯後知識生成；強制使用 `content_processor_llm`，僅在無活躍對話時執行 |
+| WebSearch | 聯網搜尋，呼叫外部搜尋 API，供對話時「聯網搜尋」功能使用 |
 | AuthService | 認證、加密、健康檢查 |
 | LanguageNormalizer | 多語言文字正規化，供 Tagger / embedding 前處理使用 |
 
@@ -1128,9 +1210,10 @@ rag_commands 傳給 RAGEngine：
 | ConversationScheduler | 處理 `conversation_summary_queue`，生成摘要→memory_chunks，非同步為 memory_chunk 分配 space，分析反向鏈接，更新 Space Wiki | 每 30 秒輪詢佇列 |
 | PatternPromotion | 掃描新 memory_chunk，判斷升格（每 5 分鐘輪詢） | 背景定時 |
 | SpaceRecluster | 定期重新計算所有 chunk embedding，重新聚類、合併相似 space、更新 chunk_count、自動歸檔空 space | 每 30 分鐘，或接收 `space-created` event 後 3 秒延遲 |
-| OCRWorker | 掃描 `pending_ocr` captures，呼叫 `vision_model` 解析圖片文字，完成後更新 `clean_content` 並觸發 TagEngine/SpaceEngine | 每 30 秒輪詢，每次最多 5 筆 |
+| DeepSynthesisEngine | 深度合成：掃描近 24h 更新的 pattern/log chunks，多目標合成（entity/concept/synthesis/contradiction）+ 編譯後知識生成。智慧跳過（有活躍對話時不執行）、強制 content_processor_llm、additive-only 寫入、last_synthesized_at 防重複 | 每 N 分鐘（預設 30，settings 可調），啟動後延遲 5 分鐘 |
+| OCRWorker | 掃描 `pending_ocr` captures，先用原生 OS OCR（WinRT/Vision），後可選用 `vision_model` 增強辨識（試圖探測模型能力，若支援則用 vision 結果取代 OCR），完成後更新 `clean_content` 並觸發 TagEngine/SpaceEngine/ChunkRelationEngine | 每 30 秒輪詢，每次最多 5 筆 |
 | CloudSyncWatcher | 偵測 SQLite 檔案 modified time 異動（例如 Dropbox 覆蓋）| 30 秒輪詢（TODO：異動時觸發重載） |
-| HTTPAPIServer | 本地 REST API（Axum，`127.0.0.1:3030`），Phase 6 基礎，目前僅 `/api/health` | 啟動時常駐 |
+| HTTPAPIServer | 本地 REST API（Axum，`0.0.0.0:3030`），Phase 6 完整實作。端點：`GET /api/health`、`POST /api/capture`（Bearer token 驗證，寫入 inbox）、`POST /api/rag`（查詢知識庫回傳 context）、`POST /api/chat`（SSE streaming 代理推理）、`GET /`（手機 PWA 擷取頁）。Token 自動生成存 `settings.mobile_api_token` | 啟動時常駐 |
 
 ---
 
@@ -1334,7 +1417,7 @@ src-tauri/src/
 │   │   ├── mod.rs          # LLMProvider trait
 │   │   ├── ollama.rs
 │   │   ├── openai.rs
-│   │   └── vision.rs       # Vision LLM 輔助（非 OCR 主路徑）
+│   │   └── vision.rs       # Vision LLM 輔助——可選圖片增強層（probe + enhance）
 │   └── embedding/
 │       ├── mod.rs          # Embedder trait
 │       └── fastembed.rs
@@ -1343,13 +1426,16 @@ src-tauri/src/
 │   ├── conversation_scheduler.rs
 │   ├── pattern_promotion.rs
 │   ├── space_recluster.rs
+│   ├── deep_synthesis_engine.rs  # 深度合成引擎（多目標合成 + 編譯後知識生成）
 │   ├── ocr_worker.rs
 │   └── cloud_sync_watcher.rs  # 函數式（start_cloud_sync_watcher），無 struct
 ├── db/
 │   ├── connection.rs       # DB 連接、健康檢查、原子寫入、AppState 定義
 │   └── migrations/
-├── http_server.rs          # Axum HTTP API（127.0.0.1:3030，Phase 6 基礎）
-├── prompts.rs              # 所有系統 prompt 常數集中管理（不開放用戶修改）
+├── http_server.rs          # Axum HTTP API（0.0.0.0:3030，Phase 6 完整實作）
+│                           # 端點：health / capture / rag / chat(SSE) / PWA
+│                           # Bearer token 認證，token 存 settings.mobile_api_token
+├── prompts.rs              # 所有系統 prompt 常數集中管理（含 DEEP_SYNTHESIS_PROMPT / COMPILED_KNOWLEDGE_PROMPT / RAG_CONTEXT_COMPILED）
 ├── auth/
 ├── vector_store/
 └── utils/
@@ -1394,11 +1480,124 @@ src-tauri/src/
 23. Knowledge Builder（獨立應用）
 
 **Phase 6：手機版**
-24. 本地 HTTP API（axum）→ 路徑（已完成 skeleton）
-    - `GET /api/health`
-    - `POST /api/quick-capture`
-    - `GET /api/captures/recent`
-25. React Native 應用
+24. 本地 HTTP API（Axum，✅ 已完成）
+    - `GET /api/health` — 連線確認
+    - `POST /api/capture` — 擷取 → inbox（Bearer token）
+    - `POST /api/rag` — 查詢桌面知識庫，回傳 context_text + chunks
+    - `POST /api/chat` — 桌面代理推理，SSE streaming
+    - `GET /` — 手機 PWA 快速擷取頁
+25. React Native 應用（✅ 已完成 `mobile/`）
+    - 三模式推理：local（LiteRT-LM Gemma 4）/ cloud（直連 API）/ desktop relay
+    - QR Code 配對流程（桌面 `get_mobile_access_info` → 手機掃描）
+
+---
+
+## Phase 6 Mobile 架構
+
+### 推理三模式
+
+| 模式 | 技術 | 需求 | 適用場景 |
+|------|------|------|---------|
+| **A — Local** | LiteRT-LM + Gemma 4（`tasks-genai`） | 手機本地 `.task` 模型 | 離線、隱私優先 |
+| **B — Cloud** | 直連 Claude / OpenAI / Gemini API | API Key + 網路 | 最強推理能力 |
+| **C — Desktop Relay** | 桌面 `POST /api/chat` SSE | 同 WiFi + 桌面運行 | 複用桌面 LLM + 完整知識庫 |
+
+### 介面設計標準 (UI/UX Redesign)
+
+為了達到類 ChatGPT/Grok 的現代化質感，手機端採用以下設計標準：
+
+1. **導航架構**：
+    - 採用 **Drawer Navigator (側邊抽屜)** 取代 Tab Bar。
+    - **抽屜內容**：集中顯示「對話歷史」，支援建立新對話與切換舊對話。
+2. **標題列配置 (Standardized Header)**：
+    - **左上角**：`Menu` (開啟抽屜) + `BookOpen` (開啟知識庫頁面)。
+    - **右上角**：`PenSquare` (快速擷取內容) + `Settings` (設定)。
+3. **視覺表現**：
+    - 全面移除 Emoji 按鈕，統一使用 `lucide-react-native` 圖示組。
+    - 色調採用深色極簡風格 (`#0f0f11` 背景)，強調專業感與內容專注。
+
+### 推理流程與模式 (Inference Modes)
+
+| 模式 | 技術實作 | 描述 | 優點 |
+|------|------|------|---------|
+| **A — Local** | LiteRT-LM + Gemma 4（`tasks-genai`） | 手機本地 `.task` 模型 | 離線、隱私優先 |
+| **B — Cloud** | 直連 OpenAI / Gemini / OpenAI-compatible API | API Key + 網路 | 最強推理能力 |
+| **C — Desktop** | 桌面端代理（Axum SSE） | 同 WiFi + 桌面運行 | 複用桌面 LLM + 完整知識庫 |
+
+### 桌面端 API 詳情 (Mobile-Facing API)
+
+桌面端透過 Axum 提供 `0.0.0.0:3030` 的 HTTP 服務，主要端點如下：
+
+- **Auth**: `POST /api/auth/verify` (驗證 Token 與連線)
+- **Chat**: 
+    - `POST /api/chat` (與桌面 LLM 進行對話，支援 SSE Streaming)
+    - `GET /api/conversations` (獲取歷史對話列表)
+    - `POST /api/conversations` (建立新對話)
+    - `GET /api/conversations/:id/messages` (獲取特定對話內容)
+- **Knowledge**: `GET /api/sources` (獲取儲存庫最新 100 筆紀錄，含分類與標籤)
+- **Capture**: `POST /api/capture` (手機端快速擷取內容送回桌面知識庫)
+
+### 推理流程（Mode C）
+
+```
+手機 ChatScreen
+  ↓ POST /api/chat { message, history }  (Bearer token)
+桌面 Axum HTTPAPIServer
+  ↓ RagEngine.retrieve_context()  → 查本地知識庫
+  ↓ OpenAiProvider.complete_stream()  → 呼叫桌面已設定 LLM
+  ↓ SSE token stream
+手機 ChatScreen（即時顯示）
+```
+
+### 手機端目錄結構
+
+```
+mobile/
+├── android/
+│   └── app/src/main/java/com/insightcap/mobile/
+│       ├── ShareIntentModule.kt  # Android 原生分享 Intent 處理
+│       ├── LiteRTLMModule.kt    # Gemma 4 native bridge
+│       └── MainApplication.kt    # 原生模組註冊
+├── src/
+│   ├── screens/
+│   │   ├── ChatScreen.tsx        # 預設首頁，模式切換與串流對話
+│   │   ├── ConversationListScreen.tsx # 抽屜內對話清單
+│   │   ├── KnowledgeScreen.tsx   # 知識庫瀏覽（Lucide 圖示分類）
+│   │   ├── CaptureScreen.tsx     # 快速內容擷取
+│   │   └── SettingsScreen.tsx    # 連線設定與模式控制
+│   └── services/
+│       ├── inference/            # 三種模式的提供者工廠
+│       └── desktop-api.ts        # 全量 API 客戶端封裝
+└── App.tsx                      # Drawer Navigator 核心配置
+```
+
+### Android 系統整合 (Native Integration)
+
+1. **Share Target**: 
+   - 透過 `AndroidManifest.xml` 註冊 `SEND` Intent。
+   - 用戶在手機瀏覽器或其他 App 選取「分享到 InsightCAP」時，會自動調出 `CaptureScreen`。
+2. **Native Bridge**:
+   - `ShareIntentModule` 負責在 React Native 啟動或 Resume 時抓取 Intent 內容（文字或連結），並在傳遞後自動清除防止重啟重複讀取。
+
+### QR Code 配對流程
+
+```
+桌面：設定 → 其他設定 → 「手機端連線」→ 顯示 QR Code
+      QR 內容：JSON { url: "http://192.168.x.x:3030", token: "..." }
+
+手機：設定 → Mode C → 「掃描桌面 QR Code」
+      → react-native-vision-camera 掃描
+      → 自動填入 url + token → 測試連線 ✓
+```
+
+### Gemma 4 模型規格
+
+| 版本 | 大小 | 最低裝置需求 | 格式 |
+|------|------|------------|------|
+| Gemma 4 1B int8 | ~0.9 GB | 6 GB RAM, Android 8+ | `.task`（LiteRT） |
+| Gemma 4 4B int4 | ~2.8 GB | 8 GB RAM, Android 8+ | `.task`（LiteRT） |
+
+模型來源：Kaggle `google/gemma-4` → LiteRT format
 
 ---
 
@@ -1418,7 +1617,9 @@ src-tauri/src/
   "chat_llm":              { "provider": "ollama", "model": "qwen2.5:7b",    "base_url": "http://localhost:11434" },
   "content_processor_llm": { "provider": "ollama", "model": "qwen2.5:3b",    "base_url": "http://localhost:11434" },
   "vision_model":          { "provider": "ollama", "model": "minicpm-v",     "base_url": "http://localhost:11434" },
-  // 注意：OCR 已改用原生 OS（WinRT/Vision），vision_model 保留供未來影像理解功能使用
+  // Vision 模型配置：用於增強圖片和 PDF 掃描頁的 OCR 結果
+  // 工作流：probe_vision_support（4×4 紅色測試圖探測，快取結果） → try_vision_enhance（若支援則調用）
+  // 可選：若不配置或模型不支援 vision，系統將使用原生 OS OCR 結果
   "embedding_model":       { "provider": "local",  "model": "MultilingualE5Small" }
 }
 ```
@@ -1475,9 +1676,15 @@ OCRWorker 輪詢取出（每 30 秒）
 第三層：文字後處理
   語言偵測（中文/英文）→ 字符修正 → 換行修正 → 頁面標記移除 → 空白標準化
   ↓
+（可選）Vision 增強層
+  若 `vision_model` 已配置：
+    probe_vision_support() → 探測模型能力（4×4 紅色測試圖，結果快取整個 App 生命週期）
+    若支援 vision → try_vision_enhance() → 用原始圖重新分析，若成功則用 vision 結果取代 OCR
+  若 vision 不可用 → 保留 OCR 結果
+  ↓
 寫回 clean_content，status = 'processed'
   ↓
-觸發 TagEngine / SpaceEngine
+觸發 TagEngine / SpaceEngine / ChunkRelationEngine
 ```
 
 ### URL 擷取流程
@@ -1505,6 +1712,46 @@ Embedding → usearch
 - 自動識別 URL 並設定 content_type
 
 ---
+
+*版本：v2.18 | 日期：2026-04-12*
+本次更新：
+- **手機端 UI 全面重構**：
+    - 導入類 ChatGPT 的 **Drawer Navigator**，取代舊有的 Tab 底欄。
+    - 視覺標準化：全面移除表情符號，替換為 **Lucide 圖示系統**。
+    - 介面拋光：標準化 Header 佈局（Menu/BookOpen 在左，PenSquare/Settings 在右）。
+- **Android 原生深度整合**：
+    - 實作 **Share Target** Intent 攔截，支援從第三方應用直接分享內容至知識庫。
+    - 建立 Native Bridge (`ShareIntentModule`) 處理非同步 Intent 數據提取。
+- **手機端穩定性與核心修復**：
+    - 升級 `react-native-reanimated` 至 3.16.1，解決與 React Native 0.76 的編譯衝突。
+    - 修正 `ChatScreen` 訊息串流、語法報錯及型別定義問題。
+- **API 擴充與文件化**：
+    - 於 Axum 增設 `/api/conversations`、`/api/sources` 等端點，並於本文件補全說明。
+
+*版本：v2.17 | 日期：2026-04-10*
+本次更新：
+- 新增深度合成引擎（DeepSynthesisEngine）：背景每 30 分鐘執行，對近 24 小時更新的 pattern/log chunks 進行多目標合成
+  - 新增 `background/deep_synthesis_engine.rs`（完整實作）
+  - 新增 `012_deep_synthesis.sql` migration：`memory_chunks` 新增 `last_synthesized_at` 欄位
+  - `prompts.rs` 新增 `DEEP_SYNTHESIS_PROMPT`（多目標合成 JSON 格式）+ `COMPILED_KNOWLEDGE_PROMPT`（精煉知識）+ `RAG_CONTEXT_COMPILED`（最高優先標頭）
+  - `settings/store.rs` 新增 `BackgroundSynthesisSettings` struct，整合到 `AllSettings`
+  - `connection.rs` 註冊 migration 012 + 013
+  - `background/mod.rs` 註冊 deep_synthesis_engine 模組
+  - `lib.rs` 啟動 `start_deep_synthesis_worker`
+- 安全設計：
+  - 智慧跳過：有活躍對話時不執行（Ollama 單模型保護）
+  - 強制 content_processor_llm：不與 chat 主模型競爭
+  - Additive-only 寫入：entity/concept 只新增 tags，不修改 chunk 內容
+  - chunk_id 驗證：所有寫入操作只處理本批次查詢到的合法 chunk
+  - last_synthesized_at 防重複：已合成的 chunk 12 小時內不再處理
+  - 矛盾門檻：confidence < 0.7 不寫入
+  - JSON 解析失敗安全退出：LLM 回傳格式異常時不做任何 DB 寫入
+- 新增編譯後知識層（Compiled Knowledge）：
+  - 新增 `013_compiled_knowledge.sql` migration：`compiled_knowledge` 表（每 space + 全域各一份）
+  - `deep_synthesis_engine.rs` 合成完成後呼叫 `COMPILED_KNOWLEDGE_PROMPT` → UPSERT 到 `compiled_knowledge` 表
+  - `rag_engine.rs` `retrieve_context` 新增第 7 步：查詢 compiled_knowledge；`build_prompt` 將其作為最高優先 context 注入
+  - `contextHints` 新增 `compiledKnowledgeCount` 欄位
+- 前端可透過 `background_synthesis` settings 控制：enabled / frequencyMinutes / maxChunksPerBatch / forceContentProcessorLlm
 
 *版本：v2.16 | 日期：2026-04-07*
 本次更新：
@@ -1781,3 +2028,72 @@ kb_path/
 ### repair_missing_local_copies 指令
 
 一次性修復工具，掃描所有 `file_path` 有值但 `local_doc_path` 為空的歷史 sources，把原始檔案（若仍存在）複製到 `kb_path/files/` 並更新 DB。原始檔案已刪除或移動者跳過。設定頁面「知識庫管理」區塊提供觸發按鈕。
+
+---
+
+## LLM Reasoning 能力適配
+
+### 推理模式檢測與適配
+
+InsightCAP 支援多種 LLM 原生推理能力，由 `model_caps::detect(model, provider)` 在執行時自動偵測：
+
+| 推理模式 | 模型 | Provider | 激活方式 | 輸出格式 |
+|---------|------|----------|---------|---------|
+| **OpenAiReasoning** | o1, o1-mini, o3, o4-mini | openai, xai | API 自動啟用 | `delta.reasoning_content` |
+| **DeepSeekReasoning** | deepseek-r1 | openrouter, 直連 API | 標準 OpenAI 格式 | `delta.reasoning_content` |
+| **Gemini Reasoning** | gemini-2.5+, gemini-3+ | google, openrouter | 標準 OpenAI 格式 | `delta.reasoning_content` |
+| **Gemma4Think** | gemma-4, gemma4 | ollama | system prompt 注入 `<|think|>` | `<\|channel>thought\n...<channel\|>` |
+| **OllamaThinkTag** | qwq, qwen3, deepseek-r1 | ollama | API `options.think` 參數 | `<think>...</think>` |
+
+### 前端互動
+
+1. **推理按鈕可見性** — `InputArea.tsx` 在 mount 時呼叫 `get_chat_llm_supports_thinking()`，推理模式支援度回傳 `bool`
+   - 支援（`ReasoningStyle != None`）→ 顯示「深度思考」按鈕
+   - 不支援（`ReasoningStyle == None`）→ 隱藏按鈕
+
+2. **推理流程** — 用戶按下「深度思考」→ `thinkingMode: 'think'` → `rag_query_stream` 傳 `thinking_mode: 'think'`
+   - 後端 `is_think: true` → `LLMOptions { think_mode: Some(true) }`
+   - Gemma4 → `build_messages` 注入 `<|think|>`
+   - 其他模型 → 在 request body 加 `options.think: true` 或標準參數
+
+3. **推理輸出** — `StreamToken::Reasoning` 透過 `rag-stream-reasoning` event 流式推送
+   - 前端 `chatStore` 累積為 `reasoningContent`
+   - `MessageList` 渲染折疊框，「思考過程」可展開
+
+### 後端實作細節
+
+#### Gemma4Think（Ollama）
+
+**特殊處理：**
+- System prompt 開頭無條件加 `<|think|>` token（當 `think_mode=true` 時）
+- 建議採樣參數：`temperature=1.0, top_p=0.95, top_k=64`（遵循官方文件）
+- `Gemma4ChannelParser` 狀態機掃描 `<|channel>thought\n` 和 `<channel|>` 邊界，抽取中間內容為 reasoning
+
+**格式：**
+```
+<|channel>thought
+[User's internal reasoning here]
+<channel|>[Final answer here]
+```
+
+#### OpenAiReasoning（o-series）
+
+**特殊參數：**
+- `max_completion_tokens`（非 `max_tokens`）
+- `reasoning_effort: "high"`
+- `developer` role（非 `system`）
+- 不支援 `temperature`
+
+**輸出：** `delta.reasoning_content` 與 `delta.content` 分離流式
+
+#### DeepSeekReasoning / Gemini Reasoning
+
+**標準 OpenAI 相容格式，reasoning 在 `delta.reasoning_content`**
+
+---
+
+## 推理能力測試
+
+從 Settings 頁「AI 設定」可測試當前模型連線，未來版本支援推理能力驗證（執行小規模推理任務，驗證輸出格式）。
+
+推理按鈕隱藏 → 檢查 `get_chat_llm_supports_thinking` 回傳值 + 查看 Model Detection 列表

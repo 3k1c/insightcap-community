@@ -1,0 +1,61 @@
+{
+  "buildFiles": [
+    "C:\\Users\\ckkong\\InsightCAP\\mobile\\node_modules\\@react-native-async-storage\\async-storage\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
+    "C:\\Users\\ckkong\\InsightCAP\\mobile\\node_modules\\react-native-safe-area-context\\android\\src\\main\\jni\\CMakeLists.txt",
+    "C:\\Users\\ckkong\\InsightCAP\\mobile\\node_modules\\react-native-screens\\android\\src\\main\\jni\\CMakeLists.txt",
+    "C:\\Users\\ckkong\\InsightCAP\\mobile\\node_modules\\react-native\\ReactAndroid\\cmake-utils\\default-app-setup\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\ckkong\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\.cxx\\RelWithDebInfo\\14371l6a\\x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\ckkong\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\.cxx\\RelWithDebInfo\\14371l6a\\x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "react_codegen_safeareacontext::@7984cd80db47aa7b952a": {
+      "artifactName": "react_codegen_safeareacontext",
+      "abi": "x86",
+      "output": "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\14371l6a\\obj\\x86\\libreact_codegen_safeareacontext.so",
+      "runtimeFiles": [
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\8b60b4f75564ac53567672df7a1c9a73\\transformed\\fbjni-0.6.0\\prefab\\modules\\fbjni\\libs\\android.x86\\libfbjni.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\f5f2c5a1aac81be5c2065c1af7ab67cb\\transformed\\react-android-0.76.5-release\\prefab\\modules\\jsi\\libs\\android.x86\\libjsi.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\f5f2c5a1aac81be5c2065c1af7ab67cb\\transformed\\react-android-0.76.5-release\\prefab\\modules\\reactnative\\libs\\android.x86\\libreactnative.so"
+      ]
+    },
+    "react_codegen_rnscreens::@25bcbd507e98d3a854ad": {
+      "artifactName": "react_codegen_rnscreens",
+      "abi": "x86",
+      "output": "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\14371l6a\\obj\\x86\\libreact_codegen_rnscreens.so",
+      "runtimeFiles": [
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\f5f2c5a1aac81be5c2065c1af7ab67cb\\transformed\\react-android-0.76.5-release\\prefab\\modules\\reactnative\\libs\\android.x86\\libreactnative.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\f5f2c5a1aac81be5c2065c1af7ab67cb\\transformed\\react-android-0.76.5-release\\prefab\\modules\\jsi\\libs\\android.x86\\libjsi.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\8b60b4f75564ac53567672df7a1c9a73\\transformed\\fbjni-0.6.0\\prefab\\modules\\fbjni\\libs\\android.x86\\libfbjni.so"
+      ]
+    },
+    "appmodules::@6890427a1f51a3e7e1df": {
+      "artifactName": "appmodules",
+      "abi": "x86",
+      "output": "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\14371l6a\\obj\\x86\\libappmodules.so",
+      "runtimeFiles": [
+        "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\14371l6a\\obj\\x86\\libreact_codegen_safeareacontext.so",
+        "C:\\Users\\ckkong\\InsightCAP\\mobile\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\14371l6a\\obj\\x86\\libreact_codegen_rnscreens.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\8b60b4f75564ac53567672df7a1c9a73\\transformed\\fbjni-0.6.0\\prefab\\modules\\fbjni\\libs\\android.x86\\libfbjni.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\f5f2c5a1aac81be5c2065c1af7ab67cb\\transformed\\react-android-0.76.5-release\\prefab\\modules\\jsi\\libs\\android.x86\\libjsi.so",
+        "C:\\Users\\ckkong\\.gradle\\caches\\8.10.2\\transforms\\f5f2c5a1aac81be5c2065c1af7ab67cb\\transformed\\react-android-0.76.5-release\\prefab\\modules\\reactnative\\libs\\android.x86\\libreactnative.so"
+      ]
+    },
+    "react_codegen_rnasyncstorage::@1596841e19ec5b9eeffe": {
+      "artifactName": "react_codegen_rnasyncstorage",
+      "abi": "x86",
+      "runtimeFiles": []
+    }
+  }
+}

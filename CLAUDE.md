@@ -16,6 +16,8 @@
 - 修改跨多個介面共用的型別定義時（如 attachedFiles），必須同時搜尋所有使用該型別的 Props / interface / store 定義並同步更新，避免型別不一致
 - 涉及第三方 UI library 的定位 / 寬度 / 顯示行為（如 BubbleMenu、Tooltip、Popover）修改前，必須先讀 `node_modules/<pkg>/dist/index.js` 確認 library 內部如何設定這些樣式，不可假設可以從外部直接覆蓋
 - 大幅重構 JSX 結構後（移除 condition block、新增或移除 wrapper div），必須執行以下指令驗證無語法錯誤，再交付：`node -e "require('./node_modules/@babel/parser').parse(require('fs').readFileSync('./src/...tsx','utf8'),{sourceType:'module',plugins:['typescript','jsx']}); console.log('OK')"`
+- 涉及 Tauri API 或外部 library API 呼叫時，修改前必須先讀 `.d.ts` 型別定義確認正確的參數簽名與物件結構，不可假設
+- 新增跨元件 UI state（如 store action）時，必須檢查所有相關元件的互動邏輯是否協調一致（例如隱藏對話後，nav 按鈕點擊行為要恢復對話）
 
 
 ## Rust 修改規則

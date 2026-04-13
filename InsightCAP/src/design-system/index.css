@@ -1,0 +1,189 @@
+/* globals + tokens + editor */
+@import './tokens.css';
+@import './editor.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    * {
+        box-sizing: border-box;
+        border-color: var(--stroke-divider);
+    }
+
+    html {
+        font: var(--type-body);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+        background-color: var(--surface-base);
+        color: var(--text-primary);
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    #root {
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--stroke-control);
+        border-radius: var(--radius-full);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--stroke-strong);
+    }
+
+    /* Focus ring */
+    :focus-visible {
+        outline: 2px solid var(--stroke-focus);
+        outline-offset: 2px;
+    }
+
+    /* 輸入框不顯示 focus ring（含 Tauri WebView 的 :focus） */
+    textarea:focus-visible,
+    input:focus-visible,
+    textarea:focus,
+    input:focus {
+        outline: none;
+        box-shadow: none;
+    }
+
+    /* 移除 WebView autofill 黃色底色 */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 1000px var(--surface-base) inset !important;
+        box-shadow: 0 0 0 1000px var(--surface-base) inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+        transition: background-color 9999s ease-in-out 0s;
+    }
+
+    /* 主題切換平滑過渡 */
+    *,
+    *::before,
+    *::after {
+        transition:
+            background-color var(--duration-slow) var(--ease-in-out),
+            border-color var(--duration-slow) var(--ease-in-out),
+            color var(--duration-normal) var(--ease-in-out);
+    }
+
+    /* 減少動效模式（保留功能性 loading 動畫） */
+    @media (prefers-reduced-motion: reduce) {
+
+        *:not(.animate-spin):not(.animate-pulse):not(.animate-bounce),
+        *:not(.animate-spin):not(.animate-pulse):not(.animate-bounce)::before,
+        *:not(.animate-spin):not(.animate-pulse):not(.animate-bounce)::after {
+            animation-duration: 0.01ms !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+}
+
+@layer utilities {
+
+    /* 動畫元素排除全域 transition，避免 spin/pulse/bounce 跳動異常 */
+    .animate-spin,
+    .animate-pulse,
+    .animate-bounce {
+        transition: none !important;
+    }
+
+    /* 知識類型徽章 */
+    .ic-badge-data {
+        color: var(--knowledge-data-text);
+        background-color: var(--knowledge-data-bg);
+        border: 1px solid var(--knowledge-data);
+    }
+
+    .ic-badge-pattern {
+        color: var(--knowledge-pattern-text);
+        background-color: var(--knowledge-pattern-bg);
+        border: 1px solid var(--knowledge-pattern);
+    }
+
+    .ic-badge-log {
+        color: var(--knowledge-log-text);
+        background-color: var(--knowledge-log-bg);
+        border: 1px solid var(--knowledge-log);
+    }
+
+    /* Surface shorthand */
+    .ic-surface-base {
+        background-color: var(--surface-base);
+    }
+
+    .ic-surface-layer {
+        background-color: var(--surface-layer);
+    }
+
+    .ic-surface-card {
+        background-color: var(--surface-card);
+    }
+
+    .ic-surface-flyout {
+        background-color: var(--surface-flyout);
+    }
+
+    .ic-surface-control {
+        background-color: var(--surface-control);
+    }
+
+    /* Text shorthand */
+    .ic-text-primary {
+        color: var(--text-primary);
+    }
+
+    .ic-text-secondary {
+        color: var(--text-secondary);
+    }
+
+    .ic-text-tertiary {
+        color: var(--text-tertiary);
+    }
+
+    /* Stroke shorthand */
+    .ic-border {
+        border-color: var(--stroke-card);
+    }
+
+    .ic-border-control {
+        border-color: var(--stroke-control);
+    }
+
+    .ic-border-divider {
+        border-color: var(--stroke-divider);
+    }
+
+    /* Accent shorthand */
+    .ic-accent {
+        color: var(--accent-default);
+    }
+
+    .ic-accent-bg {
+        background-color: var(--accent-default);
+    }
+
+    .ic-accent-subtle {
+        background-color: var(--accent-light2);
+    }
+}
