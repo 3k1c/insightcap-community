@@ -22,13 +22,13 @@ interface SpaceInsight {
     topTags: TagStat[];
 }
 
-interface SpaceWiki {
+interface SpaceKnowledgeGuide {
     spaceId: string;
-    wikiContent: string;
-    wikiUpdatedAt: string;
+    knowledgeGuideContent: string;
+    knowledgeGuideUpdatedAt: string;
 }
 
-type ActiveTab = 'insight' | 'wiki';
+type ActiveTab = 'insight' | 'knowledge_guide';
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ export function SpaceInsightPanel() {
     const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('insight');
     const [insight, setInsight] = useState<SpaceInsight | null>(null);
-    const [wiki, setWiki] = useState<SpaceWiki | null>(null);
+    const [knowledgeGuide, setKnowledgeGuide] = useState<SpaceKnowledgeGuide | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isExpanded, setIsExpanded] = useState(true);
 
@@ -56,14 +56,14 @@ export function SpaceInsightPanel() {
         return () => { cancelled = true; };
     }, [selectedSpaceId, activeTab]);
 
-    // Wiki 資料
+    // 知識指南資料
     useEffect(() => {
-        if (!selectedSpaceId || activeTab !== 'wiki') { setWiki(null); return; }
+        if (!selectedSpaceId || activeTab !== 'knowledge_guide') { setKnowledgeGuide(null); return; }
         let cancelled = false;
         setIsLoading(true);
-        invoke<SpaceWiki>('get_space_wiki', { spaceId: selectedSpaceId })
-            .then((data) => { if (!cancelled) setWiki(data); })
-            .catch(() => { if (!cancelled) setWiki(null); })
+        invoke<SpaceKnowledgeGuide>('get_space_knowledge_guide', { spaceId: selectedSpaceId })
+            .then((data) => { if (!cancelled) setKnowledgeGuide(data); })
+            .catch(() => { if (!cancelled) setKnowledgeGuide(null); })
             .finally(() => { if (!cancelled) setIsLoading(false); });
         return () => { cancelled = true; };
     }, [selectedSpaceId, activeTab]);
@@ -109,7 +109,7 @@ export function SpaceInsightPanel() {
                     {/* Tab bar（只在選擇了 Space 後顯示）*/}
                     {selectedSpaceId && (
                         <div className="flex gap-1 rounded-md bg-surface-subtle p-0.5">
-                            {(['insight', 'wiki'] as ActiveTab[]).map((tab) => (
+                            {(['insight', 'knowledge_guide'] as ActiveTab[]).map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -118,7 +118,7 @@ export function SpaceInsightPanel() {
                                             : 'text-text-secondary hover:text-text-primary'
                                         }`}
                                 >
-                                    {tab === 'insight' ? t('space_wiki.tab_insight') : t('space_wiki.tab_wiki')}
+                                    {tab === 'insight' ? t('space_knowledge_guide.tab_insight') : t('space_knowledge_guide.tab_guide')}
                                 </button>
                             ))}
                         </div>
@@ -137,12 +137,12 @@ export function SpaceInsightPanel() {
                         <InsightContent insight={insight} t={t} />
                     )}
 
-                    {/* Wiki tab */}
-                    {!isLoading && activeTab === 'wiki' && selectedSpaceId && (
-                        <WikiContent
+                    {/* Knowledge Guide tab */}
+                    {!isLoading && activeTab === 'knowledge_guide' && selectedSpaceId && (
+                        <KnowledgeGuideContent
                             spaceId={selectedSpaceId}
-                            wiki={wiki}
-                            onUpdated={setWiki}
+                            knowledgeGuide={knowledgeGuide}
+                            onUpdated={setKnowledgeGuide}
                             t={t}
                         />
                     )}
@@ -212,17 +212,17 @@ function InsightContent({ insight, t }: { insight: SpaceInsight; t: (key: string
     );
 }
 
-// ─── WikiContent ──────────────────────────────────────────────────────────────
+// ─── KnowledgeGuideContent ────────────────────────────────────────────────────
 
-function WikiContent({
+function KnowledgeGuideContent({
     spaceId,
-    wiki,
+    knowledgeGuide,
     onUpdated,
     t,
 }: {
     spaceId: string;
-    wiki: SpaceWiki | null;
-    onUpdated: (w: SpaceWiki) => void;
+    knowledgeGuide: SpaceKnowledgeGuide | null;
+    onUpdated: (kg: SpaceKnowledgeGuide) => void;
     t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
     const [isEditing, setIsEditing] = useState(false);
@@ -230,22 +230,22 @@ function WikiContent({
     const [isRegenerating, setIsRegenerating] = useState(false);
 
     const handleEdit = useCallback(() => {
-        setEditValue(wiki?.wikiContent ?? '');
+        setEditValue(knowledgeGuide?.knowledgeGuideContent ?? '');
         setIsEditing(true);
-    }, [wiki]);
+    }, [knowledgeGuide]);
 
     const handleSave = useCallback(async () => {
-        await invoke('save_space_wiki', { spaceId, wikiContent: editValue });
-        onUpdated({ spaceId, wikiContent: editValue, wikiUpdatedAt: new Date().toISOString() });
+        await invoke('save_space_knowledge_guide', { spaceId, knowledgeGuideContent: editValue });
+        onUpdated({ spaceId, knowledgeGuideContent: editValue, knowledgeGuideUpdatedAt: new Date().toISOString() });
         setIsEditing(false);
     }, [spaceId, editValue, onUpdated]);
 
     const handleRegenerate = useCallback(async () => {
         setIsRegenerating(true);
         try {
-            const newContent = await invoke<string>('regenerate_space_wiki', { spaceId });
+            const newContent = await invoke<string>('regenerate_space_knowledge_guide', { spaceId });
             if (newContent) {
-                const updated: SpaceWiki = { spaceId, wikiContent: newContent, wikiUpdatedAt: new Date().toISOString() };
+                const updated: SpaceKnowledgeGuide = { spaceId, knowledgeGuideContent: newContent, knowledgeGuideUpdatedAt: new Date().toISOString() };
                 onUpdated(updated);
             }
         } finally {
@@ -253,15 +253,15 @@ function WikiContent({
         }
     }, [spaceId, onUpdated]);
 
-    const hasContent = wiki?.wikiContent && wiki.wikiContent.trim().length > 0;
+    const hasContent = knowledgeGuide?.knowledgeGuideContent && knowledgeGuide.knowledgeGuideContent.trim().length > 0;
 
     return (
         <div className="space-y-2">
             {/* Toolbar */}
             <div className="flex items-center justify-between">
-                {wiki?.wikiUpdatedAt && (
+                {knowledgeGuide?.knowledgeGuideUpdatedAt && (
                     <span className="text-fs-xs text-text-tertiary">
-                        {t('space_wiki.updated_at', { time: new Date(wiki.wikiUpdatedAt).toLocaleDateString() })}
+                        {t('space_knowledge_guide.updated_at', { time: new Date(knowledgeGuide.knowledgeGuideUpdatedAt).toLocaleDateString() })}
                     </span>
                 )}
                 <div className="flex items-center gap-1.5 ml-auto">
@@ -273,13 +273,13 @@ function WikiContent({
                                 className="flex items-center gap-1 rounded px-2 py-1 text-fs-xs text-text-secondary hover:text-text-primary hover:bg-surface-subtle disabled:opacity-50 transition-colors"
                             >
                                 <RefreshCw size={12} className={isRegenerating ? 'animate-spin' : ''} />
-                                {isRegenerating ? t('space_wiki.regenerating') : t('space_wiki.regenerate')}
+                                {isRegenerating ? t('space_knowledge_guide.regenerating') : t('space_knowledge_guide.regenerate')}
                             </button>
                             <button
                                 onClick={handleEdit}
                                 className="rounded px-2 py-1 text-fs-xs text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-colors"
                             >
-                                {t('space_wiki.edit')}
+                                {t('space_knowledge_guide.edit')}
                             </button>
                         </>
                     )}
@@ -289,13 +289,13 @@ function WikiContent({
                                 onClick={() => setIsEditing(false)}
                                 className="rounded px-2 py-1 text-fs-xs text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-colors"
                             >
-                                {t('space_wiki.cancel')}
+                                {t('space_knowledge_guide.cancel')}
                             </button>
                             <button
                                 onClick={handleSave}
                                 className="rounded px-2 py-1 text-fs-xs bg-accent-default text-white hover:opacity-90 transition-opacity"
                             >
-                                {t('space_wiki.save')}
+                                {t('space_knowledge_guide.save')}
                             </button>
                         </>
                     )}
@@ -312,10 +312,10 @@ function WikiContent({
                 />
             ) : hasContent ? (
                 <pre className="whitespace-pre-wrap text-fs-sm text-text-primary leading-relaxed font-sans max-h-[400px] overflow-y-auto">
-                    {wiki!.wikiContent}
+                    {knowledgeGuide!.knowledgeGuideContent}
                 </pre>
             ) : (
-                <div className="text-fs-sm text-text-tertiary py-2">{t('space_wiki.empty')}</div>
+                <div className="text-fs-sm text-text-tertiary py-2">{t('space_knowledge_guide.empty')}</div>
             )}
         </div>
     );

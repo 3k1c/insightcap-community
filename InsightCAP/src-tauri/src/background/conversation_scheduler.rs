@@ -52,12 +52,18 @@ pub fn start_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         println!("[ConversationScheduler] Worker 啟動");
         let mut shutdown_rx = shutdown_rx;
+        let wakeup_rx = app.state::<AppState>().summary_wakeup_tx.clone();
         loop {
             tokio::select! {
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         println!("[ConversationScheduler] 收到停止訊號，退出。");
                         break;
+                    }
+                }
+                _ = wakeup_rx.notified() => {
+                    if let Err(e) = process_next_summary(&app).await {
+                        eprintln!("[ConversationScheduler] 處理失敗: {}", e);
                     }
                 }
                 _ = sleep(Duration::from_secs(30)) => {
@@ -145,8 +151,8 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
     .await
     .map_err(|e| e.to_string())?;
 
-    if msgs.len() < 4 {
-        // 訊息太少（至少需要 2 輪對話），直接標記完成
+    if msgs.len() < 2 {
+        // 訊息太少（至少需要 1 輪對話），直接標記完成
         mark_queue_done(pool, &queue_id, true).await?;
         return Ok(());
     }
@@ -363,6 +369,18 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
                     }
                 }
             });
+
+            // --- 新增：從對話與摘要中提取提醒事項 ---
+            let reminder_engine = crate::services::reminder_engine::ReminderEngine::new(pool.clone());
+            if let Err(e) = reminder_engine.extract_reminders(
+                &conversation_id,
+                &summary,
+                &dialogue,
+                &now,
+                project_id.as_deref()
+            ).await {
+                eprintln!("[ConversationScheduler] 提醒提取失敗: {}", e);
+            }
         }
         Err(e) => {
             eprintln!("[ConversationScheduler] MemoryEngine 失敗: {}", e);

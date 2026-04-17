@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
 
 export interface Conversation {
     id: string;
@@ -70,6 +71,7 @@ interface ChatState {
     reorderProjects: (orderedIds: string[]) => Promise<void>;
     toggleProjectExpanded: (projectId: string) => void;
     loadMessages: (conversationId: string) => Promise<void>;
+    triggerUrgentReminderCheck: (conversationId: string, userMsg: string, aiMsg: string) => Promise<void>;
     sendMessage: (content: string, opts?: {
         ragEnabled?: boolean;
         webEnabled?: boolean;
@@ -197,12 +199,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     createProject: async (name: string, color?: string) => {
         try {
             console.log('[chatStore] Invoking create_project with:', { name, color });
-            const result = await invoke('create_project', { 
+            const result = await invoke('create_project', {
                 name,
-                color 
+                color
             });
             console.log('[chatStore] create_project result:', result);
-            
+
             console.log('[chatStore] Reloading projects after creation');
             await get().loadProjects();
             console.log('[chatStore] Projects reloaded, current projects:', get().projects);
@@ -306,6 +308,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set({ messages, conversationTempChunkIds: restoredTempChunkIds });
         } catch (error) {
             console.error('Failed to load messages:', error);
+        }
+    },
+
+    // ── 即時提醒偵測 ─────────────────────────────────────────────────────────
+    triggerUrgentReminderCheck: async (conversationId: string, userMsg: string, aiMsg: string) => {
+        const URGENT_PATTERNS = [
+            /\d+\s*分鐘[後后].{0,6}(開|会|會|見|提醒|deadline)/,
+            /\d+\s*小時[後后].{0,6}(開|会|會|見|提醒|deadline)/,
+            /[今明][天晚早].{0,10}(開會|會議|面試|見面|約|提醒|截止|deadline)/,
+            /後天.{0,10}(開會|會議|面試|見面|約|提醒|截止)/,
+            /待[會会].{0,6}(開會|會議|面試)/,
+            /[午早晚]\s*\d+\s*[點点].{0,10}(開會|會議|提醒)/,
+            /\d+\s*[點点].{0,10}(開會|會議|提醒)/,
+            /[今明後][天]截止/,
+            /截止[日期時間].{0,6}(是|為|在)/,
+            /(meeting|call|interview)\s+(in|at)\s+\d/i,
+            /remind\s+me\s+(in|at)\s+\d/i,
+            /due\s+(today|tomorrow|on)\b/i,
+            /deadline\s+(today|tomorrow|on|is)\b/i,
+        ];
+        const isUrgent = URGENT_PATTERNS.some(p => p.test(userMsg)) || userMsg.includes("提醒");
+        console.log('[UrgentReminder] 檢查測試:', { userMsg, isUrgent });
+
+        if (!isUrgent) return;
+
+        const recentMessages = `用戶：${userMsg}\n助手：${aiMsg}`;
+        try {
+            const ids = await invoke<string[]>('trigger_urgent_reminder_check', {
+                conversationId,
+                recentMessages,
+            });
+            if (ids && ids.length > 0) {
+                toast.success(`已從對話中自動建立 ${ids.length} 個提醒事項`);
+            }
+        } catch (e) {
+            console.error('[UrgentReminder] Failed:', e);
         }
     },
 
@@ -456,6 +494,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                             get().autoTitleConversation(activeConversationId!);
                         }
                     }).catch(e => console.error('Failed to save assistant message:', e));
+
+                    // 即時緊急提醒偵測：非同步，不影響 UI
+                    get().triggerUrgentReminderCheck(activeConversationId!, content, finalAnswer);
 
                     unlistenToken();
                     unlistenReasoning();

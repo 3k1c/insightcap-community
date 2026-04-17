@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { X, Check, XCircle, ChevronRight } from 'lucide-react';
+import { listen, emit } from '@tauri-apps/api/event';
+import { X, Check, XCircle, ChevronRight, ChevronDown } from 'lucide-react';
 import { useT } from '../../hooks/useT';
 
 // ─── 型別 ────────────────────────────────────────────────────────────────────
@@ -37,8 +37,12 @@ export function usePendingConfirmCount() {
 
     useEffect(() => {
         refresh();
-        const unlisten = listen('summary-completed', refresh);
-        return () => { unlisten.then(fn => fn()); };
+        const u1 = listen('summary-completed', refresh);
+        const u2 = listen('memory-chunks-updated', refresh);
+        return () => {
+            u1.then(fn => fn());
+            u2.then(fn => fn());
+        };
     }, [refresh]);
 
     return count;
@@ -56,6 +60,7 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
     const t = useT();
     const [chunks, setChunks] = useState<PendingChunk[]>([]);
     const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const loadPending = useCallback(async () => {
@@ -108,6 +113,7 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
                 accept,
             });
             await loadPending();
+            await emit('memory-chunks-updated');
         } finally {
             setIsSubmitting(false);
         }
@@ -119,12 +125,12 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
         <>
             {/* Backdrop */}
             <div
-                className="fixed inset-0 z-40 bg-surface-base"
+                className="fixed inset-0 z-40 bg-black"
                 onClick={onClose}
             />
 
             {/* Drawer */}
-            <div className="fixed right-0 top-0 bottom-0 z-50 w-96 flex flex-col bg-surface-base border-l border-stroke-divider shadow-flyout animate-in slide-in-from-right duration-200">
+            <div className="fixed right-0 top-0 bottom-0 z-50 w-96 flex flex-col bg-surface-flyout border-l border-stroke-divider shadow-flyout animate-in slide-in-from-right duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-stroke-divider shrink-0">
                     <span className="text-fs-base font-semibold text-text-primary">
@@ -154,30 +160,64 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
                             {chunks.map(chunk => {
                                 const meta = TYPE_META[chunk.knowledgeType] ?? TYPE_META.data;
                                 const isChecked = selected.has(chunk.id);
+                                const isExpanded = expanded.has(chunk.id);
                                 return (
                                     <li
                                         key={chunk.id}
-                                        className={`flex items-start gap-3 px-5 py-4 cursor-pointer transition-colors ${isChecked ? 'bg-surface-subtle' : 'hover:bg-surface-subtle/50'}`}
-                                        onClick={() => toggleOne(chunk.id)}
+                                        className={`px-5 py-4 transition-colors ${isChecked ? 'bg-accent-light2/50 dark:bg-accent-light2/10' : 'hover:bg-surface-subtle'}`}
                                     >
-                                        {/* Checkbox */}
-                                        <div className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${isChecked ? 'bg-accent-default border-accent-default' : 'border-stroke-control'}`}>
-                                            {isChecked && <Check size={10} className="text-white" strokeWidth={3} />}
+                                        <div className="flex items-start gap-3 cursor-pointer" onClick={() => toggleOne(chunk.id)}>
+                                            {/* Checkbox */}
+                                            <div className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${isChecked ? 'bg-accent-default border-accent-default' : 'border-stroke-control'}`}>
+                                                {isChecked && <Check size={10} className="text-white" strokeWidth={3} />}
+                                            </div>
+
+                                            {/* Body */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5 mb-1">
+                                                    <span className={`text-fs-xs ${meta.colorClass}`}>{meta.symbol}</span>
+                                                    <span className="text-fs-xs text-text-tertiary">{t(meta.labelKey)}</span>
+                                                    <span className="text-fs-xs text-text-tertiary ml-auto">
+                                                        {t('pending_drawer.confidence', { value: Math.round(chunk.confidence * 100) })}
+                                                    </span>
+                                                </div>
+                                                <p className={`text-fs-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-2'} ${chunk.content ? 'text-text-primary' : 'text-text-secondary opacity-70 italic'}`}>
+                                                    {chunk.content || t('pending_drawer.no_content')}
+                                                </p>
+                                            </div>
+
+                                            {/* Expand toggle */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setExpanded(prev => {
+                                                        const next = new Set(prev);
+                                                        if (next.has(chunk.id)) next.delete(chunk.id); else next.add(chunk.id);
+                                                        return next;
+                                                    });
+                                                }}
+                                                className="mt-0.5 shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-primary transition-colors"
+                                            >
+                                                <ChevronDown size={14} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </button>
                                         </div>
 
-                                        {/* Body */}
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-1.5 mb-1">
-                                                <span className={`text-fs-xs ${meta.colorClass}`}>{meta.symbol}</span>
-                                                <span className="text-fs-xs text-text-tertiary">{t(meta.labelKey)}</span>
-                                                <span className="text-fs-xs text-text-tertiary ml-auto">
-                                                    {t('pending_drawer.confidence', { value: Math.round(chunk.confidence * 100) })}
-                                                </span>
-                                            </div>
-                                            <p className="text-fs-sm text-text-primary leading-relaxed line-clamp-3">
-                                                {chunk.content}
-                                            </p>
-                                        </div>
+                                        {/* Tags (shown when expanded) */}
+                                        {isExpanded && chunk.tags && (() => {
+                                            let parsed: string[] = [];
+                                            try { parsed = JSON.parse(chunk.tags); } catch { parsed = [chunk.tags]; }
+                                            const filtered = parsed.filter(t => t && t !== 'untagged');
+                                            if (filtered.length === 0) return null;
+                                            return (
+                                                <div className="mt-2 ml-7 flex flex-wrap gap-1">
+                                                    {filtered.map((tag, i) => (
+                                                        <span key={i} className="px-1.5 py-0.5 rounded bg-surface-layer text-fs-xs text-text-secondary">
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })()}
                                     </li>
                                 );
                             })}

@@ -21,6 +21,10 @@ pub struct AppState {
     pub current_conversation_id: Arc<tokio::sync::Mutex<Option<String>>>,
     /// 用於通知背景任務停止（發送 true = 停止）
     pub shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    /// 監測 ReminderScheduler 活躍度 (死鎖監測計數器)
+    pub reminder_loop_count: Arc<std::sync::atomic::AtomicU64>,
+    /// 用於即時喚醒對話總結（與提醒提取）的排程器
+    pub summary_wakeup_tx: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -38,6 +42,8 @@ impl AppState {
             embedder,
             current_conversation_id: Arc::new(tokio::sync::Mutex::new(None)),
             shutdown_tx,
+            reminder_loop_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            summary_wakeup_tx: Arc::new(tokio::sync::Notify::new()),
         }
     }
 }

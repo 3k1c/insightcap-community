@@ -186,4 +186,8 @@
     .ic-accent-subtle {
         background-color: var(--accent-light2);
     }
+
+    .ic-reminder-bg {
+        background-color: var(--color-reminder-bg);
+    }
 }

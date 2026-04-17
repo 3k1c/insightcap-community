@@ -1237,6 +1237,7 @@ export const EditorPane: React.FC = () => {
         const fullPrompt = `${prompt}\n\n原文內容：\n${text}`;
 
         try {
+            const settings = await invoke<any>('get_settings');
             const unlisteners: Array<() => void> = [];
 
             await new Promise<void>((resolve, reject) => {
@@ -1266,6 +1267,7 @@ export const EditorPane: React.FC = () => {
                     webEnabled: false,
                     tempChunkIds: null,
                     thinkingMode: 'normal',
+                    instructionOverride: settings?.editor?.promptInstructionOverride,
                 }).catch(reject);
             });
 

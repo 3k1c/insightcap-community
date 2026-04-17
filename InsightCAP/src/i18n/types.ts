@@ -208,11 +208,12 @@ export interface TranslationKeys {
         type_pattern: string;
         type_log: string;
         close: string;
+        no_content: string;
     };
 
-    space_wiki: {
+    space_knowledge_guide: {
         tab_insight: string;
-        tab_wiki: string;
+        tab_guide: string;
         empty: string;
         edit: string;
         save: string;
@@ -230,6 +231,13 @@ export interface TranslationKeys {
         knowledge: string;
         hotkeys: string;
         security: string;
+        reminders: string;
+        reminders_enabled: string;
+        reminders_daily_time: string;
+        reminders_quiet_hours: string;
+        reminders_quiet_start: string;
+        reminders_quiet_end: string;
+        reminders_weekend_quiet: string;
     };
 
     turn_into: {
@@ -290,5 +298,27 @@ export interface TranslationKeys {
         ai_apply: string;
         ai_discard: string;
         ai_retry: string;
+    };
+
+    reminder: {
+        notification_title: string;
+        action_complete: string;
+        action_snooze: string;
+        action_dismiss: string;
+        intent_start: string;
+        intent_midcheck: string;
+        intent_urgent: string;
+        intent_final: string;
+        intent_prepare: string;
+        intent_imminent: string;
+        intent_now: string;
+        intent_confirm_date: string;
+        type_meeting: string;
+        type_deliverable: string;
+        type_event: string;
+        type_appointment: string;
+        snooze_30min: string;
+        snooze_1hr: string;
+        snooze_3hr: string;
     };
 }

@@ -423,6 +423,7 @@ impl RagEngine {
         tag_filter: Option<Vec<String>>,
         rag_enabled: bool,
         temp_chunk_ids: Option<Vec<String>>,
+        instruction_override: Option<String>,
     ) -> Result<(String, Vec<(String, String)>, Vec<String>, serde_json::Value), String> {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
@@ -590,7 +591,9 @@ impl RagEngine {
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_EXTERNAL, text));
         }
 
-        let user_instruction = settings.chat_prompt_instruction.trim().to_string();
+        let user_instruction = instruction_override.unwrap_or_else(|| {
+            settings.chat_prompt_instruction.trim().to_string()
+        });
 
         let has_extra = !system_parts.is_empty()
             || !user_instruction.is_empty()
@@ -659,6 +662,7 @@ impl RagEngine {
         temp_chunk_ids: Option<Vec<String>>,
         think_mode: bool,
         web_context: Option<String>,
+        instruction_override: Option<String>,
     ) -> Result<serde_json::Value, String> {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
@@ -682,6 +686,7 @@ impl RagEngine {
             tag_filter,
             rag_enabled,
             temp_chunk_ids,
+            instruction_override,
         ).await?;
 
         // 若有聯網搜尋結果，附加到 base_prompt 後

@@ -5,3 +5,5 @@ pub mod ocr_worker;
 pub mod space_recluster;
 pub mod conversation_scheduler;
 pub mod deep_synthesis_engine;
+pub mod reminder_scheduler;
+pub mod telegram_bot;

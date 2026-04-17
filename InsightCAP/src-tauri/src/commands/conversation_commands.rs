@@ -106,6 +106,7 @@ pub async fn get_messages(pool: State<'_, SqlitePool>, conversation_id: String) 
 #[tauri::command]
 pub async fn add_message(
     pool: State<'_, SqlitePool>,
+    app_state: State<'_, AppState>,
     conversation_id: String,
     role: String,
     content: String,
@@ -136,6 +137,12 @@ pub async fn add_message(
     .execute(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
+
+    // --- 新增：助理回覆完畢即觸發即時提取，達成毫秒級 Telegram 通知 ---
+    if role == "assistant" {
+        let _ = crate::background::conversation_scheduler::enqueue_conversation(pool.inner(), &conversation_id, "new_message").await;
+        app_state.summary_wakeup_tx.notify_one();
+    }
 
     Ok(id)
 }

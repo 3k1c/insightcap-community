@@ -7,13 +7,14 @@ import { useThemeStore, type Theme } from '../stores/themeStore';
 import { useLanguageStore } from '../stores/languageStore';
 import type { Language } from '../i18n';
 import {
-    Settings2, Server, Sparkles, BookOpen, Ellipsis,
+    Settings2, Server, Sparkles, BookOpen, PenLine,
     Plus, Trash2, Eye, EyeOff, ExternalLink,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
     User, ShieldCheck, KeyRound,
 } from 'lucide-react';
 import { useT } from '../hooks/useT';
 import { save } from '@tauri-apps/plugin-dialog';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
 
 // ── Types matching Rust AllSettings ──────────────────────
@@ -71,6 +72,20 @@ interface AllSettings {
         defaultLineSpacing: string;
         defaultExportFormat: string;
         exportSubdir: string;
+        promptInstructionOverride?: string;
+    };
+    telegram: {
+        botToken: string;
+        allowedUserIds: number[];
+        enabled: boolean;
+        promptInstructionOverride?: string;
+    };
+    reminders: {
+        enabled: boolean;
+        dailyReminderTime: string;
+        quietHoursStart: string;
+        quietHoursEnd: string;
+        weekendQuiet: boolean;
     };
     bilibiliSessdata?: string;
     chatPromptInstruction: string;
@@ -82,10 +97,10 @@ type SettingsTab = 'general' | 'personal' | 'provider' | 'ai' | 'knowledge' | 'o
 const TABS: { id: SettingsTab; labelKey: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'general', labelKey: 'settings.general', icon: Settings2 },
     { id: 'personal', labelKey: 'settings.personal', icon: User },
-    { id: 'provider', labelKey: 'settings.ai_models', icon: Server },
-    { id: 'ai', labelKey: 'settings.ai_section', icon: Sparkles },
+    { id: 'provider', labelKey: 'settings.ai_models', icon: Sparkles },
+    { id: 'ai', labelKey: 'settings.ai_section', icon: Server },
     { id: 'knowledge', labelKey: 'settings.knowledge', icon: BookOpen },
-    { id: 'other', labelKey: 'settings.other', icon: Ellipsis },
+    { id: 'other', labelKey: 'settings.other', icon: PenLine },
 ];
 
 const THEMES: { value: Theme }[] = [
@@ -273,6 +288,9 @@ const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
         { value: 'nomic-embed-text', label: 'nomic-embed-text (embedding)' },
         { value: 'mxbai-embed-large', label: 'mxbai-embed-large (embedding)' },
         { value: 'bge-m3', label: 'BGE-M3 (embedding)' },
+    ],
+    local: [
+        { value: 'multilingual-e5-small', label: 'Multilingual E5 Small' },
     ],
 };
 
@@ -655,6 +673,42 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                 </SectionCard>
 
+                <SectionCard title={t('settings.reminders')}>
+                    <SettingRow label={t('settings.reminders_enabled')}>
+                        <Toggle checked={settings.reminders?.enabled ?? true} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.enabled = v; })} />
+                    </SettingRow>
+                    <SettingRow label={t('settings.reminders_daily_time')}>
+                        <InputField type="time" value={settings.reminders?.dailyReminderTime ?? '09:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.dailyReminderTime = v; })} className="w-32" />
+                    </SettingRow>
+                    <SettingRow label={t('settings.reminders_test_pipeline')}>
+                        <button
+                            onClick={async () => {
+                                try {
+                                    const msg = await invoke<string>('trigger_test_reminder');
+                                    toast.success(msg);
+                                } catch (e) {
+                                    toast.error(String(e));
+                                }
+                            }}
+                            className="px-3 py-1.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-xs hover:text-accent-default hover:border-accent-default/30 transition-colors"
+                        >
+                            {t('settings.reminders_test_trigger')}
+                        </button>
+                    </SettingRow>
+                </SectionCard>
+
+                <SectionCard title={t('settings.reminders_quiet_hours')}>
+                    <SettingRow label={t('settings.reminders_quiet_start')}>
+                        <InputField type="time" value={settings.reminders?.quietHoursStart ?? '22:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursStart = v; })} className="w-32" />
+                    </SettingRow>
+                    <SettingRow label={t('settings.reminders_quiet_end')}>
+                        <InputField type="time" value={settings.reminders?.quietHoursEnd ?? '08:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursEnd = v; })} className="w-32" />
+                    </SettingRow>
+                    <SettingRow label={t('settings.reminders_weekend_quiet')}>
+                        <Toggle checked={settings.reminders?.weekendQuiet ?? false} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.weekendQuiet = v; })} />
+                    </SettingRow>
+                </SectionCard>
+
                 <div className="flex justify-end mt-6">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
                         {saving ? t('common.saving') : t('common.save')}
@@ -675,6 +729,16 @@ export const SettingsPage: React.FC = () => {
                     <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.ai_models')}</h3>
                     <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.general_desc')}</p>
                 </div>
+
+                <SectionCard title={t('settings.ai_prompt_instruction_title')} desc={t('settings.ai_prompt_instruction_desc')}>
+                    <textarea
+                        value={settings.chatPromptInstruction}
+                        onChange={e => updateSettings(s => { s.chatPromptInstruction = e.target.value; })}
+                        placeholder={t('settings.ai_prompt_instruction_placeholder')}
+                        rows={4}
+                        className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-accent-default"
+                    />
+                </SectionCard>
 
                 <SectionCard
                     title={t('settings.provider_management_title')}
@@ -945,14 +1009,104 @@ export const SettingsPage: React.FC = () => {
                     <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.ai_section_desc')}</p>
                 </div>
 
-                <SectionCard title={t('settings.ai_prompt_instruction_title')} desc={t('settings.ai_prompt_instruction_desc')}>
+                <SectionCard title={t('settings.telegram_override_title')} desc={t('settings.telegram_override_desc')}>
                     <textarea
-                        value={settings.chatPromptInstruction}
-                        onChange={e => updateSettings(s => { s.chatPromptInstruction = e.target.value; })}
+                        value={settings.telegram.promptInstructionOverride || ''}
+                        onChange={e => updateSettings(s => { s.telegram.promptInstructionOverride = e.target.value; })}
                         placeholder={t('settings.ai_prompt_instruction_placeholder')}
-                        rows={4}
+                        rows={2}
                         className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-accent-default"
                     />
+                </SectionCard>
+
+                {/* ── Telegram Bot ─────────────────────────────────── */}
+                <SectionCard
+                    title="Telegram Bot"
+                    desc={t('settings.telegram_desc')}
+                    action={
+                        <button
+                            onClick={() => openUrl('https://t.me/BotFather')}
+                            className="flex items-center gap-1.5 text-fs-sm text-accent-default hover:text-accent-light1 transition-colors"
+                        >
+                            <ExternalLink size={13} />
+                            BotFather
+                        </button>
+                    }
+                >
+                    <SettingRow label={t('settings.telegram_enabled')} desc={t('settings.telegram_enabled_desc')}>
+                        <Toggle checked={settings.telegram.enabled} onChange={v => updateSettings(s => { s.telegram.enabled = v; })} />
+                    </SettingRow>
+                    {settings.telegram.enabled && (
+                        <>
+                            <SettingRow label="Bot Token" desc={t('settings.telegram_token_desc')}>
+                                <div className="flex items-center gap-2">
+                                    <InputField
+                                        value={settings.telegram.botToken}
+                                        onChange={v => updateSettings(s => { s.telegram.botToken = v; })}
+                                        type={showPasswords.botToken ? 'text' : 'password'}
+                                        className="w-72"
+                                        placeholder="123456:ABC-DEF..."
+                                    />
+                                    <button
+                                        onClick={() => setShowPasswords(prev => ({ ...prev, botToken: !prev.botToken }))}
+                                        className="p-1.5 text-text-tertiary hover:text-text-secondary transition-colors"
+                                    >
+                                        {showPasswords.botToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                            </SettingRow>
+                            <SettingRow label="Allowed User IDs" desc={t('settings.telegram_userids_desc')}>
+                                <div className="flex items-center gap-2">
+                                    <InputField
+                                        value={settings.telegram.allowedUserIds.join(', ')}
+                                        onChange={v => updateSettings(s => {
+                                            s.telegram.allowedUserIds = v.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+                                        })}
+                                        className="w-72"
+                                        placeholder="123456789, 987654321"
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const ids = await invoke<number[]>('telegram_get_allowed_user_ids', { botToken: settings.telegram.botToken });
+                                                updateSettings(s => { s.telegram.allowedUserIds = ids; });
+                                                toast.success(`${t('settings.telegram_fetch_success')}: ${ids.join(', ')}`);
+                                            } catch (e) {
+                                                toast.error(String(e));
+                                            }
+                                        }}
+                                        disabled={!settings.telegram.botToken}
+                                        className="px-3 py-1.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-xs hover:text-accent-default hover:border-accent-default/30 transition-colors disabled:opacity-50 shrink-0"
+                                    >
+                                        {t('settings.telegram_fetch_chatid')}
+                                    </button>
+                                    <div className="w-px h-4 bg-stroke-divider mx-1" />
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await invoke('test_telegram_notification', {
+                                                    botToken: settings.telegram.botToken,
+                                                    userIds: settings.telegram.allowedUserIds
+                                                });
+                                                toast.success(t('settings.telegram_test_success'));
+                                            } catch (e) {
+                                                toast.error(String(e));
+                                            }
+                                        }}
+                                        disabled={!settings.telegram.botToken || settings.telegram.allowedUserIds.length === 0}
+                                        className="px-3 py-1.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-xs hover:text-accent-default hover:border-accent-default/30 transition-colors disabled:opacity-50 shrink-0"
+                                    >
+                                        {t('settings.telegram_test_send')}
+                                    </button>
+                                </div>
+                            </SettingRow>
+                            <div className="mt-3 p-3 bg-surface-1 rounded-lg">
+                                <p className="text-fs-xs text-text-tertiary leading-relaxed">
+                                    {t('settings.telegram_help')}
+                                </p>
+                            </div>
+                        </>
+                    )}
                 </SectionCard>
 
                 <SectionCard title={t('settings.web_search_title')}>
@@ -1248,6 +1402,16 @@ export const SettingsPage: React.FC = () => {
                     <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.other_section_desc')}</p>
                 </div>
 
+                <SectionCard title={t('settings.editor_override_title')} desc={t('settings.editor_override_desc')}>
+                    <textarea
+                        value={settings.editor.promptInstructionOverride || ''}
+                        onChange={e => updateSettings(s => { s.editor.promptInstructionOverride = e.target.value; })}
+                        placeholder={t('settings.ai_prompt_instruction_placeholder')}
+                        rows={2}
+                        className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-accent-default"
+                    />
+                </SectionCard>
+
                 <SectionCard title={t('settings.editor_setting')}>
                     <SettingRow label={t('settings.default_font')}>
                         <InputField value={settings.editor.defaultFont} onChange={v => updateSettings(s => { s.editor.defaultFont = v; })} className="w-52" />
@@ -1269,22 +1433,6 @@ export const SettingsPage: React.FC = () => {
                             ]}
                         />
                     </SettingRow>
-                </SectionCard>
-
-                <SectionCard title={t('settings.auto_cleanup')}>
-                    <SettingRow label={t('settings.auto_cleanup_enable')} desc={t('settings.auto_cleanup_desc')}>
-                        <Toggle checked={settings.autoCleanup.enabled} onChange={v => updateSettings(s => { s.autoCleanup.enabled = v; })} />
-                    </SettingRow>
-                    {settings.autoCleanup.enabled && (
-                        <SettingRow label={t('settings.retention_days')}>
-                            <InputField
-                                value={String(settings.autoCleanup.retentionDays)}
-                                onChange={v => updateSettings(s => { s.autoCleanup.retentionDays = parseInt(v) || 0; })}
-                                type="number"
-                                className="w-20"
-                            />
-                        </SettingRow>
-                    )}
                 </SectionCard>
 
                 <div className="flex justify-end mt-6">
@@ -1445,6 +1593,22 @@ export const SettingsPage: React.FC = () => {
                         </div>
                     </div>
                 </SectionCard>
+
+                <SectionCard title={t('settings.auto_cleanup')}>
+                    <SettingRow label={t('settings.auto_cleanup_enable')} desc={t('settings.auto_cleanup_desc')}>
+                        <Toggle checked={settings.autoCleanup.enabled} onChange={v => updateSettings(s => { s.autoCleanup.enabled = v; })} />
+                    </SettingRow>
+                    {settings.autoCleanup.enabled && (
+                        <SettingRow label={t('settings.retention_days')}>
+                            <InputField
+                                value={String(settings.autoCleanup.retentionDays)}
+                                onChange={v => updateSettings(s => { s.autoCleanup.retentionDays = parseInt(v) || 0; })}
+                                type="number"
+                                className="w-20"
+                            />
+                        </SettingRow>
+                    )}
+                </SectionCard>
             </div>
         );
     };
@@ -1485,6 +1649,7 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'provider' && renderProvider()}
                 {activeTab === 'ai' && renderAI()}
                 {activeTab === 'knowledge' && renderKnowledge()}
+
                 {activeTab === 'other' && renderOther()}
             </div>
 

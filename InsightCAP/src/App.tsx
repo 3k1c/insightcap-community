@@ -8,6 +8,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { QuickCapturePage } from './pages/QuickCapturePage';
 import { DecisionReviewToast } from './components/memory/DecisionToast';
 import { PatternPromotionToast } from './components/memory/PatternPromotionToast';
+import { ReminderToast } from './components/memory/ReminderToast';
 
 // 偵測當前視窗 label
 const windowLabel = (window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } }).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? '';
@@ -92,7 +93,18 @@ export default function App() {
         return (
             <>
                 <SetupPage onComplete={initApp} />
-                <Toaster position="bottom-right" />
+                <Toaster
+                    position="top-right"
+                    toastOptions={{
+                        style: {
+                            backgroundColor: 'var(--surface-base)',
+                            color: 'var(--text-primary)',
+                            borderColor: 'var(--stroke-divider)',
+                            boxShadow: 'var(--shadow-flyout)'
+                        },
+                        className: '!bg-surface-base !text-text-primary !border-stroke-divider'
+                    }}
+                />
             </>
         );
     }
@@ -101,7 +113,18 @@ export default function App() {
         return (
             <>
                 <MigratePage kbPath={kbPath} onUnlockSuccess={initApp} />
-                <Toaster position="bottom-right" />
+                <Toaster
+                    position="top-right"
+                    toastOptions={{
+                        style: {
+                            backgroundColor: 'var(--surface-base)',
+                            color: 'var(--text-primary)',
+                            borderColor: 'var(--stroke-divider)',
+                            boxShadow: 'var(--shadow-flyout)'
+                        },
+                        className: '!bg-surface-base !text-text-primary !border-stroke-divider'
+                    }}
+                />
             </>
         );
     }
@@ -113,7 +136,18 @@ export default function App() {
                     kbPath={kbPath}
                     onLoginSuccess={() => setAppState('main')}
                 />
-                <Toaster position="bottom-right" />
+                <Toaster
+                    position="top-right"
+                    toastOptions={{
+                        style: {
+                            backgroundColor: 'var(--surface-base)',
+                            color: 'var(--text-primary)',
+                            borderColor: 'var(--stroke-divider)',
+                            boxShadow: 'var(--shadow-flyout)'
+                        },
+                        className: '!bg-surface-base !text-text-primary !border-stroke-divider'
+                    }}
+                />
             </>
         );
     }
@@ -124,7 +158,19 @@ export default function App() {
                 <MainLayout />
                 <DecisionReviewToast />
                 <PatternPromotionToast />
-                <Toaster position="bottom-right" />
+                <ReminderToast />
+                <Toaster
+                    position="top-right"
+                    toastOptions={{
+                        style: {
+                            backgroundColor: 'var(--surface-base)',
+                            color: 'var(--text-primary)',
+                            borderColor: 'var(--stroke-divider)',
+                            boxShadow: 'var(--shadow-flyout)'
+                        },
+                        className: '!bg-surface-base !text-text-primary !border-stroke-divider'
+                    }}
+                />
             </>
         );
     }

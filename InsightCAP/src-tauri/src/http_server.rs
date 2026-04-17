@@ -1,4 +1,4 @@
-/// Phase 6 — 本地 HTTP API Server（Axum）
+﻿/// Phase 6 — 本地 HTTP API Server（Axum）
 ///
 /// 端點：
 ///   GET  /api/health   — 連線確認
@@ -411,7 +411,7 @@ pub async fn start_api_server(app: AppHandle) {
         .route("/api/rag", post(handle_rag))
         .route("/api/chat", post(handle_chat))
         .route("/api/conversations", get(handle_list_conversations).post(handle_create_conversation))
-        .route("/api/conversations/:id/messages", get(handle_get_messages))
+        .route("/api/conversations/{id}/messages", get(handle_get_messages))
         .route("/api/sources", get(handle_list_sources))
         .with_state(state);
 

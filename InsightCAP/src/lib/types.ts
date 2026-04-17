@@ -165,6 +165,15 @@ export interface EditorSettings {
     defaultExportFormat: 'docx' | 'md' | 'txt';
     /** 匯出檔案的子目錄（相對於文件所在資料夾），如 'exports' */
     exportSubdir: string;
+    promptInstructionOverride?: string;
+}
+
+export interface TelegramSettings {
+    botToken: string;
+    allowedUserIds: number[];
+    enabled: boolean;
+    streaming: string;
+    promptInstructionOverride?: string;
 }
 
 export interface AllSettings {
@@ -175,6 +184,8 @@ export interface AllSettings {
     autoCleanup: AutoCleanupSettings;
     webSearch: WebSearchSettings;
     editor: EditorSettings;
+    telegram: TelegramSettings;
+    chatPromptInstruction: string;
     bilibiliSessdata?: string | null;
     lastOpenFile?: string | null;
     lastOpenConv?: string | null;

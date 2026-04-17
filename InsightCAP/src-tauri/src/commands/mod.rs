@@ -13,3 +13,4 @@ pub mod space_commands;
 pub mod editor_commands;
 pub mod decision_commands;
 pub mod seed_commands; // TODO: 測試用，上線前移除
+pub mod reminder_commands;

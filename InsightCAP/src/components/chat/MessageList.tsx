@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Link, AtSign, Copy, Check, Brain, ChevronDown, Loader2 } from 'lucide-react';
+import { FileText, Link, AtSign, Copy, Check, Brain, ChevronDown, Loader2, CalendarClock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Message } from '../../stores/chatStore';
 import { invoke } from '@tauri-apps/api/core';
@@ -280,150 +280,176 @@ export const MessageList: React.FC<MessageListProps> = ({
                     <p className="text-fs-sm mt-1">您可以詢問關於收藏的資料，或者直接進行對話。</p>
                 </div>
             ) : (
-                messages.map((msg) => (
-                    <div
-                        key={msg.id}
-                        className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                        <div
-                            onMouseDown={(e) => {
-                                if (e.button !== 0) return;
-                                const sel = window.getSelection();
-                                const selectedText = sel?.toString().trim() ?? '';
-                                if (!selectedText || !sel || sel.rangeCount === 0) return;
-                                // 判斷滑鼠是否落在 selection 高亮範圍內
-                                const range = sel.getRangeAt(0);
-                                const rects = range.getClientRects();
-                                let insideSelection = false;
-                                for (let i = 0; i < rects.length; i++) {
-                                    const r = rects[i];
-                                    if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-                                        insideSelection = true;
-                                        break;
-                                    }
-                                }
-                                if (!insideSelection) return;
-                                // 滑鼠在 selection 範圍內，準備可能的 DnD
-                                e.preventDefault(); // 阻止瀏覽器清除 selection
-                                msgDragInfo.current = { isMouseDown: true, isDragging: false, startX: e.clientX, startY: e.clientY, content: selectedText, mouseDownAt: Date.now() };
-                            }}
-                            onDragStart={(e) => e.preventDefault()}
-                            className={`
-                min-w-0 max-w-[85%] overflow-hidden rounded-2xl px-4 py-3
-                ${msg.role === 'user'
-                                    ? 'bg-accent-default text-white rounded-br-sm'
-                                    : 'bg-surface-subtle text-text-primary rounded-bl-sm border border-stroke-divider'
-                                }
-              `}
-                        >
-                            {msg.attachedFiles && msg.attachedFiles.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                    {msg.attachedFiles.map((f, i) =>
-                                        f.fileType === 'image_ocr' && f.previewUrl ? (
-                                            <div key={i} className="relative rounded-xl overflow-hidden w-20 h-20 shrink-0 border border-white/20">
-                                                <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
-                                                <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5">
-                                                    <span className="text-[9px] text-white font-medium block truncate">OCR</span>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div key={i} className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 bg-white/15 border border-white/20 max-w-[180px]">
-                                                {f.fileType === 'url'
-                                                    ? <Link className="w-3 h-3 shrink-0 opacity-80" />
-                                                    : <FileText className="w-3 h-3 shrink-0 opacity-80" />
-                                                }
-                                                <span className="text-fs-sm truncate opacity-90">{f.name}</span>
-                                            </div>
-                                        )
-                                    )}
-                                </div>
-                            )}
-                            {msg.role === 'user' && msg.mentionedSources && msg.mentionedSources.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mb-2">
-                                    {msg.mentionedSources.map(src => (
-                                        <span
-                                            key={src.id}
-                                            className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-white/15 border border-white/20 text-[11px]"
-                                        >
-                                            <AtSign className="w-2.5 h-2.5 opacity-80" />
-                                            <span className="truncate max-w-[120px] opacity-90">{src.title}</span>
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                            {msg.role === 'assistant' && msg.reasoningContent && (
-                                <ThinkingBlock
-                                    content={msg.reasoningContent}
-                                    isStreaming={isGenerating && msg.id.startsWith('streaming-')}
-                                />
-                            )}
-                            {(() => {
-                                const isStreamingEmpty = isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && !msg.content;
-                                if (isStreamingEmpty) return null;
-                                return (
-                                    <div className="markdown-body text-fs-base leading-relaxed font-medium min-w-0 overflow-x-hidden">
-                                        <ReactMarkdown
-                                            remarkPlugins={[remarkGfm]}
-                                            components={{
-                                                code({ node, inline, className, children, ...props }: any) {
-                                                    const match = /language-(\w+)/.exec(className || '');
-                                                    return !inline && match ? (
-                                                        <CodeBlock
-                                                            language={match[1]}
-                                                            value={String(children).replace(/\n$/, '')}
-                                                        />
-                                                    ) : (
-                                                        <code className={`${className} bg-black/10 rounded px-1 py-0.5 font-mono text-[0.9em]`} {...props}>
-                                                            {children}
-                                                        </code>
-                                                    );
-                                                },
-                                                a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-accent-default hover:underline" />,
-                                                p: ({ node, ...props }) => <p {...props} className="mb-3 last:mb-0" />,
-                                                ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 mb-3" />,
-                                                ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 mb-3" />,
-                                                li: ({ node, ...props }) => <li {...props} className="mb-1" />,
-                                                h1: ({ node, ...props }) => <h1 {...props} className="text-xl font-bold mb-3 mt-4" />,
-                                                h2: ({ node, ...props }) => <h2 {...props} className="text-lg font-bold mb-2 mt-3" />,
-                                                table: ({ node, ...props }) => (
-                                                    <div className="overflow-x-auto my-3 border border-stroke-divider rounded-lg">
-                                                        <table {...props} className="w-full border-collapse text-fs-sm" />
-                                                    </div>
-                                                ),
-                                                th: ({ node, ...props }) => <th {...props} className="bg-surface-soft p-2 border border-stroke-divider font-semibold text-left" />,
-                                                td: ({ node, ...props }) => <td {...props} className="p-2 border border-stroke-divider" />,
-                                                blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-stroke-divider pl-4 italic opacity-80 my-3" />,
-                                            }}
-                                        >
-                                            {msg.content}
-                                        </ReactMarkdown>
-                                    </div>
-                                );
-                            })()}
+                messages.map((msg) => {
+                    const isUser = msg.role === 'user';
+                    const isReminder = !isUser && (
+                        msg.content.includes('已為您設定提醒') ||
+                        msg.content.includes('已收到您的更新') ||
+                        msg.content.includes('已納入活動提醒') ||
+                        msg.content.includes('已更新為') ||
+                        msg.content.includes('已成功提取') ||
+                        msg.content.includes('已排程') ||
+                        msg.content.includes('提醒事項') ||
+                        msg.content.includes('記錄為行程資訊') ||
+                        msg.content.includes('設定了提醒') ||
+                        msg.content.includes('設定會議提醒') ||
+                        msg.content.includes('行程資訊')
+                    );
 
-                            {msg.role === 'assistant' && msg.citationSources && msg.citationSources.length > 0 && (
-                                <div className="mt-2">
-                                    <div className="text-[10px] uppercase tracking-wide opacity-60 mb-1">引用來源</div>
-                                    <div className="relative w-full flex flex-wrap gap-1.5">
-                                        {msg.citationSources.map((source, idx) => (
-                                            <CitationBadge key={`${msg.id}-src-${idx}`} source={source} />
+                    return (
+                        <div
+                            key={msg.id}
+                            className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
+                        >
+                            <div
+                                onMouseDown={(e) => {
+                                    if (e.button !== 0) return;
+                                    const sel = window.getSelection();
+                                    const selectedText = sel?.toString().trim() ?? '';
+                                    if (!selectedText || !sel || sel.rangeCount === 0) return;
+                                    // 判斷滑鼠是否落在 selection 高亮範圍內
+                                    const range = sel.getRangeAt(0);
+                                    const rects = range.getClientRects();
+                                    let insideSelection = false;
+                                    for (let i = 0; i < rects.length; i++) {
+                                        const r = rects[i];
+                                        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+                                            insideSelection = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!insideSelection) return;
+                                    // 滑鼠在 selection 範圍內，準備可能的 DnD
+                                    e.preventDefault(); // 阻止瀏覽器清除 selection
+                                    msgDragInfo.current = { isMouseDown: true, isDragging: false, startX: e.clientX, startY: e.clientY, content: selectedText, mouseDownAt: Date.now() };
+                                }}
+                                onDragStart={(e) => e.preventDefault()}
+                                className={`
+                                    min-w-0 max-w-[85%] overflow-hidden rounded-2xl px-4 py-3 relative
+                                    ${isUser
+                                        ? 'bg-accent-default text-white rounded-br-sm'
+                                        : isReminder
+                                            ? 'ic-reminder-bg border-accent-default/20 border text-text-primary rounded-bl-sm shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06)]'
+                                            : 'bg-surface-subtle text-text-primary rounded-bl-sm border border-stroke-divider'
+                                    }
+                                  `}
+                            >
+                                {isReminder && (
+                                    <div className="absolute top-2 right-2 opacity-30">
+                                        <CalendarClock className="w-3.5 h-3.5 text-accent-default" />
+                                    </div>
+                                )}
+
+                                {msg.attachedFiles && msg.attachedFiles.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {msg.attachedFiles.map((f, i) =>
+                                            f.fileType === 'image_ocr' && f.previewUrl ? (
+                                                <div key={i} className="relative rounded-xl overflow-hidden w-20 h-20 shrink-0 border border-white/20">
+                                                    <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5">
+                                                        <span className="text-[9px] text-white font-medium block truncate">OCR</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div key={i} className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 max-w-[180px] border ${msg.role === 'user' ? 'bg-white/20 border-white/30 text-white' : 'bg-surface-soft border-stroke-divider text-text-primary'}`}>
+                                                    {f.fileType === 'url'
+                                                        ? <Link className="w-3 h-3 shrink-0" />
+                                                        : <FileText className="w-3 h-3 shrink-0" />
+                                                    }
+                                                    <span className="text-fs-sm truncate">{f.name}</span>
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                )}
+                                {msg.role === 'user' && msg.mentionedSources && msg.mentionedSources.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {msg.mentionedSources.map(src => (
+                                            <span
+                                                key={src.id}
+                                                className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-white/15 border border-white/20 text-[11px]"
+                                            >
+                                                <AtSign className="w-2.5 h-2.5 opacity-80" />
+                                                <span className="truncate max-w-[120px] opacity-90">{src.title}</span>
+                                            </span>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                )}
+                                {msg.role === 'assistant' && msg.reasoningContent && (
+                                    <ThinkingBlock
+                                        content={msg.reasoningContent}
+                                        isStreaming={isGenerating && msg.id.startsWith('streaming-')}
+                                    />
+                                )}
+                                {(() => {
+                                    const isStreamingEmpty = isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && !msg.content;
+                                    if (isStreamingEmpty) return null;
+                                    const isUser = msg.role === 'user';
+                                    return (
+                                        <div className="markdown-body text-fs-base leading-relaxed font-medium min-w-0 overflow-x-hidden">
+                                            <ReactMarkdown
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    code({ node, inline, className, children, ...props }: any) {
+                                                        const match = /language-(\w+)/.exec(className || '');
+                                                        return !inline && match ? (
+                                                            <CodeBlock
+                                                                language={match[1]}
+                                                                value={String(children).replace(/\n$/, '')}
+                                                            />
+                                                        ) : (
+                                                            <code className={`${className} bg-black/10 rounded px-1 py-0.5 font-mono text-[0.9em]`} {...props}>
+                                                                {children}
+                                                            </code>
+                                                        );
+                                                    },
+                                                    a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className={isUser ? 'text-white underline' : 'text-accent-default hover:underline'} />,
+                                                    p: ({ node, ...props }) => <p {...props} className="mb-3 last:mb-0" />,
+                                                    ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 mb-3" />,
+                                                    ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 mb-3" />,
+                                                    li: ({ node, ...props }) => <li {...props} className="mb-1" />,
+                                                    h1: ({ node, ...props }) => <h1 {...props} className="text-xl font-bold mb-3 mt-4" />,
+                                                    h2: ({ node, ...props }) => <h2 {...props} className="text-lg font-bold mb-2 mt-3" />,
+                                                    table: ({ node, ...props }) => (
+                                                        <div className="overflow-x-auto my-3 border border-stroke-divider rounded-lg">
+                                                            <table {...props} className="w-full border-collapse text-fs-sm" />
+                                                        </div>
+                                                    ),
+                                                    th: ({ node, ...props }) => <th {...props} className="bg-surface-soft p-2 border border-stroke-divider font-semibold text-left" />,
+                                                    td: ({ node, ...props }) => <td {...props} className="p-2 border border-stroke-divider" />,
+                                                    blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-stroke-divider pl-4 italic opacity-80 my-3" />,
+                                                }}
+                                            >
+                                                {msg.content}
+                                            </ReactMarkdown>
+                                        </div>
+                                    );
+                                })()}
 
-                            {isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && (
-                                <div className="text-[10px] mt-2 opacity-50 text-left">
-                                    <span className="inline-flex items-center gap-0.5">
-                                        <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
-                                        <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
-                                        <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
-                                    </span>
-                                </div>
-                            )}
+                                {msg.role === 'assistant' && msg.citationSources && msg.citationSources.length > 0 && (
+                                    <div className="mt-2">
+                                        <div className="text-[10px] uppercase tracking-wide opacity-60 mb-1">引用來源</div>
+                                        <div className="relative w-full flex flex-wrap gap-1.5">
+                                            {msg.citationSources.map((source, idx) => (
+                                                <CitationBadge key={`${msg.id}-src-${idx}`} source={source} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && (
+                                    <div className="text-[10px] mt-2 opacity-50 text-left">
+                                        <span className="inline-flex items-center gap-0.5">
+                                            <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
+                                            <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
+                                            <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                ))
+                    );
+                })
             )}
 
             <div ref={bottomRef} />

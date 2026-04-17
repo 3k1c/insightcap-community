@@ -36,6 +36,7 @@ use std::sync::Arc;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -193,6 +194,8 @@ pub fn run() {
             background::conversation_scheduler::start_scheduler(app.handle().clone());
             background::ocr_worker::start_ocr_worker(app.handle().clone());
             background::deep_synthesis_engine::start_deep_synthesis_worker(app.handle().clone());
+            background::reminder_scheduler::start_reminder_scheduler(app.handle().clone());
+            background::telegram_bot::start_telegram_bot(app.handle().clone());
 
             // 啟動時清理超過 30 天未處理的 pending_confirm chunks
             {
@@ -214,6 +217,7 @@ pub fn run() {
                     }
                 });
             }
+
             background::cloud_sync_watcher::start_cloud_sync_watcher(app.handle().clone(), effective_kb_path.clone());
 
             // 啟動 HTTP 服務 (Phase 6 基礎)
@@ -444,6 +448,23 @@ pub fn run() {
             // RAG
             commands::rag_commands::rag_query,
             commands::rag_commands::rag_query_stream,
+            // Reminders
+            commands::reminder_commands::get_active_reminders,
+            commands::reminder_commands::get_pending_reminders,
+            commands::reminder_commands::confirm_reminder,
+            commands::reminder_commands::update_reminder_status,
+            commands::reminder_commands::snooze_reminder,
+            commands::reminder_commands::trigger_urgent_reminder_check,
+            commands::reminder_commands::trigger_test_reminder,
+            commands::reminder_commands::clear_pending_notifications,
+            commands::reminder_commands::test_telegram_notification,
+            commands::reminder_commands::telegram_get_allowed_user_ids,
+            commands::reminder_commands::debug_list_notifications,
+            commands::reminder_commands::get_system_time_info,
+            commands::reminder_commands::verify_db_time_format,
+            commands::reminder_commands::manual_extract_reminders,
+            commands::reminder_commands::check_reminder_health,
+            commands::reminder_commands::get_project_timeline,
             // Window
             set_zoom,
         ])

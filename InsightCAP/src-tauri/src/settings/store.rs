@@ -140,6 +140,50 @@ pub struct AutoCleanupSettings {
     pub retention_days: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TelegramSettings {
+    pub bot_token: String,
+    pub allowed_user_ids: Vec<i64>,
+    pub enabled: bool,
+    pub prompt_instruction_override: Option<String>,
+    pub streaming: String, // "full" | "partial"
+}
+
+impl Default for TelegramSettings {
+    fn default() -> Self {
+        Self {
+            bot_token: "".to_string(),
+            allowed_user_ids: vec![],
+            enabled: false,
+            prompt_instruction_override: None,
+            streaming: "full".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ReminderSettings {
+    pub enabled: bool,
+    pub daily_reminder_time: String,
+    pub quiet_hours_start: String,
+    pub quiet_hours_end: String,
+    pub weekend_quiet: bool,
+}
+
+impl Default for ReminderSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            daily_reminder_time: "09:00".to_string(),
+            quiet_hours_start: "22:00".to_string(),
+            quiet_hours_end: "08:00".to_string(),
+            weekend_quiet: false,
+        }
+    }
+}
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -210,6 +254,8 @@ pub struct AllSettings {
     pub hotkeys: HotkeySettings,
     pub auto_cleanup: AutoCleanupSettings,
     pub web_search: WebSearchSettings,
+    pub telegram: TelegramSettings,
+    pub reminders: ReminderSettings,
     #[serde(default)]
     pub editor: EditorSettings,
     pub bilibili_sessdata: Option<String>,
@@ -238,6 +284,9 @@ impl AllSettings {
         }
         if !self.web_search.api_key.is_empty() {
             self.web_search.api_key = encrypt(&self.web_search.api_key);
+        }
+        if !self.telegram.bot_token.is_empty() {
+            self.telegram.bot_token = encrypt(&self.telegram.bot_token);
         }
         if let Some(sessdata) = &self.bilibili_sessdata {
             self.bilibili_sessdata = Some(encrypt(sessdata));
@@ -275,6 +324,11 @@ impl AllSettings {
         if !self.web_search.api_key.is_empty() {
             if let Ok(decrypted) = decrypt(&self.web_search.api_key) {
                 self.web_search.api_key = decrypted;
+            }
+        }
+        if !self.telegram.bot_token.is_empty() {
+            if let Ok(decrypted) = decrypt(&self.telegram.bot_token) {
+                self.telegram.bot_token = decrypted;
             }
         }
         if let Some(sessdata) = &self.bilibili_sessdata {
@@ -393,6 +447,16 @@ pub async fn get_settings(pool: &SqlitePool) -> Result<AllSettings, sqlx::Error>
                     settings.web_search = val;
                 }
             }
+            "telegram" => {
+                if let Ok(val) = serde_json::from_str(&value) {
+                    settings.telegram = val;
+                }
+            }
+            "reminders" => {
+                if let Ok(val) = serde_json::from_str(&value) {
+                    settings.reminders = val;
+                }
+            }
             "bilibili" => {
                 if let Ok(val) = serde_json::from_str(&value) {
                     settings.bilibili_sessdata = val;
@@ -457,6 +521,14 @@ pub async fn save_settings(
         (
             "web_search",
             serde_json::to_string(&settings.web_search).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+        ),
+        (
+            "telegram",
+            serde_json::to_string(&settings.telegram).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+        ),
+        (
+            "reminders",
+            serde_json::to_string(&settings.reminders).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "bilibili",

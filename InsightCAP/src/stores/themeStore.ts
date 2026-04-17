@@ -55,3 +55,14 @@ export const useThemeStore = create<ThemeState>(() => ({
         useThemeStore.setState({ theme });
     },
 }));
+
+// 監聽跨視窗 Theme 變更（例如從主視窗 SettingsPage 切換主題時，Quick Capture 視窗也要同步）
+window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY && e.newValue) {
+        const theme = e.newValue as Theme;
+        if (THEME_CLASSES.includes(theme)) {
+            applyTheme(theme);
+            useThemeStore.setState({ theme });
+        }
+    }
+});

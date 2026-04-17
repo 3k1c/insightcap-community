@@ -7,3 +7,5 @@ pub mod space_wiki_engine;
 pub mod tag_engine;
 pub mod pattern_engine;
 pub mod web_search;
+pub mod reminder_engine;
+pub mod space_knowledge_guide_engine;

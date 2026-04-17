@@ -479,7 +479,11 @@ impl LLMProvider for OpenAiProvider {
 
         let messages = vec![json!({ "role": "user", "content": prompt })];
         let mut req_body = self.build_request_body(messages, &options, options.stream);
-        req_body["response_format"] = json!({ "type": "json_object" });
+        
+        // Ollama 的 JSON mode 有時會與 think 模型衝突導致輸出空字串，因此在 Ollama 避開強制 json_object
+        if self.provider_name != "ollama" {
+            req_body["response_format"] = json!({ "type": "json_object" });
+        }
 
         let res = self.client.post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -498,14 +502,34 @@ impl LLMProvider for OpenAiProvider {
 
         if let Some(text) = json_res["choices"][0]["message"]["content"].as_str() {
             let mut clean_text = text.trim();
+            
+            // 移除可能干擾 JSON 解析的 reasoning tags
+            if let Some(end_idx) = clean_text.find("</think>") {
+                clean_text = clean_text[end_idx + "</think>".len()..].trim();
+            }
+            if let Some(end_idx) = clean_text.find("<channel|>") {
+                clean_text = clean_text[end_idx + "<channel|>".len()..].trim();
+            }
+
             if clean_text.starts_with("```json") {
                 clean_text = clean_text.trim_start_matches("```json").trim_end_matches("```").trim();
             } else if clean_text.starts_with("```") {
                 clean_text = clean_text.trim_start_matches("```").trim_end_matches("```").trim();
             }
 
-            let parsed: serde_json::Value = serde_json::from_str(clean_text)
-                .map_err(|e| LLMError::Parse(format!("Failed to parse JSON string from LLM: {}\nRaw: {}", e, clean_text)))?;
+            // 防呆處理：有時候 LLM 會在 JSON 外面再包一層或是前面有奇怪的話
+            // 我們直接找第一個 { 和最後一個 }
+            let start = clean_text.find('{').unwrap_or(0);
+            let end = clean_text.rfind('}').map(|i| i + 1).unwrap_or(clean_text.len());
+            let final_clean_text = if start < end {
+                &clean_text[start..end]
+            } else {
+                clean_text
+            };
+
+
+            let parsed: serde_json::Value = serde_json::from_str(final_clean_text)
+                .map_err(|e| LLMError::Parse(format!("Failed to parse JSON string from LLM: {}\nRaw: {}", e, final_clean_text)))?;
             Ok(parsed)
         } else {
             Err(LLMError::Parse("Unexpected API response format for JSON".to_string()))

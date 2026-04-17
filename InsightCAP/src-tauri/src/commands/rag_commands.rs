@@ -47,6 +47,7 @@ pub async fn rag_query(
         temp_chunk_ids,
         thinking_mode.as_deref().unwrap_or("normal") == "think",
         web_context,
+        None,
     ).await
 }
 
@@ -99,6 +100,7 @@ pub async fn rag_query_stream(
         tag_filter,
         rag_enabled.unwrap_or(true),
         temp_chunk_ids,
+        None,
     ).await?;
 
     // 將網路搜尋來源加入 citation_sources

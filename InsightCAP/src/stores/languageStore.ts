@@ -36,3 +36,14 @@ export const useLanguageStore = create<LanguageState>(() => ({
         useLanguageStore.setState({ language });
     },
 }));
+
+// 監聽跨視窗 語言 變更
+window.addEventListener('storage', (e) => {
+    if (e.key === LANGUAGE_STORAGE_KEY && e.newValue) {
+        const lang = e.newValue as Language;
+        if (['zh-TW', 'zh-CN', 'en'].includes(lang)) {
+            i18n.changeLanguage(lang);
+            useLanguageStore.setState({ language: lang });
+        }
+    }
+});
