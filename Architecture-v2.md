@@ -750,6 +750,8 @@ CREATE TABLE sources (
   -- text | markdown | url | image | video | pdf | file
   title            TEXT NOT NULL,
   url              TEXT,
+  source_group_id  TEXT REFERENCES source_groups(id) ON DELETE SET NULL,
+  -- 同一來源群組（canonical URL / 同內容檔案）
   file_path        TEXT,
   local_doc_path   TEXT,
   -- editor 類型的本地 .md 檔案路徑（{kb_path}/.insightcap/documents/）
@@ -760,6 +762,21 @@ CREATE TABLE sources (
   use_frequency    INTEGER DEFAULT 0,
   captured_at      TEXT NOT NULL,
   updated_at       TEXT NOT NULL
+);
+```
+
+**source_groups 表**（同來源歸組，提升召回完整性）
+
+```sql
+CREATE TABLE source_groups (
+  id              TEXT PRIMARY KEY,
+  identity_key    TEXT NOT NULL UNIQUE,
+  -- 例如：url:{canonical_url} / file_hash:{sha256}
+  canonical_url   TEXT,
+  content_hash    TEXT,
+  title_hint      TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
 );
 ```
 
@@ -788,6 +805,13 @@ CREATE TABLE captures (
   -- 標記用戶是否手動編輯過此 chunk
   status           TEXT DEFAULT 'inbox',
   -- inbox | processed | archived | pending_ocr
+  content_type     TEXT DEFAULT 'text',
+  -- text | image_ocr | log | table | code | prose ...
+  knowledge_type   TEXT DEFAULT 'data',
+  -- data | pattern | log（ingestion 初判）
+  chunk_strategy   TEXT DEFAULT 'semantic',
+  -- semantic | heading | table | log_event ...
+  chunk_metadata   TEXT DEFAULT '{}',
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL
 );
@@ -1821,6 +1845,18 @@ Embedding → usearch
 - 自動識別 URL 並設定 content_type
 
 ---
+
+*版本：v2.19 | 日期：2026-04-20*
+本次更新：
+- 手機端路徑正式切換：移除原生 React Native/Android 專案，手機入口統一改為 Telegram Bot（polling）。
+- 新增 content-aware ingestion 與來源歸組：
+  - 新增 `capture/chunking.rs`：依內容型態路由 chunk strategy（`log_event` / `table` / `heading` / `semantic`）。
+  - 新增 `capture/source_group.rs`：URL canonicalization、檔案內容雜湊、同來源群組（source group）歸併。
+  - 新增 migration `016_source_group_ingestion.sql`：`source_groups` 表、`sources.source_group_id`、`captures.content_type` / `knowledge_type` / `chunk_strategy` / `chunk_metadata`。
+- RAG 同來源前後文強化：命中 capture 後，補抓同 `source_id` 前後 chunk 作為「同來源前後文」。
+- 記憶與提醒 UI 收斂：
+  - 移除 `MemoryConfirmToast`、`PatternPromotionToast`。
+  - 調整 `DecisionToast` / `ReminderToast` 顯示位置與錯誤處理，並同步 i18n。
 
 *版本：v2.18 | 日期：2026-04-12*
 本次更新：
