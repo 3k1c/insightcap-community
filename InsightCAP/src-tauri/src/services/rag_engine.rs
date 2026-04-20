@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use std::collections::HashSet;
+
 use serde_json::json;
 use sqlx::{Row, SqlitePool};
 
@@ -36,7 +38,11 @@ pub struct RagEngine {
 
 impl RagEngine {
     pub fn new(pool: SqlitePool, vector_store: VectorStore, embedder: Arc<dyn Embedder>) -> Self {
-        Self { pool, vector_store, embedder }
+        Self {
+            pool,
+            vector_store,
+            embedder,
+        }
     }
 
     /// 按 Architecture-v2.md 分層召回，組裝結構化 context
@@ -50,8 +56,11 @@ impl RagEngine {
         tag_filter: Option<&[String]>,
     ) -> Result<serde_json::Value, String> {
         // 1. 將 query 向量化
-        let query_vec = self.embedder.embed(query).await.map_err(|e| e.to_string())?;
-
+        let query_vec = self
+            .embedder
+            .embed(query)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // 2. 向量搜尋 captures（Top-10，門檻 0.25）
         let capture_results = self.vector_store.search(&query_vec, CAPTURES_LIMIT).await?;
@@ -86,7 +95,8 @@ impl RagEngine {
             if let Some(tags) = tag_filter {
                 is_filtered = true;
                 if !tags.is_empty() {
-                    let tag_conds: Vec<String> = tags.iter()
+                    let tag_conds: Vec<String> = tags
+                        .iter()
                         .map(|t| format!("c.tags LIKE '%\"{}%\"'", t.replace('\'', "''")))
                         .collect();
                     filter_conds.push(format!("({})", tag_conds.join(" OR ")));
@@ -103,7 +113,9 @@ impl RagEngine {
                 vec![]
             } else {
                 let mut q = sqlx::query(&sql).bind(*vec_id as i64);
-                for sid in &sid_binds { q = q.bind(*sid); }
+                for sid in &sid_binds {
+                    q = q.bind(*sid);
+                }
                 q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?
             };
 
@@ -116,11 +128,21 @@ impl RagEngine {
 
                 // use_frequency 加分 + 用戶編輯加分
                 let adjusted = score
-                    + if use_freq > 0 { BONUS_USE_FREQUENCY } else { 0.0 }
-                    + if is_user_edited == 1 { BONUS_USER_PLACED } else { 0.0 };
+                    + if use_freq > 0 {
+                        BONUS_USE_FREQUENCY
+                    } else {
+                        0.0
+                    }
+                    + if is_user_edited == 1 {
+                        BONUS_USER_PLACED
+                    } else {
+                        0.0
+                    };
 
                 if !content.is_empty() && adjusted >= CAPTURES_THRESHOLD {
-                    if !capture_id.is_empty() { retrieved_capture_ids.push(capture_id); }
+                    if !capture_id.is_empty() {
+                        retrieved_capture_ids.push(capture_id);
+                    }
                     if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
                         data_context.push(format!("[來源: {}]\n{}", title, content));
                     } else {
@@ -136,7 +158,10 @@ impl RagEngine {
         }
 
         // 3. 向量搜尋 memory_chunks（data 和 pattern 分開召回）
-        let memory_results = self.vector_store.search(&query_vec, MEMORY_PATTERN_LIMIT + MEMORY_DATA_LIMIT + 5).await?;
+        let memory_results = self
+            .vector_store
+            .search(&query_vec, MEMORY_PATTERN_LIMIT + MEMORY_DATA_LIMIT + 5)
+            .await?;
 
         let mut pattern_context: Vec<String> = Vec::new();
         let mut log_context: Vec<String> = Vec::new();
@@ -168,7 +193,8 @@ impl RagEngine {
             if let Some(tags) = tag_filter {
                 is_filtered = true;
                 if !tags.is_empty() {
-                    let tag_conds: Vec<String> = tags.iter()
+                    let tag_conds: Vec<String> = tags
+                        .iter()
                         .map(|t| format!("m.tags LIKE '%\"{}%\"'", t.replace('\'', "''")))
                         .collect();
                     mfilter_conds.push(format!("({})", tag_conds.join(" OR ")));
@@ -185,7 +211,9 @@ impl RagEngine {
                 vec![]
             } else {
                 let mut q = sqlx::query(&msql).bind(*vec_id as i64);
-                for sid in &msid_binds { q = q.bind(*sid); }
+                for sid in &msid_binds {
+                    q = q.bind(*sid);
+                }
                 q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?
             };
 
@@ -199,30 +227,46 @@ impl RagEngine {
 
                 // 計算加分後分數
                 let mut adjusted = *score;
-                if knowledge_type == "pattern" { adjusted += BONUS_PATTERN; }
-                if knowledge_type == "log" { adjusted += BONUS_LOG; }
-                if placed_by == "user" { adjusted += BONUS_USER_PLACED; }
+                if knowledge_type == "pattern" {
+                    adjusted += BONUS_PATTERN;
+                }
+                if knowledge_type == "log" {
+                    adjusted += BONUS_LOG;
+                }
+                if placed_by == "user" {
+                    adjusted += BONUS_USER_PLACED;
+                }
                 if let (Some(pid), Some(cpid)) = (project_id, &chunk_project) {
-                    if pid == cpid { adjusted += BONUS_SAME_PROJECT; }
+                    if pid == cpid {
+                        adjusted += BONUS_SAME_PROJECT;
+                    }
                 }
 
                 match knowledge_type.as_str() {
-                    "pattern" if adjusted >= MEMORY_PATTERN_THRESHOLD
-                        && pattern_context.len() < MEMORY_PATTERN_LIMIT => {
+                    "pattern"
+                        if adjusted >= MEMORY_PATTERN_THRESHOLD
+                            && pattern_context.len() < MEMORY_PATTERN_LIMIT =>
+                    {
                         // 取前 50 字元作為 hint 預覽
                         let hint = content.chars().take(50).collect::<String>();
                         pattern_hints.push(hint);
                         pattern_context.push(content);
-                        if !mc_id.is_empty() { retrieved_memory_chunk_ids.push(mc_id); }
+                        if !mc_id.is_empty() {
+                            retrieved_memory_chunk_ids.push(mc_id);
+                        }
                         if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
                             if !citation_sources.iter().any(|s| s == title) {
                                 citation_sources.push(title.clone());
                             }
                         }
                     }
-                    "data" if adjusted >= MEMORY_DATA_THRESHOLD
-                        && data_context.len() < MEMORY_DATA_LIMIT => {
-                        if !mc_id.is_empty() { retrieved_memory_chunk_ids.push(mc_id); }
+                    "data"
+                        if adjusted >= MEMORY_DATA_THRESHOLD
+                            && data_context.len() < MEMORY_DATA_LIMIT =>
+                    {
+                        if !mc_id.is_empty() {
+                            retrieved_memory_chunk_ids.push(mc_id);
+                        }
                         if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
                             data_context.push(format!("[來源: {}]\\n{}", title, content));
                             if !citation_sources.iter().any(|s| s == title) {
@@ -243,7 +287,7 @@ impl RagEngine {
             "SELECT m.content, m.trigger_context, s.title AS source_title \
              FROM memory_chunks m \
              LEFT JOIN sources s ON m.source_id = s.id \
-             WHERE m.knowledge_type = 'log'"
+             WHERE m.knowledge_type = 'log'",
         );
         let mut log_sid_binds: Vec<&str> = Vec::new();
         let mut log_filter_conds = Vec::new();
@@ -261,7 +305,8 @@ impl RagEngine {
         if let Some(tags) = tag_filter {
             is_filtered = true;
             if !tags.is_empty() {
-                let tag_conds: Vec<String> = tags.iter()
+                let tag_conds: Vec<String> = tags
+                    .iter()
                     .map(|t| format!("m.tags LIKE '%\"{}%\"'", t.replace('\'', "''")))
                     .collect();
                 log_filter_conds.push(format!("({})", tag_conds.join(" OR ")));
@@ -278,14 +323,18 @@ impl RagEngine {
             Vec::new()
         } else {
             let mut q = sqlx::query(&log_sql);
-            for sid in &log_sid_binds { q = q.bind(*sid); }
+            for sid in &log_sid_binds {
+                q = q.bind(*sid);
+            }
             q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?
         };
 
         let query_lower = query.to_lowercase();
         for r in log_rows {
             let trigger: String = r.try_get("trigger_context").unwrap_or_default();
-            let triggered = trigger.split('|').any(|t| query_lower.contains(&t.trim().to_lowercase()));
+            let triggered = trigger
+                .split('|')
+                .any(|t| query_lower.contains(&t.trim().to_lowercase()));
             if triggered {
                 let content: String = r.try_get("content").unwrap_or_default();
                 let hint = content.chars().take(50).collect::<String>();
@@ -302,7 +351,7 @@ impl RagEngine {
         // 5. 外部 KB（Phase 5，欄位名 db_path）
         let mut external_context: Vec<String> = Vec::new();
         let external_dbs: Vec<String> = sqlx::query_scalar(
-            "SELECT db_path FROM external_knowledge_bases WHERE status = 'connected'"
+            "SELECT db_path FROM external_knowledge_bases WHERE status = 'connected'",
         )
         .fetch_all(&self.pool)
         .await
@@ -340,15 +389,35 @@ impl RagEngine {
                 self.embedder.clone(),
                 self.vector_store.clone(),
             );
-            if let Ok(linked) = relation_engine.fetch_linked_chunks(&all_retrieved_ids).await {
+            if let Ok(linked) = relation_engine
+                .fetch_linked_chunks(&all_retrieved_ids)
+                .await
+            {
                 for lc in linked {
-                    if !lc.content.is_empty() && data_context.len() < CAPTURES_LIMIT + MEMORY_DATA_LIMIT {
+                    if !lc.content.is_empty()
+                        && data_context.len() < CAPTURES_LIMIT + MEMORY_DATA_LIMIT
+                    {
                         let label = match lc.relation.as_str() {
                             "contradicts" => "⚠️ 矛盾觀點",
                             "extends" => "延伸資訊",
                             _ => "相關記憶",
                         };
                         data_context.push(format!("[{label}]\n{}", lc.content));
+                    }
+                }
+            }
+        }
+
+        if !all_retrieved_ids.is_empty() {
+            if let Ok(neighbors) = self
+                .fetch_neighbor_capture_context(&all_retrieved_ids)
+                .await
+            {
+                for ctx in neighbors {
+                    if !ctx.is_empty()
+                        && data_context.len() < CAPTURES_LIMIT + MEMORY_DATA_LIMIT + 4
+                    {
+                        data_context.push(ctx);
                     }
                 }
             }
@@ -381,7 +450,7 @@ impl RagEngine {
                      WHERE mc.project_id = ?
                      GROUP BY ck.id
                      ORDER BY ck.updated_at DESC
-                     LIMIT 2"
+                     LIMIT 2",
                 )
                 .bind(pid)
                 .fetch_all(&self.pool)
@@ -410,6 +479,85 @@ impl RagEngine {
         }))
     }
 
+    async fn fetch_neighbor_capture_context(
+        &self,
+        chunk_ids: &[String],
+    ) -> Result<Vec<String>, String> {
+        if chunk_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let placeholders = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT c.id, c.source_id, c.chunk_index \
+             FROM captures c \
+             WHERE c.id IN ({}) AND c.source_id IS NOT NULL",
+            placeholders
+        );
+
+        let mut q = sqlx::query(&sql);
+        for id in chunk_ids {
+            q = q.bind(id);
+        }
+
+        let hits = q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?;
+        let hit_ids: HashSet<String> = chunk_ids.iter().cloned().collect();
+        let mut seen: HashSet<String> = hit_ids.clone();
+        let mut contexts = Vec::new();
+
+        for hit in hits {
+            let source_id: String = hit.try_get("source_id").unwrap_or_default();
+            let chunk_index: i64 = hit.try_get("chunk_index").unwrap_or(0);
+            if source_id.is_empty() {
+                continue;
+            }
+
+            let rows = sqlx::query(
+                "SELECT c.id, c.clean_content, c.chunk_index, s.title AS source_title \
+                 FROM captures c \
+                 LEFT JOIN sources s ON c.source_id = s.id \
+                 WHERE c.source_id = ? \
+                   AND c.status = 'processed' \
+                   AND c.capture_method != 'temp_attachment' \
+                   AND c.chunk_index BETWEEN ? AND ? \
+                 ORDER BY c.chunk_index ASC",
+            )
+            .bind(&source_id)
+            .bind(chunk_index.saturating_sub(2))
+            .bind(chunk_index + 2)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            for row in rows {
+                let id: String = row.try_get("id").unwrap_or_default();
+                if id.is_empty() || seen.contains(&id) {
+                    continue;
+                }
+                seen.insert(id);
+
+                let content: String = row.try_get("clean_content").unwrap_or_default();
+                if content.trim().is_empty() {
+                    continue;
+                }
+                let title: String = row.try_get("source_title").unwrap_or_default();
+                let idx: i64 = row.try_get("chunk_index").unwrap_or(0);
+                let label = if title.is_empty() {
+                    format!("同來源前後文 #{}", idx)
+                } else {
+                    format!("同來源前後文: {} #{}", title, idx)
+                };
+                contexts.push(format!("[{}]\n{}", label, content));
+
+                if contexts.len() >= 6 {
+                    return Ok(contexts);
+                }
+            }
+        }
+
+        Ok(contexts)
+    }
+
     /// 共用的 prompt 組裝邏輯，回傳 (system_prompt, history_vec)
     /// 供 generate_answer 和 rag_query_stream 共用
     /// conversation_summary：前端傳入的對話摘要，代表 history 視窗外的舊輪次
@@ -424,7 +572,15 @@ impl RagEngine {
         rag_enabled: bool,
         temp_chunk_ids: Option<Vec<String>>,
         instruction_override: Option<String>,
-    ) -> Result<(String, Vec<(String, String)>, Vec<String>, serde_json::Value), String> {
+    ) -> Result<
+        (
+            String,
+            Vec<(String, String)>,
+            Vec<String>,
+            serde_json::Value,
+        ),
+        String,
+    > {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
@@ -435,7 +591,8 @@ impl RagEngine {
                 project_id.as_deref(),
                 source_ids.as_deref(),
                 tag_filter.as_deref(),
-            ).await?
+            )
+            .await?
         } else {
             serde_json::json!({ "pattern": [], "log": [], "data": [], "external": [] })
         };
@@ -453,14 +610,20 @@ impl RagEngine {
                     placeholders
                 );
                 let mut q = sqlx::query(&sql);
-                for id in ids { q = q.bind(id); }
+                for id in ids {
+                    q = q.bind(id);
+                }
                 if let Ok(rows) = q.fetch_all(&self.pool).await {
-                    let contents: Vec<String> = rows.into_iter()
+                    let contents: Vec<String> = rows
+                        .into_iter()
                         .filter_map(|r| r.try_get::<String, _>("clean_content").ok())
                         .filter(|s| !s.is_empty())
                         .collect();
                     if !contents.is_empty() {
-                        system_parts.push(format!("## 使用者附加文件內容\n{}", contents.join("\n\n---\n\n")));
+                        system_parts.push(format!(
+                            "## 使用者附加文件內容\n{}",
+                            contents.join("\n\n---\n\n")
+                        ));
                     }
                 }
             }
@@ -482,13 +645,16 @@ impl RagEngine {
                     placeholders
                 );
                 let mut q = sqlx::query(&cap_sql);
-                for sid in sids { q = q.bind(sid); }
+                for sid in sids {
+                    q = q.bind(sid);
+                }
                 let mut source_contents: Vec<String> = Vec::new();
                 if let Ok(rows) = q.fetch_all(&self.pool).await {
                     for r in &rows {
                         if let Ok(content) = r.try_get::<String, _>("clean_content") {
                             if !content.is_empty() {
-                                let title = r.try_get::<String, _>("source_title").unwrap_or_default();
+                                let title =
+                                    r.try_get::<String, _>("source_title").unwrap_or_default();
                                 if !title.is_empty() {
                                     source_contents.push(format!("[來源: {}]\n{}", title, content));
                                     if !extra_citations.iter().any(|s| s == &title) {
@@ -510,20 +676,32 @@ impl RagEngine {
                         placeholders
                     );
                     let mut q2 = sqlx::query(&src_sql);
-                    for sid in sids { q2 = q2.bind(sid); }
+                    for sid in sids {
+                        q2 = q2.bind(sid);
+                    }
                     if let Ok(src_rows) = q2.fetch_all(&self.pool).await {
                         for r in &src_rows {
                             let title: String = r.try_get("title").unwrap_or_default();
-                            let mut content: String = r.try_get("clean_content").unwrap_or_default();
+                            let mut content: String =
+                                r.try_get("clean_content").unwrap_or_default();
 
                             // 若 clean_content 也為空，嘗試從 file_path 即時解析
                             if content.trim().is_empty() {
                                 if let Ok(fpath) = r.try_get::<String, _>("file_path") {
                                     if !fpath.is_empty() {
-                                        let kb_path = crate::settings::store::get_settings(&self.pool)
-                                            .await.map(|s| s.knowledge.kb_path).unwrap_or_default();
-                                        if let Ok(parsed) = crate::capture::file_parser::parse_file(&kb_path, &fpath, None).await {
-                                            content = parsed.chunks.iter()
+                                        let kb_path =
+                                            crate::settings::store::get_settings(&self.pool)
+                                                .await
+                                                .map(|s| s.knowledge.kb_path)
+                                                .unwrap_or_default();
+                                        if let Ok(parsed) = crate::capture::file_parser::parse_file(
+                                            &kb_path, &fpath, None,
+                                        )
+                                        .await
+                                        {
+                                            content = parsed
+                                                .chunks
+                                                .iter()
                                                 .map(|c| c.content.as_str())
                                                 .collect::<Vec<_>>()
                                                 .join("\n\n");
@@ -547,8 +725,15 @@ impl RagEngine {
                 }
 
                 if !source_contents.is_empty() {
-                    eprintln!("[RAG] Injecting {} @ source content(s), total chars: {}", source_contents.len(), source_contents.iter().map(|s| s.len()).sum::<usize>());
-                    system_parts.push(format!("## 用戶指定來源內容\n{}", source_contents.join("\n\n---\n\n")));
+                    eprintln!(
+                        "[RAG] Injecting {} @ source content(s), total chars: {}",
+                        source_contents.len(),
+                        source_contents.iter().map(|s| s.len()).sum::<usize>()
+                    );
+                    system_parts.push(format!(
+                        "## 用戶指定來源內容\n{}",
+                        source_contents.join("\n\n---\n\n")
+                    ));
                 } else {
                     eprintln!("[RAG] @ mention source_ids provided but NO content found!");
                 }
@@ -556,48 +741,78 @@ impl RagEngine {
         }
 
         // 編譯後知識（最高優先）
-        let compiled = ctx["compiled_knowledge"].as_array().map(|a| a.len()).unwrap_or(0);
+        let compiled = ctx["compiled_knowledge"]
+            .as_array()
+            .map(|a| a.len())
+            .unwrap_or(0);
         if compiled > 0 {
-            let text = ctx["compiled_knowledge"].as_array().unwrap()
-                .iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n\n");
+            let text = ctx["compiled_knowledge"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n");
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_COMPILED, text));
         }
 
         let patterns = ctx["pattern"].as_array().map(|a| a.len()).unwrap_or(0);
         if patterns > 0 {
-            let text = ctx["pattern"].as_array().unwrap()
-                .iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n");
+            let text = ctx["pattern"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_PATTERN, text));
         }
 
         let logs = ctx["log"].as_array().map(|a| a.len()).unwrap_or(0);
         if logs > 0 {
-            let text = ctx["log"].as_array().unwrap()
-                .iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n");
+            let text = ctx["log"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_LOG, text));
         }
 
         let data_items = ctx["data"].as_array().map(|a| a.len()).unwrap_or(0);
         if data_items > 0 {
-            let text = ctx["data"].as_array().unwrap()
-                .iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n");
+            let text = ctx["data"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_DATA, text));
         }
 
         let externals = ctx["external"].as_array().map(|a| a.len()).unwrap_or(0);
         if externals > 0 {
-            let text = ctx["external"].as_array().unwrap()
-                .iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n");
+            let text = ctx["external"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_EXTERNAL, text));
         }
 
-        let user_instruction = instruction_override.unwrap_or_else(|| {
-            settings.chat_prompt_instruction.trim().to_string()
-        });
+        let user_instruction = instruction_override
+            .unwrap_or_else(|| settings.chat_prompt_instruction.trim().to_string());
 
         let has_extra = !system_parts.is_empty()
             || !user_instruction.is_empty()
-            || conversation_summary.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+            || conversation_summary
+                .as_ref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
 
         let system_prompt = if !has_extra {
             prompts::RAG_SYSTEM_BASE.to_string()
@@ -672,22 +887,29 @@ impl RagEngine {
         let is_ollama = cfg.provider == "ollama";
         let api_key = cfg.api_key.clone().unwrap_or_default();
         let opt_provider = if !api_key.is_empty() || is_ollama {
-            Some(OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model.clone(), cfg.provider.clone()))
+            Some(OpenAiProvider::new(
+                api_key,
+                cfg.base_url.clone(),
+                cfg.model.clone(),
+                cfg.provider.clone(),
+            ))
         } else {
             None
         };
 
-        let (base_prompt, history_vec, citation_sources, context_hints) = self.build_prompt(
-            query,
-            history,
-            conversation_summary,
-            project_id,
-            source_ids,
-            tag_filter,
-            rag_enabled,
-            temp_chunk_ids,
-            instruction_override,
-        ).await?;
+        let (base_prompt, history_vec, citation_sources, context_hints) = self
+            .build_prompt(
+                query,
+                history,
+                conversation_summary,
+                project_id,
+                source_ids,
+                tag_filter,
+                rag_enabled,
+                temp_chunk_ids,
+                instruction_override,
+            )
+            .await?;
 
         // 若有聯網搜尋結果，附加到 base_prompt 後
         let base_prompt_with_web = if let Some(web_ctx) = &web_context {
@@ -703,17 +925,30 @@ impl RagEngine {
 
         // 只有非原生推理模型才注入 THINK_MODE_PREFIX
         let reasoning_style = crate::providers::llm::model_caps::detect(&cfg.model, &cfg.provider);
-        let has_native_reasoning = reasoning_style != crate::providers::llm::model_caps::ReasoningStyle::None;
+        let has_native_reasoning =
+            reasoning_style != crate::providers::llm::model_caps::ReasoningStyle::None;
         let system_prompt = if think_mode && !has_native_reasoning {
-            format!("{}{}", crate::prompts::THINK_MODE_PREFIX, base_prompt_with_web)
+            format!(
+                "{}{}",
+                crate::prompts::THINK_MODE_PREFIX,
+                base_prompt_with_web
+            )
         } else {
             base_prompt_with_web
         };
 
         let llm_opts = if think_mode {
-            LLMOptions { temperature: 0.6, max_tokens: 8192, stream: false, think_mode: Some(true) }
+            LLMOptions {
+                temperature: 0.6,
+                max_tokens: 8192,
+                stream: false,
+                think_mode: Some(true),
+            }
         } else {
-            LLMOptions { think_mode: Some(false), ..LLMOptions::default() }
+            LLMOptions {
+                think_mode: Some(false),
+                ..LLMOptions::default()
+            }
         };
 
         let is_simulated = opt_provider.is_none();

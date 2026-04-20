@@ -1,6 +1,6 @@
+use crate::db::AppState;
 use sqlx::{Row, SqlitePool};
 use tauri::{Emitter, State};
-use crate::db::AppState;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +41,7 @@ pub async fn get_sources(
              FROM sources s \
              JOIN captures c ON s.id = c.source_id \
              WHERE c.space_id = ? \
-             ORDER BY s.captured_at DESC LIMIT ?"
+             ORDER BY s.captured_at DESC LIMIT ?",
         )
         .bind(sid)
         .bind(max)
@@ -53,7 +53,7 @@ pub async fn get_sources(
             "SELECT id, title, type, url, file_path, captured_at, \
              SUBSTR(clean_content, 1, 120) as preview \
              FROM sources \
-             ORDER BY captured_at DESC LIMIT ?"
+             ORDER BY captured_at DESC LIMIT ?",
         )
         .bind(max)
         .fetch_all(pool.inner())
@@ -61,15 +61,18 @@ pub async fn get_sources(
         .map_err(|e| e.to_string())?
     };
 
-    let sources = rows.into_iter().map(|r| SourceItem {
-        id: r.try_get("id").unwrap_or_default(),
-        title: r.get("title"),
-        r#type: r.get("type"),
-        url: r.try_get("url").unwrap_or(None),
-        file_path: r.try_get("file_path").unwrap_or(None),
-        captured_at: r.get("captured_at"),
-        content_preview: r.try_get("preview").unwrap_or_default(),
-    }).collect();
+    let sources = rows
+        .into_iter()
+        .map(|r| SourceItem {
+            id: r.try_get("id").unwrap_or_default(),
+            title: r.get("title"),
+            r#type: r.get("type"),
+            url: r.try_get("url").unwrap_or(None),
+            file_path: r.try_get("file_path").unwrap_or(None),
+            captured_at: r.get("captured_at"),
+            content_preview: r.try_get("preview").unwrap_or_default(),
+        })
+        .collect();
 
     Ok(sources)
 }
@@ -89,7 +92,7 @@ pub async fn get_captures(
         sqlx::query(
             "SELECT id, source_id, type, clean_content, status, created_at \
              FROM captures WHERE status = ? AND source_id = ? \
-             ORDER BY created_at DESC LIMIT ?"
+             ORDER BY created_at DESC LIMIT ?",
         )
         .bind(s)
         .bind(sid)
@@ -102,7 +105,7 @@ pub async fn get_captures(
         sqlx::query(
             "SELECT id, source_id, type, clean_content, status, created_at \
              FROM captures WHERE status = ? \
-             ORDER BY created_at DESC LIMIT ?"
+             ORDER BY created_at DESC LIMIT ?",
         )
         .bind(s)
         .bind(max)
@@ -111,14 +114,17 @@ pub async fn get_captures(
         .map_err(|e| e.to_string())?
     };
 
-    let captures = rows.into_iter().map(|r| CaptureItem {
-        id: r.try_get("id").unwrap_or_default(),
-        source_id: r.try_get("source_id").unwrap_or(None),
-        clean_content: r.get("clean_content"),
-        r#type: r.get("type"),
-        status: r.try_get("status").unwrap_or_default(),
-        created_at: r.get("created_at"),
-    }).collect();
+    let captures = rows
+        .into_iter()
+        .map(|r| CaptureItem {
+            id: r.try_get("id").unwrap_or_default(),
+            source_id: r.try_get("source_id").unwrap_or(None),
+            clean_content: r.get("clean_content"),
+            r#type: r.get("type"),
+            status: r.try_get("status").unwrap_or_default(),
+            created_at: r.get("created_at"),
+        })
+        .collect();
 
     Ok(captures)
 }
@@ -149,7 +155,7 @@ pub async fn get_source_preview_by_title(
     title: String,
 ) -> Result<String, String> {
     let preview: Option<String> = sqlx::query_scalar(
-        "SELECT SUBSTR(clean_content, 1, 500) FROM sources WHERE title = ? LIMIT 1"
+        "SELECT SUBSTR(clean_content, 1, 500) FROM sources WHERE title = ? LIMIT 1",
     )
     .bind(title)
     .fetch_optional(pool.inner())
@@ -175,11 +181,12 @@ pub async fn get_sources_timeline(
 
     // 先偵測 sources 表是否有 006 migration 的欄位
     let has_new_cols: bool = sqlx::query_scalar::<_, i32>(
-        "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_category'"
+        "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_category'",
     )
     .fetch_one(pool.inner())
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     let mut sql = if has_new_cols {
         String::from(
@@ -225,7 +232,9 @@ pub async fn get_sources_timeline(
         binds.push(like);
     }
     if let Some(ref sid) = space_id {
-        sql.push_str(" AND EXISTS (SELECT 1 FROM captures c2 WHERE c2.source_id = s.id AND c2.space_id = ?)");
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM captures c2 WHERE c2.source_id = s.id AND c2.space_id = ?)",
+        );
         binds.push(sid.clone());
     }
 
@@ -237,30 +246,43 @@ pub async fn get_sources_timeline(
     }
     query = query.bind(max).bind(off);
 
-    let rows = query.fetch_all(pool.inner()).await.map_err(|e| e.to_string())?;
+    let rows = query
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let sources = rows.into_iter().map(|r| {
-        let agg: String = r.try_get("agg_tags").unwrap_or_default();
-        let tags: Vec<String> = if agg.is_empty() {
-            Vec::new()
-        } else {
-            agg.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
-        };
-        TimelineSourceItem {
-            id: r.try_get("id").unwrap_or_default(),
-            title: r.get("title"),
-            r#type: r.get("type"),
-            source_category: r.try_get("source_category").unwrap_or_else(|_| "captured".to_string()),
-            media_type: r.try_get("media_type").unwrap_or_else(|_| "text".to_string()),
-            url: r.try_get("url").unwrap_or(None),
-            file_path: r.try_get("file_path").unwrap_or(None),
-            local_doc_path: r.try_get("local_doc_path").unwrap_or(None),
-            captured_at: r.get("captured_at"),
-            content_preview: r.try_get("preview").unwrap_or_default(),
-            capture_count: r.try_get("capture_count").unwrap_or(0),
-            tags,
-        }
-    }).collect();
+    let sources = rows
+        .into_iter()
+        .map(|r| {
+            let agg: String = r.try_get("agg_tags").unwrap_or_default();
+            let tags: Vec<String> = if agg.is_empty() {
+                Vec::new()
+            } else {
+                agg.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            };
+            TimelineSourceItem {
+                id: r.try_get("id").unwrap_or_default(),
+                title: r.get("title"),
+                r#type: r.get("type"),
+                source_category: r
+                    .try_get("source_category")
+                    .unwrap_or_else(|_| "captured".to_string()),
+                media_type: r
+                    .try_get("media_type")
+                    .unwrap_or_else(|_| "text".to_string()),
+                url: r.try_get("url").unwrap_or(None),
+                file_path: r.try_get("file_path").unwrap_or(None),
+                local_doc_path: r.try_get("local_doc_path").unwrap_or(None),
+                captured_at: r.get("captured_at"),
+                content_preview: r.try_get("preview").unwrap_or_default(),
+                capture_count: r.try_get("capture_count").unwrap_or(0),
+                tags,
+            }
+        })
+        .collect();
 
     Ok(sources)
 }
@@ -323,14 +345,17 @@ pub async fn read_editor_document(
     pool: State<'_, SqlitePool>,
     source_id: String,
 ) -> Result<String, String> {
-    let row = sqlx::query("SELECT local_doc_path FROM sources WHERE id = ? AND source_category = 'editor_doc'")
-        .bind(&source_id)
-        .fetch_optional(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Document not found".to_string())?;
+    let row = sqlx::query(
+        "SELECT local_doc_path FROM sources WHERE id = ? AND source_category = 'editor_doc'",
+    )
+    .bind(&source_id)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Document not found".to_string())?;
 
-    let path: String = row.try_get("local_doc_path")
+    let path: String = row
+        .try_get("local_doc_path")
         .map_err(|_| "No local_doc_path set".to_string())?;
 
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
@@ -343,26 +368,31 @@ pub async fn save_editor_document(
     source_id: String,
     content: String,
 ) -> Result<(), String> {
-    let row = sqlx::query("SELECT local_doc_path FROM sources WHERE id = ? AND source_category = 'editor_doc'")
-        .bind(&source_id)
-        .fetch_optional(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Document not found".to_string())?;
+    let row = sqlx::query(
+        "SELECT local_doc_path FROM sources WHERE id = ? AND source_category = 'editor_doc'",
+    )
+    .bind(&source_id)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Document not found".to_string())?;
 
-    let path: String = row.try_get("local_doc_path")
+    let path: String = row
+        .try_get("local_doc_path")
         .map_err(|_| "No local_doc_path set".to_string())?;
 
     std::fs::write(&path, &content).map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query("UPDATE sources SET clean_content = SUBSTR(?, 1, 500), updated_at = ? WHERE id = ?")
-        .bind(&content)
-        .bind(&now)
-        .bind(&source_id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE sources SET clean_content = SUBSTR(?, 1, 500), updated_at = ? WHERE id = ?",
+    )
+    .bind(&content)
+    .bind(&now)
+    .bind(&source_id)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -371,17 +401,15 @@ pub async fn save_editor_document(
 
 /// 刪除 source（cascade 刪除 captures；若為 editor_doc 同時刪除磁碟檔案）
 #[tauri::command]
-pub async fn delete_source(
-    pool: State<'_, SqlitePool>,
-    source_id: String,
-) -> Result<(), String> {
+pub async fn delete_source(pool: State<'_, SqlitePool>, source_id: String) -> Result<(), String> {
     // 偵測是否有 migration 006 欄位
     let has_new_cols: bool = sqlx::query_scalar::<_, i32>(
-        "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_category'"
+        "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_category'",
     )
     .fetch_one(pool.inner())
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     if has_new_cols {
         let row = sqlx::query("SELECT source_category, local_doc_path FROM sources WHERE id = ?")
@@ -433,11 +461,12 @@ pub async fn get_captures_detail(
     source_id: String,
 ) -> Result<Vec<CaptureDetail>, String> {
     let has_user_edited: bool = sqlx::query_scalar::<_, i32>(
-        "SELECT COUNT(*) FROM pragma_table_info('captures') WHERE name = 'is_user_edited'"
+        "SELECT COUNT(*) FROM pragma_table_info('captures') WHERE name = 'is_user_edited'",
     )
     .fetch_one(pool.inner())
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     let detail_sql = if has_user_edited {
         "SELECT id, source_id, space_id, clean_content, type, \
@@ -454,23 +483,26 @@ pub async fn get_captures_detail(
     };
 
     let rows = sqlx::query(detail_sql)
-    .bind(&source_id)
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+        .bind(&source_id)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let captures = rows.into_iter().map(|r| CaptureDetail {
-        id: r.try_get("id").unwrap_or_default(),
-        source_id: r.try_get("source_id").unwrap_or(None),
-        space_id: r.try_get("space_id").unwrap_or(None),
-        clean_content: r.get("clean_content"),
-        r#type: r.get("type"),
-        tags: r.try_get("tags").unwrap_or_else(|_| "[]".to_string()),
-        status: r.try_get("status").unwrap_or_default(),
-        is_user_edited: r.try_get::<i32, _>("is_user_edited").unwrap_or(0) != 0,
-        created_at: r.get("created_at"),
-        updated_at: r.get("updated_at"),
-    }).collect();
+    let captures = rows
+        .into_iter()
+        .map(|r| CaptureDetail {
+            id: r.try_get("id").unwrap_or_default(),
+            source_id: r.try_get("source_id").unwrap_or(None),
+            space_id: r.try_get("space_id").unwrap_or(None),
+            clean_content: r.get("clean_content"),
+            r#type: r.get("type"),
+            tags: r.try_get("tags").unwrap_or_else(|_| "[]".to_string()),
+            status: r.try_get("status").unwrap_or_default(),
+            is_user_edited: r.try_get::<i32, _>("is_user_edited").unwrap_or(0) != 0,
+            created_at: r.get("created_at"),
+            updated_at: r.get("updated_at"),
+        })
+        .collect();
 
     Ok(captures)
 }
@@ -489,11 +521,12 @@ pub async fn create_manual_capture(
     let tag_str = tags.unwrap_or_else(|| "[]".to_string());
 
     let has_user_edited_col: bool = sqlx::query_scalar::<_, i32>(
-        "SELECT COUNT(*) FROM pragma_table_info('captures') WHERE name = 'is_user_edited'"
+        "SELECT COUNT(*) FROM pragma_table_info('captures') WHERE name = 'is_user_edited'",
     )
     .fetch_one(pool.inner())
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     let insert_sql = if has_user_edited_col {
         "INSERT INTO captures (id, source_id, space_id, type, raw_content, clean_content, \
@@ -506,26 +539,28 @@ pub async fn create_manual_capture(
     };
 
     sqlx::query(insert_sql)
-    .bind(&id)
-    .bind(&source_id)
-    .bind(&space_id)
-    .bind(&content)
-    .bind(&content)
-    .bind(&tag_str)
-    .bind(&now)
-    .bind(&now)
-    .execute(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+        .bind(&id)
+        .bind(&source_id)
+        .bind(&space_id)
+        .bind(&content)
+        .bind(&content)
+        .bind(&tag_str)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     // 更新 source capture_count
     if let Some(ref sid) = source_id {
-        sqlx::query("UPDATE sources SET capture_count = capture_count + 1, updated_at = ? WHERE id = ?")
-            .bind(&now)
-            .bind(sid)
-            .execute(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
+        sqlx::query(
+            "UPDATE sources SET capture_count = capture_count + 1, updated_at = ? WHERE id = ?",
+        )
+        .bind(&now)
+        .bind(sid)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
     }
 
     Ok(CaptureDetail {
@@ -554,14 +589,18 @@ pub async fn update_capture(
     let now = chrono::Utc::now().to_rfc3339();
 
     let has_user_edited_col: bool = sqlx::query_scalar::<_, i32>(
-        "SELECT COUNT(*) FROM pragma_table_info('captures') WHERE name = 'is_user_edited'"
+        "SELECT COUNT(*) FROM pragma_table_info('captures') WHERE name = 'is_user_edited'",
     )
     .fetch_one(pool.inner())
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     let mut sets = if has_user_edited_col {
-        vec!["updated_at = ?".to_string(), "is_user_edited = 1".to_string()]
+        vec![
+            "updated_at = ?".to_string(),
+            "is_user_edited = 1".to_string(),
+        ]
     } else {
         vec!["updated_at = ?".to_string()]
     };
@@ -587,17 +626,17 @@ pub async fn update_capture(
     for b in &binds {
         query = query.bind(b);
     }
-    query.execute(pool.inner()).await.map_err(|e| e.to_string())?;
+    query
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 /// 刪除 capture
 #[tauri::command]
-pub async fn delete_capture(
-    pool: State<'_, SqlitePool>,
-    capture_id: String,
-) -> Result<(), String> {
+pub async fn delete_capture(pool: State<'_, SqlitePool>, capture_id: String) -> Result<(), String> {
     // 取得 source_id 以便更新 count
     let row = sqlx::query("SELECT source_id FROM captures WHERE id = ?")
         .bind(&capture_id)
@@ -634,53 +673,62 @@ pub async fn process_source(
     source_id: String,
 ) -> Result<usize, String> {
     let db = &state.db;
-    
+
     // 1. 從 sources 表取得 file_path 和 title
-    let source_row = sqlx::query(
-        "SELECT id, file_path, title FROM sources WHERE id = ?"
-    )
-    .bind(&source_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| format!("Source not found: {}", source_id))?;
-    
+    let source_row = sqlx::query("SELECT id, file_path, title FROM sources WHERE id = ?")
+        .bind(&source_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Source not found: {}", source_id))?;
+
     let file_path: String = source_row.get("file_path");
-    let _title: String = source_row.get("title");
-    
+    let title: String = source_row.get("title");
+
     // 2. 取得 kb_path
     let kb_path = {
-        let settings = crate::settings::store::get_settings(db).await.map_err(|e| e.to_string())?;
+        let settings = crate::settings::store::get_settings(db)
+            .await
+            .map_err(|e| e.to_string())?;
         settings.knowledge.kb_path
     };
-    
+
     // 3. 解析文件
     let parsed = crate::capture::file_parser::parse_file(&kb_path, &file_path, None).await?;
-    
+    let parsed_full_content = parsed
+        .chunks
+        .iter()
+        .map(|c| c.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let source_identity =
+        crate::capture::source_group::identity_for_file(&file_path, &parsed_full_content);
+    let source_group_id =
+        crate::capture::source_group::get_or_create_source_group(db, &source_identity, &title)
+            .await?;
+
     let mut chunk_count: usize = 0;
     let now = chrono::Utc::now().to_rfc3339();
-    
+    let _ = sqlx::query("UPDATE sources SET source_group_id = ?, content_hash = ?, clean_content = ?, updated_at = ? WHERE id = ?")
+        .bind(&source_group_id)
+        .bind(&source_identity.content_hash)
+        .bind(&parsed_full_content)
+        .bind(&now)
+        .bind(&source_id)
+        .execute(db)
+        .await;
+
     // 4. 對每個 chunk 進行段落切分（與 CaptureProcessor / create_temp_chunk 一致）
     for f_chunk in parsed.chunks {
-        let paragraphs: Vec<String> = f_chunk.content
-            .split("\n\n")
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        
-        let paragraphs = if paragraphs.is_empty() {
-            if f_chunk.content.trim().is_empty() { continue; }
-            vec![f_chunk.content.clone()]
-        } else {
-            paragraphs
-        };
-        
+        let routed_chunks = crate::capture::chunking::chunks_for_file_chunk(&f_chunk);
+
         // 5. 對每個段落生成 embedding 並寫入 captures
-        for (idx, para) in paragraphs.into_iter().enumerate() {
+        for routed in routed_chunks {
             let chunk_id = uuid::Uuid::now_v7().to_string();
-            
+            let para = routed.content;
+
             let mut vector_id = 0i64;
-            
+
             // 只有當 status 不是 pending_ocr 時，才產生 embedding 與標籤
             if f_chunk.status != "pending_ocr" {
                 // 產生 embedding
@@ -696,20 +744,24 @@ pub async fn process_source(
                     Err(e) => eprintln!("[ProcessSource] vector store error: {}", e),
                 }
             }
-            
+
             sqlx::query(
                 "INSERT INTO captures (id, source_id, type, raw_content, clean_content, \
-                 capture_method, chunk_index, status, vector_id, created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, 'source_import', ?, ?, ?, ?, ?)"
+                 capture_method, chunk_index, status, vector_id, content_type, knowledge_type, chunk_strategy, chunk_metadata, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 'source_import', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(&chunk_id)
             .bind(&source_id)
             .bind(&f_chunk.chunk_type)
             .bind(&para)
             .bind(&para)
-            .bind(idx as i64)
+            .bind(chunk_count as i64)
             .bind(&f_chunk.status)
             .bind(vector_id)
+            .bind(&routed.content_type)
+            .bind(&routed.knowledge_type)
+            .bind(&routed.chunk_strategy)
+            .bind(&routed.metadata_json)
             .bind(&now)
             .bind(&now)
             .execute(db)
@@ -724,15 +776,19 @@ pub async fn process_source(
                 tokio::spawn(async move {
                     let tag_engine = crate::services::tag_engine::TagEngine::new(tag_pool);
                     if let Err(e) = tag_engine.process_new_capture(&tag_cid, &tag_content).await {
-                        eprintln!("[ProcessSource] Tag generation failed for {}: {}", &tag_cid[..8.min(tag_cid.len())], e);
+                        eprintln!(
+                            "[ProcessSource] Tag generation failed for {}: {}",
+                            &tag_cid[..8.min(tag_cid.len())],
+                            e
+                        );
                     }
                 });
             }
-            
+
             chunk_count += 1;
         }
     }
-    
+
     // 6. 更新 source 的 capture_count
     sqlx::query("UPDATE sources SET capture_count = ?, updated_at = ? WHERE id = ?")
         .bind(chunk_count as i64)
@@ -741,12 +797,18 @@ pub async fn process_source(
         .execute(db)
         .await
         .map_err(|e| e.to_string())?;
-    
+
     // 7. 非同步儲存向量索引到磁碟
     let vs = state.vector_store.clone();
-    tokio::spawn(async move { let _ = vs.save().await; });
-    
-    println!("[ProcessSource] {} chunks generated for source: {}", chunk_count, &source_id[..8.min(source_id.len())]);
+    tokio::spawn(async move {
+        let _ = vs.save().await;
+    });
+
+    println!(
+        "[ProcessSource] {} chunks generated for source: {}",
+        chunk_count,
+        &source_id[..8.min(source_id.len())]
+    );
     Ok(chunk_count)
 }
 
@@ -762,37 +824,39 @@ pub struct RepositoryStats {
 
 /// 取得儲存庫統計數字
 #[tauri::command]
-pub async fn get_repository_stats(
-    state: State<'_, AppState>,
-) -> Result<RepositoryStats, String> {
+pub async fn get_repository_stats(state: State<'_, AppState>) -> Result<RepositoryStats, String> {
     let db = &state.db;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let today_sources: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sources WHERE captured_at >= ?"
-    )
-    .bind(format!("{}T00:00:00", today))
-    .fetch_one(db).await.unwrap_or(0);
+    let today_sources: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sources WHERE captured_at >= ?")
+            .bind(format!("{}T00:00:00", today))
+            .fetch_one(db)
+            .await
+            .unwrap_or(0);
 
     let total_chunks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM captures WHERE capture_method != 'temp_attachment' AND status != 'archived'"
     )
     .fetch_one(db).await.unwrap_or(0);
 
-    let total_data: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'data'"
-    )
-    .fetch_one(db).await.unwrap_or(0);
+    let total_data: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'data'")
+            .fetch_one(db)
+            .await
+            .unwrap_or(0);
 
-    let total_patterns: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'pattern'"
-    )
-    .fetch_one(db).await.unwrap_or(0);
+    let total_patterns: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'pattern'")
+            .fetch_one(db)
+            .await
+            .unwrap_or(0);
 
-    let total_logs: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'log'"
-    )
-    .fetch_one(db).await.unwrap_or(0);
+    let total_logs: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'log'")
+            .fetch_one(db)
+            .await
+            .unwrap_or(0);
 
     Ok(RepositoryStats {
         today_sources,
@@ -807,9 +871,7 @@ pub async fn get_repository_stats(
 
 /// 重建知識庫向量索引：清除現有向量 → 重新對所有 captures 產生 embedding
 #[tauri::command]
-pub async fn rebuild_kb_index(
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, String> {
     let db = &state.db;
 
     // 1. 清空向量儲存
@@ -820,7 +882,7 @@ pub async fn rebuild_kb_index(
     let rows = sqlx::query(
         "SELECT id, clean_content FROM captures \
          WHERE status != 'archived' AND capture_method != 'temp_attachment' \
-         ORDER BY created_at ASC"
+         ORDER BY created_at ASC",
     )
     .fetch_all(db)
     .await
@@ -838,7 +900,11 @@ pub async fn rebuild_kb_index(
             continue;
         }
 
-        let vec = state.embedder.embed(&content).await.map_err(|e| e.to_string())?;
+        let vec = state
+            .embedder
+            .embed(&content)
+            .await
+            .map_err(|e| e.to_string())?;
         let vector_id = {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
@@ -847,7 +913,10 @@ pub async fn rebuild_kb_index(
             hasher.finish()
         };
 
-        state.vector_store.add_vector(vector_id, &vec).await
+        state
+            .vector_store
+            .add_vector(vector_id, &vec)
+            .await
             .map_err(|e| format!("vector store error: {}", e))?;
 
         // 同步更新 captures 的 vector_id
@@ -866,13 +935,16 @@ pub async fn rebuild_kb_index(
         "SELECT id, content, vector_id FROM memory_chunks \
          WHERE content IS NOT NULL AND content != '' \
          AND pending_confirm = 0 \
-         ORDER BY created_at ASC"
+         ORDER BY created_at ASC",
     )
     .fetch_all(db)
     .await
     .map_err(|e| e.to_string())?;
 
-    println!("[RebuildIndex] Re-embedding {} memory_chunks...", mc_rows.len());
+    println!(
+        "[RebuildIndex] Re-embedding {} memory_chunks...",
+        mc_rows.len()
+    );
 
     for row in &mc_rows {
         let mc_id: String = row.get("id");
@@ -883,7 +955,11 @@ pub async fn rebuild_kb_index(
             continue;
         }
 
-        let vec = state.embedder.embed(&content).await.map_err(|e| e.to_string())?;
+        let vec = state
+            .embedder
+            .embed(&content)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // 優先沿用原始 vector_id，無則用 hash(id) 產生新的
         let vector_id = match existing_vid {
@@ -897,7 +973,10 @@ pub async fn rebuild_kb_index(
             }
         };
 
-        state.vector_store.add_vector(vector_id, &vec).await
+        state
+            .vector_store
+            .add_vector(vector_id, &vec)
+            .await
             .map_err(|e| format!("vector store error: {}", e))?;
 
         sqlx::query("UPDATE memory_chunks SET vector_id = ? WHERE id = ?")
@@ -912,7 +991,10 @@ pub async fn rebuild_kb_index(
 
     // 4. 儲存索引到磁碟
     state.vector_store.save().await?;
-    println!("[RebuildIndex] Done. {} vectors rebuilt (captures + memory_chunks).", count);
+    println!(
+        "[RebuildIndex] Done. {} vectors rebuilt (captures + memory_chunks).",
+        count
+    );
     Ok(count)
 }
 
@@ -930,7 +1012,7 @@ pub async fn rebuild_source_tags(
         "SELECT id, clean_content FROM sources \
          WHERE (tags IS NULL OR tags = '[]' OR tags = '') \
          AND (clean_content IS NOT NULL AND clean_content != '') \
-         ORDER BY captured_at ASC"
+         ORDER BY captured_at ASC",
     )
     .fetch_all(db)
     .await
@@ -939,14 +1021,20 @@ pub async fn rebuild_source_tags(
     let total = rows.len();
     println!("[RebuildSourceTags] 需要處理 {} 個 source（無標籤）", total);
 
-    let _ = app.emit("rebuild-tags-progress", serde_json::json!({
-        "current": 0, "total": total, "done": false
-    }));
+    let _ = app.emit(
+        "rebuild-tags-progress",
+        serde_json::json!({
+            "current": 0, "total": total, "done": false
+        }),
+    );
 
     if total == 0 {
-        let _ = app.emit("rebuild-tags-progress", serde_json::json!({
-            "current": 0, "total": 0, "done": true
-        }));
+        let _ = app.emit(
+            "rebuild-tags-progress",
+            serde_json::json!({
+                "current": 0, "total": 0, "done": true
+            }),
+        );
         return Ok(0);
     }
 
@@ -957,22 +1045,37 @@ pub async fn rebuild_source_tags(
 
         let tag_engine = crate::services::tag_engine::TagEngine::new(db.clone());
         match tag_engine.process_source(&id, &content).await {
-            Ok(_) => { count += 1; }
+            Ok(_) => {
+                count += 1;
+            }
             Err(e) => {
-                eprintln!("[RebuildSourceTags] source {} 失敗: {}", &id[..8.min(id.len())], e);
+                eprintln!(
+                    "[RebuildSourceTags] source {} 失敗: {}",
+                    &id[..8.min(id.len())],
+                    e
+                );
             }
         }
 
-        let _ = app.emit("rebuild-tags-progress", serde_json::json!({
-            "current": i + 1, "total": total, "done": false
-        }));
+        let _ = app.emit(
+            "rebuild-tags-progress",
+            serde_json::json!({
+                "current": i + 1, "total": total, "done": false
+            }),
+        );
     }
 
-    let _ = app.emit("rebuild-tags-progress", serde_json::json!({
-        "current": total, "total": total, "done": true
-    }));
+    let _ = app.emit(
+        "rebuild-tags-progress",
+        serde_json::json!({
+            "current": total, "total": total, "done": true
+        }),
+    );
 
-    println!("[RebuildSourceTags] 完成，成功 {}/{} 個 source", count, total);
+    println!(
+        "[RebuildSourceTags] 完成，成功 {}/{} 個 source",
+        count, total
+    );
     Ok(count)
 }
 
@@ -985,9 +1088,9 @@ pub async fn export_kb(
     dest_path: String,
     mnemonic: String,
 ) -> Result<(), String> {
-    use std::io::Write;
     use crate::auth::key_derivation::derive_recovery_key_new;
     use crate::auth::recovery::write_recovery_bin;
+    use std::io::Write;
 
     // 1. WAL checkpoint 確保 DB 資料完整
     sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -1000,8 +1103,7 @@ pub async fn export_kb(
         .map_err(|e| format!("Keyring 存取失敗: {}", e))?
         .get_password()
         .map_err(|_| "無法取得 db_key，請確認已登入自動登入模式".to_string())?;
-    let key_bytes = hex::decode(&key_hex)
-        .map_err(|_| "db_key 格式錯誤".to_string())?;
+    let key_bytes = hex::decode(&key_hex).map_err(|_| "db_key 格式錯誤".to_string())?;
     if key_bytes.len() != 32 {
         return Err("db_key 長度錯誤".to_string());
     }
@@ -1009,22 +1111,22 @@ pub async fn export_kb(
     db_key.copy_from_slice(&key_bytes);
 
     // 3. 用備份恢復碼衍生 backup_recovery_key，生成 backup_recovery.bin bytes（in-memory）
-    let (backup_recovery_key, salt) = derive_recovery_key_new(&mnemonic)
-        .map_err(|e| format!("恢復碼處理失敗: {}", e))?;
+    let (backup_recovery_key, salt) =
+        derive_recovery_key_new(&mnemonic).map_err(|e| format!("恢復碼處理失敗: {}", e))?;
 
     // 寫到臨時路徑再讀回（write_recovery_bin 使用原子寫入），完成後刪除
     let kb_root = &state.kb_path;
     let tmp_bin = kb_root.join(".insightcap").join("backup_recovery_tmp.bin");
     write_recovery_bin(&tmp_bin, &db_key, &backup_recovery_key, &salt)
         .map_err(|e| format!("生成 backup_recovery.bin 失敗: {}", e))?;
-    let backup_bin_data = std::fs::read(&tmp_bin)
-        .map_err(|e| format!("讀取 backup_recovery.bin 失敗: {}", e))?;
+    let backup_bin_data =
+        std::fs::read(&tmp_bin).map_err(|e| format!("讀取 backup_recovery.bin 失敗: {}", e))?;
     let _ = std::fs::remove_file(&tmp_bin);
 
     // 4. 打包 zip：加密 DB 原樣 + auth.json + backup_recovery.bin（in-memory）+ files/ + notes/
     let zip_result = (|| -> Result<(), String> {
-        let zip_file = std::fs::File::create(&dest_path)
-            .map_err(|e| format!("無法建立匯出檔案: {}", e))?;
+        let zip_file =
+            std::fs::File::create(&dest_path).map_err(|e| format!("無法建立匯出檔案: {}", e))?;
         let mut zip = zip::ZipWriter::new(zip_file);
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
@@ -1036,7 +1138,8 @@ pub async fn export_kb(
         for entry in walker {
             let entry = entry.map_err(|e| format!("走訪目錄失敗: {}", e))?;
             let abs_path = entry.path();
-            let rel_path = abs_path.strip_prefix(kb_root)
+            let rel_path = abs_path
+                .strip_prefix(kb_root)
                 .map_err(|_| "路徑前綴錯誤".to_string())?
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -1048,15 +1151,15 @@ pub async fn export_kb(
             }
             // 跳過 WAL/SHM 暫存檔、舊的 backup_recovery.bin（由 in-memory 版本取代）
             if let Some(name) = abs_path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with("-wal") || name.ends_with("-shm")
-                    || name == "backup_recovery.bin" {
+                if name.ends_with("-wal") || name.ends_with("-shm") || name == "backup_recovery.bin"
+                {
                     continue;
                 }
             }
             zip.start_file(&rel_path, options)
                 .map_err(|e| format!("加入檔案失敗: {}", e))?;
-            let data = std::fs::read(abs_path)
-                .map_err(|e| format!("讀取檔案失敗 {}: {}", rel_path, e))?;
+            let data =
+                std::fs::read(abs_path).map_err(|e| format!("讀取檔案失敗 {}: {}", rel_path, e))?;
             zip.write_all(&data)
                 .map_err(|e| format!("寫入 zip 失敗: {}", e))?;
         }
@@ -1076,7 +1179,8 @@ pub async fn export_kb(
             for entry in walker {
                 let entry = entry.map_err(|e| format!("走訪目錄失敗: {}", e))?;
                 let abs_path = entry.path();
-                let rel_path = abs_path.strip_prefix(kb_root)
+                let rel_path = abs_path
+                    .strip_prefix(kb_root)
                     .map_err(|_| "路徑前綴錯誤".to_string())?
                     .to_string_lossy()
                     .replace('\\', "/");
@@ -1118,14 +1222,16 @@ pub async fn import_kb(
     mnemonic: String,
     new_password: String,
 ) -> Result<String, String> {
-    use std::io::Read;
-    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-    use std::str::FromStr;
-    use zeroize::Zeroize;
-    use rand::Rng;
-    use crate::auth::key_derivation::{derive_db_key, derive_recovery_key_new, derive_recovery_key_verify, generate_mnemonic};
+    use crate::auth::key_derivation::{
+        derive_db_key, derive_recovery_key_new, derive_recovery_key_verify, generate_mnemonic,
+    };
     use crate::auth::recovery::{read_recovery_bin, write_recovery_bin};
     use keyring::Entry;
+    use rand::Rng;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::io::Read;
+    use std::str::FromStr;
+    use zeroize::Zeroize;
 
     const KEYCHAIN_SERVICE: &str = "insightcap";
     const KEYCHAIN_AUTO_LOGIN: &str = "auto_login_key";
@@ -1157,38 +1263,34 @@ pub async fn import_kb(
     // 步驟 1：備份現有 DB，解壓 zip 到 kb_root
     if db_path.exists() {
         let bak = db_path.with_extension("db.bak");
-        std::fs::copy(&db_path, &bak)
-            .map_err(|e| format!("備份現有 DB 失敗: {}", e))?;
+        std::fs::copy(&db_path, &bak).map_err(|e| format!("備份現有 DB 失敗: {}", e))?;
     }
 
-    let zip_file = std::fs::File::open(src)
-        .map_err(|e| format!("開啟封包失敗: {}", e))?;
-    let mut archive = zip::ZipArchive::new(zip_file)
-        .map_err(|e| format!("解析封包失敗: {}", e))?;
+    let zip_file = std::fs::File::open(src).map_err(|e| format!("開啟封包失敗: {}", e))?;
+    let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| format!("解析封包失敗: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
+        let mut file = archive
+            .by_index(i)
             .map_err(|e| format!("讀取封包項目失敗: {}", e))?;
 
         // Zip Slip 防護：拒絕含路徑穿越或絕對路徑的條目
         let entry_name = file.name().to_string();
-        if entry_name.contains("..") || entry_name.starts_with('/') || entry_name.starts_with('\\') {
+        if entry_name.contains("..") || entry_name.starts_with('/') || entry_name.starts_with('\\')
+        {
             return Err(format!("不安全的封包路徑: {}", entry_name));
         }
         let out_path = kb_root.join(&entry_name);
         if file.name().ends_with('/') {
-            std::fs::create_dir_all(&out_path)
-                .map_err(|e| format!("建立目錄失敗: {}", e))?;
+            std::fs::create_dir_all(&out_path).map_err(|e| format!("建立目錄失敗: {}", e))?;
         } else {
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("建立父目錄失敗: {}", e))?;
+                std::fs::create_dir_all(parent).map_err(|e| format!("建立父目錄失敗: {}", e))?;
             }
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)
                 .map_err(|e| format!("讀取封包內容失敗: {}", e))?;
-            std::fs::write(&out_path, &buf)
-                .map_err(|e| format!("寫入檔案失敗: {}", e))?;
+            std::fs::write(&out_path, &buf).map_err(|e| format!("寫入檔案失敗: {}", e))?;
         }
     }
 
@@ -1257,11 +1359,16 @@ pub async fn import_kb(
 
     // 生成新日常 recovery.bin
     let new_mnemonic = generate_mnemonic();
-    let (new_recovery_key, new_recovery_salt) = derive_recovery_key_new(&new_mnemonic)
-        .map_err(|e| format!("生成新恢復碼失敗: {}", e))?;
+    let (new_recovery_key, new_recovery_salt) =
+        derive_recovery_key_new(&new_mnemonic).map_err(|e| format!("生成新恢復碼失敗: {}", e))?;
     let rec_bin_path = kb_root.join(".insightcap").join("recovery.bin");
-    write_recovery_bin(&rec_bin_path, &new_db_key, &new_recovery_key, &new_recovery_salt)
-        .map_err(|e| format!("寫入 recovery.bin 失敗: {}", e))?;
+    write_recovery_bin(
+        &rec_bin_path,
+        &new_db_key,
+        &new_recovery_key,
+        &new_recovery_salt,
+    )
+    .map_err(|e| format!("寫入 recovery.bin 失敗: {}", e))?;
 
     // 更新 Keychain（auto_login_key 設為新 db_key）
     Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
@@ -1275,7 +1382,10 @@ pub async fn import_kb(
     db_key.zeroize();
     new_db_key.zeroize();
 
-    println!("[ImportKB] Imported from: {}. New recovery mnemonic generated. Restarting...", src_path);
+    println!(
+        "[ImportKB] Imported from: {}. New recovery mnemonic generated. Restarting...",
+        src_path
+    );
 
     // 步驟 5：重啟（重啟後 init_db 用 Keychain 的 new_db_key 開啟 DB）
     // 回傳新恢復碼前先重啟—前端需在重啟前顯示新恢復碼，因此改為回傳 mnemonic，由前端決定重啟時機
@@ -1287,9 +1397,7 @@ pub async fn import_kb(
 
 /// 刪除知識庫：清除所有 DB 資料、向量索引、以及磁碟上的 files/ notes/ 目錄
 #[tauri::command]
-pub async fn delete_kb(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn delete_kb(state: State<'_, AppState>) -> Result<(), String> {
     let db = &state.db;
 
     // 1. 清空向量索引
@@ -1298,11 +1406,19 @@ pub async fn delete_kb(
     // 2. 清空主要資料表（排除 settings 以保留使用者偏好）
     //    順序：先刪子表再刪父表，避免 FOREIGN KEY constraint 錯誤
     let tables = [
-        "chunk_relations", "decisions",
-        "messages", "conversation_summary_queue",
-        "memory_chunks", "captures",
-        "conversations", "sources", "spaces", "projects", "tags",
-        "inbox", "external_knowledge_bases",
+        "chunk_relations",
+        "decisions",
+        "messages",
+        "conversation_summary_queue",
+        "memory_chunks",
+        "captures",
+        "conversations",
+        "sources",
+        "spaces",
+        "projects",
+        "tags",
+        "inbox",
+        "external_knowledge_bases",
     ];
     for table in &tables {
         let sql = format!("DELETE FROM {}", table);
@@ -1339,9 +1455,7 @@ pub async fn delete_kb(
 /// 修復歷史資料：掃描所有 file_path 有效但 local_doc_path 為空的 sources，
 /// 將原始檔案複製到 kb_path/files/ 並更新 local_doc_path
 #[tauri::command]
-pub async fn repair_missing_local_copies(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn repair_missing_local_copies(state: State<'_, AppState>) -> Result<String, String> {
     let db = &state.db;
     let kb_path = state.kb_path.to_string_lossy().to_string();
 
@@ -1349,7 +1463,7 @@ pub async fn repair_missing_local_copies(
     let rows = sqlx::query(
         "SELECT id, file_path FROM sources \
          WHERE type = 'file' AND file_path IS NOT NULL AND file_path != '' \
-         AND (local_doc_path IS NULL OR local_doc_path = '')"
+         AND (local_doc_path IS NULL OR local_doc_path = '')",
     )
     .fetch_all(db)
     .await
@@ -1360,8 +1474,7 @@ pub async fn repair_missing_local_copies(
     }
 
     let files_dir = std::path::Path::new(&kb_path).join("files");
-    std::fs::create_dir_all(&files_dir)
-        .map_err(|e| format!("無法建立 files 目錄: {}", e))?;
+    std::fs::create_dir_all(&files_dir).map_err(|e| format!("無法建立 files 目錄: {}", e))?;
 
     let mut copied = 0usize;
     let mut skipped = 0usize;
@@ -1377,12 +1490,14 @@ pub async fn repair_missing_local_copies(
             continue;
         }
 
-        let ext = src.extension()
+        let ext = src
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
 
-        let file_name = src.file_name()
+        let file_name = src
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| format!("{}.{}", &source_id[..8], ext));
         let dest = files_dir.join(format!("{}_{}", &source_id[..8], file_name));
@@ -1392,7 +1507,7 @@ pub async fn repair_missing_local_copies(
                 let local_path_str = dest.to_string_lossy().to_string();
                 let now = chrono::Utc::now().to_rfc3339();
                 let _ = sqlx::query(
-                    "UPDATE sources SET local_doc_path = ?, updated_at = ? WHERE id = ?"
+                    "UPDATE sources SET local_doc_path = ?, updated_at = ? WHERE id = ?",
                 )
                 .bind(&local_path_str)
                 .bind(&now)
@@ -1409,7 +1524,10 @@ pub async fn repair_missing_local_copies(
         }
     }
 
-    let msg = format!("修復完成：已複製 {} 個檔案，跳過 {} 個（原始檔案不存在或複製失敗）", copied, skipped);
+    let msg = format!(
+        "修復完成：已複製 {} 個檔案，跳過 {} 個（原始檔案不存在或複製失敗）",
+        copied, skipped
+    );
     println!("[RepairCopies] {}", msg);
     Ok(msg)
 }

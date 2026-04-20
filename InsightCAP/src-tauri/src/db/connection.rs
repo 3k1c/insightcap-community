@@ -1,11 +1,10 @@
+use serde::{Deserialize, Serialize};
 /// DB 連接、健康檢查、bootstrap.json 原子寫入、db_state.json
 /// 按照 Architecture-v2.md「資料庫安全設計」章節實現
-
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 use crate::providers::embedding::Embedder;
 use crate::vector_store::local::VectorStore;
@@ -127,10 +126,7 @@ fn ensure_insightcap_dir(kb_path: &Path) -> Result<(), String> {
 /// 初始化 DB
 /// - db_key_hex: 若為 Some，使用加密 DB（SQLCipher PRAGMA key）
 /// - 若為 None，使用明文 DB（首次設定前）
-pub async fn init_db(
-    kb_path: &Path,
-    db_key_hex: Option<&str>,
-) -> Result<SqlitePool, String> {
+pub async fn init_db(kb_path: &Path, db_key_hex: Option<&str>) -> Result<SqlitePool, String> {
     ensure_insightcap_dir(kb_path)?;
 
     let db_path = kb_path.join(".insightcap").join("insightcap.db");
@@ -169,7 +165,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     println!("[DB] run_migrations 開始");
     // 建立 migration 追蹤表（若不存在）
     sqlx::raw_sql(
-        "CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)",
     )
     .execute(pool)
     .await
@@ -178,28 +174,56 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
 
     let migrations: &[(&str, &str)] = &[
         ("001", include_str!("../../migrations/001_init.sql")),
-        ("002", include_str!("../../migrations/002_pattern_engine.sql")),
+        (
+            "002",
+            include_str!("../../migrations/002_pattern_engine.sql"),
+        ),
         ("003", include_str!("../../migrations/003_enterprise.sql")),
-        ("004", include_str!("../../migrations/004_add_project_color.sql")),
-        ("005", include_str!("../../migrations/005_conversation_pin_lock.sql")),
-        ("006", include_str!("../../migrations/006_repository_timeline.sql")),
-        ("007", include_str!("../../migrations/007_fix_local_doc_path.sql")),
+        (
+            "004",
+            include_str!("../../migrations/004_add_project_color.sql"),
+        ),
+        (
+            "005",
+            include_str!("../../migrations/005_conversation_pin_lock.sql"),
+        ),
+        (
+            "006",
+            include_str!("../../migrations/006_repository_timeline.sql"),
+        ),
+        (
+            "007",
+            include_str!("../../migrations/007_fix_local_doc_path.sql"),
+        ),
         ("008", include_str!("../../migrations/008_decisions.sql")),
-        ("009", include_str!("../../migrations/009_chunk_relations.sql")),
+        (
+            "009",
+            include_str!("../../migrations/009_chunk_relations.sql"),
+        ),
         ("010", include_str!("../../migrations/010_space_wiki.sql")),
         ("011", include_str!("../../migrations/011_source_tags.sql")),
-        ("012", include_str!("../../migrations/012_deep_synthesis.sql")),
-        ("013", include_str!("../../migrations/013_compiled_knowledge.sql")),
+        (
+            "012",
+            include_str!("../../migrations/012_deep_synthesis.sql"),
+        ),
+        (
+            "013",
+            include_str!("../../migrations/013_compiled_knowledge.sql"),
+        ),
+        (
+            "016",
+            include_str!("../../migrations/016_source_group_ingestion.sql"),
+        ),
     ];
 
     for (id, sql) in migrations {
-        let already: bool = sqlx::query_scalar::<_, i32>(
-            "SELECT COUNT(*) FROM _migrations WHERE id = ?"
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0) > 0;
+        let already: bool =
+            sqlx::query_scalar::<_, i32>("SELECT COUNT(*) FROM _migrations WHERE id = ?")
+                .bind(id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0)
+                > 0;
 
         if already {
             println!("[DB] Migration {} 已存在，跳過", id);
@@ -214,7 +238,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
                 continue;
             }
             // 過濾掉純 comment 的 fragment
-            let non_comment: String = trimmed.lines()
+            let non_comment: String = trimmed
+                .lines()
                 .filter(|l| !l.trim_start().starts_with("--"))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -229,7 +254,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
                         println!("[DB] Migration {} 跳過已存在的物件", id);
                         continue;
                     }
-                    return Err(format!("Migration {} 失敗: {} | SQL: {}", id, e, &trimmed[..trimmed.len().min(80)]));
+                    return Err(format!(
+                        "Migration {} 失敗: {} | SQL: {}",
+                        id,
+                        e,
+                        &trimmed[..trimmed.len().min(80)]
+                    ));
                 }
             }
         }
@@ -269,21 +299,24 @@ pub async fn health_check(app_data_dir: &Path) -> HealthCheckResult {
     // Step 1: 讀 db_state.json
     let db_state = read_db_state(app_data_dir);
     if db_state.last_operation != "idle" {
-        return HealthCheckResult::NeedsRepair(
-            RepairReason::LastOperationNotIdle(db_state.last_operation)
-        );
+        return HealthCheckResult::NeedsRepair(RepairReason::LastOperationNotIdle(
+            db_state.last_operation,
+        ));
     }
 
     // Step 2: 讀 bootstrap.json 取得 kb_path
-    let kb_path_str = read_bootstrap(app_data_dir)
-        .unwrap_or_else(|| app_data_dir.to_string_lossy().to_string());
+    let kb_path_str =
+        read_bootstrap(app_data_dir).unwrap_or_else(|| app_data_dir.to_string_lossy().to_string());
     let kb_path = PathBuf::from(&kb_path_str);
 
     // 若路徑不可存取，fallback 到 app_data_dir
     let effective_kb_path = if std::fs::create_dir_all(&kb_path).is_ok() && kb_path.exists() {
         kb_path
     } else {
-        eprintln!("[DB-HEALTH] kb_path 不可存取，使用 fallback: {:?}", app_data_dir);
+        eprintln!(
+            "[DB-HEALTH] kb_path 不可存取，使用 fallback: {:?}",
+            app_data_dir
+        );
         app_data_dir.to_path_buf()
     };
 
@@ -312,15 +345,16 @@ pub async fn health_check(app_data_dir: &Path) -> HealthCheckResult {
             }
 
             // Step 7: 全部通過
-            let _ = write_db_state(app_data_dir, &DbState {
-                last_successful_open: Some(chrono::Utc::now().to_rfc3339()),
-                ..db_state
-            });
+            let _ = write_db_state(
+                app_data_dir,
+                &DbState {
+                    last_successful_open: Some(chrono::Utc::now().to_rfc3339()),
+                    ..db_state
+                },
+            );
 
             HealthCheckResult::Ok(pool, effective_kb_path)
         }
-        Err(e) => {
-            HealthCheckResult::NeedsRepair(RepairReason::DbOpenFailed(e))
-        }
+        Err(e) => HealthCheckResult::NeedsRepair(RepairReason::DbOpenFailed(e)),
     }
 }

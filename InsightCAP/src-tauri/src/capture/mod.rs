@@ -1,12 +1,14 @@
+pub mod attachment_manager;
+pub mod chunking;
 pub mod clipboard;
 pub mod encoding;
+pub mod extractors;
 pub mod file_parser;
 pub mod keyboard;
 pub mod metadata;
 pub mod readability;
+pub mod source_group;
 pub mod video_parser;
-pub mod extractors;
-pub mod attachment_manager;
 
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
@@ -17,8 +19,12 @@ fn normalize_video_url(url: &str) -> String {
     if trimmed.contains("bilibili.com/video/") {
         if let Some(start) = trimmed.find("/video/") {
             let bvid = trimmed[start + 7..]
-                .split('/').next().unwrap_or("")
-                .split('?').next().unwrap_or("");
+                .split('/')
+                .next()
+                .unwrap_or("")
+                .split('?')
+                .next()
+                .unwrap_or("");
             if !bvid.is_empty() {
                 return format!("https://www.bilibili.com/video/{}", bvid);
             }
@@ -67,7 +73,9 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     // 4. 讀取剪貼簿（重試 3 次）
     let mut clipboard_result = clipboard::read_clipboard();
     for attempt in 0..3 {
-        if clipboard_result.is_ok() { break; }
+        if clipboard_result.is_ok() {
+            break;
+        }
         println!("[CAPTURE]   Retrying clipboard {}/3...", attempt + 1);
         tokio::time::sleep(tokio::time::Duration::from_millis(80)).await;
         clipboard_result = clipboard::read_clipboard();
@@ -89,11 +97,16 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     let (has_image, text_content, image_bytes) = match clipboard_data {
         clipboard::ClipboardContent::Files(paths) => {
             for path in paths {
-                let ext = path.extension()
+                let ext = path
+                    .extension()
                     .and_then(|e| e.to_str())
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
-                if ["pdf","docx","xlsx","csv","txt","md","png","jpg","jpeg","webp"].contains(&ext.as_str()) {
+                if [
+                    "pdf", "docx", "xlsx", "csv", "txt", "md", "png", "jpg", "jpeg", "webp",
+                ]
+                .contains(&ext.as_str())
+                {
                     let app_clone = app.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Err(e) = process_clipboard_file(app_clone, path).await {
@@ -104,7 +117,11 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
             }
             return Ok(());
         }
-        clipboard::ClipboardContent::Data { text, has_image, image_bytes } => (has_image, text, image_bytes),
+        clipboard::ClipboardContent::Data {
+            text,
+            has_image,
+            image_bytes,
+        } => (has_image, text, image_bytes),
     };
 
     let content_text = text_content.clone().unwrap_or_default();
@@ -114,7 +131,9 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     // URL 偵測
     if content_type == "text" && !content_text.is_empty() {
         let trimmed = content_text.trim();
-        if (trimmed.starts_with("http://") || trimmed.starts_with("https://")) && !trimmed.contains(' ') {
+        if (trimmed.starts_with("http://") || trimmed.starts_with("https://"))
+            && !trimmed.contains(' ')
+        {
             content_type = "url";
             source_url = normalize_video_url(trimmed);
         }
@@ -146,8 +165,25 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
 
 /// 需要複製到知識庫的文件副檔名（排除影片）
 fn should_copy_to_kb(ext: &str) -> bool {
-    matches!(ext, "txt" | "log" | "md" | "pdf" | "doc" | "docx" | "ppt" | "pptx"
-                | "xls" | "xlsx" | "csv" | "html" | "htm" | "rtf" | "epub" | "code")
+    matches!(
+        ext,
+        "txt"
+            | "log"
+            | "md"
+            | "pdf"
+            | "doc"
+            | "docx"
+            | "ppt"
+            | "pptx"
+            | "xls"
+            | "xlsx"
+            | "csv"
+            | "html"
+            | "htm"
+            | "rtf"
+            | "epub"
+            | "code"
+    )
 }
 
 /// 直接處理剪貼簿中的文件（跳過 inbox，直接寫入 sources + captures）
@@ -168,18 +204,30 @@ async fn process_clipboard_file(
     };
 
     let path_str = file_path.to_string_lossy().to_string();
-    let parsed = crate::capture::file_parser::parse_file(&kb_path, &path_str, vision_config.as_ref()).await?;
+    let parsed =
+        crate::capture::file_parser::parse_file(&kb_path, &path_str, vision_config.as_ref())
+            .await?;
     let now_iso = chrono::Utc::now().to_rfc3339();
     let source_id = uuid::Uuid::now_v7().to_string();
 
-    let full_content = parsed.chunks.iter()
+    let full_content = parsed
+        .chunks
+        .iter()
         .map(|c| c.content.as_str())
         .collect::<Vec<_>>()
         .join("\n\n");
+    let source_identity = crate::capture::source_group::identity_for_file(&path_str, &full_content);
+    let source_group_id = crate::capture::source_group::get_or_create_source_group(
+        &pool,
+        &source_identity,
+        &parsed.title,
+    )
+    .await?;
 
     // 複製檔案到知識庫 files 目錄（文件類型，排除影片）
     let local_doc_path: Option<String> = {
-        let ext = file_path.extension()
+        let ext = file_path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -189,7 +237,8 @@ async fn process_clipboard_file(
                 eprintln!("[CAPTURE] 無法建立 files 目錄: {}", e);
                 None
             } else {
-                let file_name = file_path.file_name()
+                let file_name = file_path
+                    .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| format!("{}.{}", source_id, ext));
                 let dest = files_dir.join(format!("{}_{}", &source_id[..8], file_name));
@@ -210,13 +259,15 @@ async fn process_clipboard_file(
     };
 
     sqlx::query(
-        "INSERT INTO sources (id, type, title, file_path, local_doc_path, clean_content, captured_at, updated_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO sources (id, source_group_id, type, title, file_path, local_doc_path, clean_content, content_hash, captured_at, updated_at) VALUES (?, ?, 'file', ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&source_id)
+    .bind(&source_group_id)
     .bind(&parsed.title)
     .bind(&path_str)
     .bind(&local_doc_path)
     .bind(&full_content)
+    .bind(&source_identity.content_hash)
     .bind(&now_iso)
     .bind(&now_iso)
     .execute(&pool)
@@ -230,19 +281,11 @@ async fn process_clipboard_file(
     let mut chunk_count: i64 = 0;
 
     for f_chunk in &parsed.chunks {
-        let paragraphs: Vec<String> = f_chunk.content
-            .split("\n\n")
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        let paragraphs = if paragraphs.is_empty() {
-            vec![f_chunk.content.clone()]
-        } else {
-            paragraphs
-        };
+        let routed_chunks = crate::capture::chunking::chunks_for_file_chunk(f_chunk);
 
-        for (idx, para) in paragraphs.into_iter().enumerate() {
+        for routed in routed_chunks {
             let chunk_id = uuid::Uuid::now_v7().to_string();
+            let para = routed.content;
 
             // Embedding
             let vector_id_opt: Option<i64> = match app_state.embedder.embed(&para).await {
@@ -256,28 +299,42 @@ async fn process_clipboard_file(
                     };
                     match app_state.vector_store.add_vector(vid, &vec).await {
                         Ok(_) => Some(vid as i64),
-                        Err(e) => { eprintln!("[CAPTURE] vector store error: {}", e); None }
+                        Err(e) => {
+                            eprintln!("[CAPTURE] vector store error: {}", e);
+                            None
+                        }
                     }
                 }
-                Err(e) => { eprintln!("[CAPTURE] embed error: {}", e); None }
+                Err(e) => {
+                    eprintln!("[CAPTURE] embed error: {}", e);
+                    None
+                }
             };
 
             // 使用 FileChunk.status 決定 capture 狀態
-            let capture_status = if f_chunk.status == "pending_ocr" { "pending_ocr" } else { "processed" };
+            let capture_status = if f_chunk.status == "pending_ocr" {
+                "pending_ocr"
+            } else {
+                "processed"
+            };
 
             sqlx::query(
                 "INSERT INTO captures (id, source_id, type, raw_content, clean_content, \
-                 capture_method, chunk_index, status, vector_id, created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, 'hotkey', ?, ?, ?, ?, ?)"
+                 capture_method, chunk_index, status, vector_id, content_type, knowledge_type, chunk_strategy, chunk_metadata, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 'hotkey', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(&chunk_id)
             .bind(&source_id)
             .bind(&f_chunk.chunk_type)
             .bind(&para)
             .bind(&para)
-            .bind((chunk_count + idx as i64) as i64)
+            .bind(chunk_count)
             .bind(capture_status)
             .bind(vector_id_opt)
+            .bind(&routed.content_type)
+            .bind(&routed.knowledge_type)
+            .bind(&routed.chunk_strategy)
+            .bind(&routed.metadata_json)
             .bind(&now_iso)
             .bind(&now_iso)
             .execute(&pool)
@@ -291,7 +348,11 @@ async fn process_clipboard_file(
                 app_state.vector_store.clone(),
             );
             if let Err(e) = space_engine.assign_to_space(&chunk_id, &para).await {
-                eprintln!("[CAPTURE] Space assignment failed for {}: {}", &chunk_id[..8], e);
+                eprintln!(
+                    "[CAPTURE] Space assignment failed for {}: {}",
+                    &chunk_id[..8],
+                    e
+                );
             }
 
             // 反向鏈接分析（非同步，不阻塞）
@@ -302,9 +363,14 @@ async fn process_clipboard_file(
             let rel_content = para.clone();
             tokio::spawn(async move {
                 let rel_engine = crate::services::chunk_relation_engine::ChunkRelationEngine::new(
-                    rel_pool, rel_embedder, rel_vs,
+                    rel_pool,
+                    rel_embedder,
+                    rel_vs,
                 );
-                if let Err(e) = rel_engine.analyze_and_link(&rel_cid, "capture", &rel_content).await {
+                if let Err(e) = rel_engine
+                    .analyze_and_link(&rel_cid, "capture", &rel_content)
+                    .await
+                {
                     eprintln!("[ChunkRelation] clipboard file 分析失敗: {}", e);
                 }
             });
@@ -319,7 +385,10 @@ async fn process_clipboard_file(
     let tag_full_content = full_content.clone();
     tokio::spawn(async move {
         let tag_engine = crate::services::tag_engine::TagEngine::new(tag_pool);
-        if let Err(e) = tag_engine.process_source(&tag_source_id, &tag_full_content).await {
+        if let Err(e) = tag_engine
+            .process_source(&tag_source_id, &tag_full_content)
+            .await
+        {
             eprintln!("[CAPTURE] Source tag generation failed: {}", e);
         }
     });
@@ -335,9 +404,14 @@ async fn process_clipboard_file(
 
     // 非同步儲存向量索引
     let vs = app_state.vector_store.clone();
-    tokio::spawn(async move { let _ = vs.save().await; });
+    tokio::spawn(async move {
+        let _ = vs.save().await;
+    });
 
-    println!("[CAPTURE] ✅ File '{}' processed: {} chunks with tags", parsed.title, chunk_count);
+    println!(
+        "[CAPTURE] ✅ File '{}' processed: {} chunks with tags",
+        parsed.title, chunk_count
+    );
     let _ = app.emit("knowledge-updated", ());
     Ok(())
 }
