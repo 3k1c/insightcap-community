@@ -1,7 +1,7 @@
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, Listener, Manager};
 use crate::db::AppState;
 use crate::services::space_engine::SpaceEngine;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Listener, Manager};
 
 /// SpaceRecluster 背景工作程式
 /// - 監聽 `space-created` event，觸發一次立即重聚類

@@ -1,7 +1,7 @@
-use argon2::{Argon2, Params, Algorithm, Version};
-use bip39::{Mnemonic, Language};
-use rand::Rng;
 use super::AuthError;
+use argon2::{Algorithm, Argon2, Params, Version};
+use bip39::{Language, Mnemonic};
+use rand::Rng;
 
 /// 從用戶密碼衍生數據庫加密 key
 /// Argon2id：記憶體 64MB，迭代 3 次，單線程，輸出 256-bit
@@ -35,9 +35,7 @@ pub fn generate_mnemonic() -> String {
 
 /// 建立新 recovery key（生成隨機 16-byte salt）
 /// 回傳 (recovery_key, salt)，salt 存入 recovery.bin header
-pub fn derive_recovery_key_new(
-    mnemonic_phrase: &str,
-) -> Result<([u8; 32], [u8; 16]), AuthError> {
+pub fn derive_recovery_key_new(mnemonic_phrase: &str) -> Result<([u8; 32], [u8; 16]), AuthError> {
     let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_phrase)
         .map_err(|_| AuthError::InvalidMnemonic)?;
     let entropy = mnemonic.to_entropy();

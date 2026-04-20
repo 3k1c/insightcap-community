@@ -1,14 +1,14 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use sqlx::{Row, SqlitePool};
-use uuid::Uuid;
-use chrono::Utc;
 use crate::prompts;
-use crate::providers::llm::LLMProvider;
+use crate::providers::embedding::Embedder;
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::LLMOptions;
-use crate::providers::embedding::Embedder;
+use crate::providers::llm::LLMProvider;
 use crate::settings::store::get_settings;
+use chrono::Utc;
+use sqlx::{Row, SqlitePool};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use uuid::Uuid;
 
 /// 向量相似度門檻
 const SIMILARITY_THRESHOLD: f32 = 0.65;
@@ -57,7 +57,7 @@ impl PatternEngine {
               AND promoted_capture_id IS NULL
               AND conversation_id IS NOT NULL
             ORDER BY created_at DESC LIMIT 100
-            "#
+            "#,
         )
         .fetch_all(db)
         .await
@@ -81,7 +81,13 @@ impl PatternEngine {
                 Err(_) => None,
             };
 
-            candidates.push(Candidate { id, conversation_id: conv_id, content, tags, embedding });
+            candidates.push(Candidate {
+                id,
+                conversation_id: conv_id,
+                content,
+                tags,
+                embedding,
+            });
         }
 
         // Step 3: 找出符合三個條件的候選群
@@ -94,9 +100,16 @@ impl PatternEngine {
         let settings = get_settings(db).await.map_err(|e| e.to_string())?;
         let llm_cfg = settings.ai_models.content_processor_llm;
         let api_key = llm_cfg.api_key.unwrap_or_default();
-        if api_key.is_empty() { return Ok(0); }
+        if api_key.is_empty() {
+            return Ok(0);
+        }
 
-        let provider = OpenAiProvider::new(api_key, llm_cfg.base_url, llm_cfg.model, llm_cfg.provider.clone());
+        let provider = OpenAiProvider::new(
+            api_key,
+            llm_cfg.base_url,
+            llm_cfg.model,
+            llm_cfg.provider.clone(),
+        );
         let mut promoted_count = 0;
 
         for group in &groups {
@@ -121,23 +134,31 @@ impl PatternEngine {
         let mut used_ids: HashSet<String> = HashSet::new();
 
         for (i, anchor) in candidates.iter().enumerate() {
-            if used_ids.contains(&anchor.id) { continue; }
+            if used_ids.contains(&anchor.id) {
+                continue;
+            }
 
             let mut group_candidates = vec![i];
             let mut group_conversations: HashSet<&str> = HashSet::new();
             group_conversations.insert(&anchor.conversation_id);
 
             for (j, other) in candidates.iter().enumerate() {
-                if i == j || used_ids.contains(&other.id) { continue; }
+                if i == j || used_ids.contains(&other.id) {
+                    continue;
+                }
 
                 // 條件 1: 標籤重疊 ≥ 2
                 let tag_overlap = anchor.tags.intersection(&other.tags).count();
-                if tag_overlap < MIN_TAG_OVERLAP { continue; }
+                if tag_overlap < MIN_TAG_OVERLAP {
+                    continue;
+                }
 
                 // 條件 2: 向量相似度 ≥ 0.65
                 if let (Some(ref v1), Some(ref v2)) = (&anchor.embedding, &other.embedding) {
                     let sim = cosine_similarity(v1, v2);
-                    if sim < SIMILARITY_THRESHOLD { continue; }
+                    if sim < SIMILARITY_THRESHOLD {
+                        continue;
+                    }
                 } else {
                     continue;
                 }
@@ -147,23 +168,28 @@ impl PatternEngine {
             }
 
             // 條件 3: ≥ 3 個不同對話
-            if group_conversations.len() >= MIN_CONVERSATIONS && group_candidates.len() >= MIN_CONVERSATIONS {
+            if group_conversations.len() >= MIN_CONVERSATIONS
+                && group_candidates.len() >= MIN_CONVERSATIONS
+            {
                 for &idx in &group_candidates {
                     used_ids.insert(candidates[idx].id.clone());
                 }
                 // 從 indices 取出實際 Candidate ref 建立 group
                 // 由於 borrow checker，我們只存 ids
                 groups.push(PromotionGroup {
-                    candidates: group_candidates.iter().map(|&idx| {
-                        let c = &candidates[idx];
-                        Candidate {
-                            id: c.id.clone(),
-                            conversation_id: c.conversation_id.clone(),
-                            content: c.content.clone(),
-                            tags: c.tags.clone(),
-                            embedding: None, // 不需要再存 embedding
-                        }
-                    }).collect(),
+                    candidates: group_candidates
+                        .iter()
+                        .map(|&idx| {
+                            let c = &candidates[idx];
+                            Candidate {
+                                id: c.id.clone(),
+                                conversation_id: c.conversation_id.clone(),
+                                content: c.content.clone(),
+                                tags: c.tags.clone(),
+                                embedding: None, // 不需要再存 embedding
+                            }
+                        })
+                        .collect(),
                     conversation_count: group_conversations.len(),
                 });
             }
@@ -248,7 +274,7 @@ impl PatternEngine {
     async fn expand_log_trigger_contexts(&self, db: &SqlitePool) -> Result<(), String> {
         let logs = sqlx::query(
             "SELECT id, content, trigger_context FROM memory_chunks \
-             WHERE knowledge_type = 'log' ORDER BY created_at DESC LIMIT 20"
+             WHERE knowledge_type = 'log' ORDER BY created_at DESC LIMIT 20",
         )
         .fetch_all(db)
         .await
@@ -268,7 +294,7 @@ impl PatternEngine {
             let similar_data = sqlx::query(
                 "SELECT content FROM memory_chunks \
                  WHERE knowledge_type = 'data' AND id != ? \
-                 ORDER BY created_at DESC LIMIT 20"
+                 ORDER BY created_at DESC LIMIT 20",
             )
             .bind(&log_id)
             .fetch_all(db)
@@ -276,7 +302,8 @@ impl PatternEngine {
             .map_err(|e| e.to_string())?;
 
             let mut new_contexts: Vec<String> = Vec::new();
-            let existing_set: HashSet<&str> = existing_ctx.split('|').filter(|s| !s.is_empty()).collect();
+            let existing_set: HashSet<&str> =
+                existing_ctx.split('|').filter(|s| !s.is_empty()).collect();
 
             for data_row in &similar_data {
                 let data_content: String = data_row.get("content");
@@ -289,13 +316,16 @@ impl PatternEngine {
                 if sim >= 0.60 {
                     // 取前 30 字元作為 trigger keyword
                     let keyword = data_content.chars().take(30).collect::<String>();
-                    if !existing_set.contains(keyword.as_str()) && !new_contexts.contains(&keyword) {
+                    if !existing_set.contains(keyword.as_str()) && !new_contexts.contains(&keyword)
+                    {
                         new_contexts.push(keyword);
                     }
                 }
 
                 // 最多擴展 3 個新 context
-                if new_contexts.len() >= 3 { break; }
+                if new_contexts.len() >= 3 {
+                    break;
+                }
             }
 
             if !new_contexts.is_empty() {
@@ -306,7 +336,7 @@ impl PatternEngine {
                 };
 
                 let _ = sqlx::query(
-                    "UPDATE memory_chunks SET trigger_context = ?, updated_at = ? WHERE id = ?"
+                    "UPDATE memory_chunks SET trigger_context = ?, updated_at = ? WHERE id = ?",
                 )
                 .bind(&updated_ctx)
                 .bind(Utc::now().to_rfc3339())
@@ -322,10 +352,14 @@ impl PatternEngine {
 
 /// 餘弦相似度
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() || a.is_empty() { return 0.0; }
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 { return 0.0; }
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
     dot / (norm_a * norm_b)
 }

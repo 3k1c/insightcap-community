@@ -59,7 +59,7 @@ pub async fn copy_to_attachments(
                 .await
                 .map_err(|e| AppError::Capture(e.to_string()))?;
             let existing_hash = format!("{:x}", Sha256::digest(&existing_bytes));
-            
+
             if existing_hash == hash {
                 return Ok((PathBuf::from(simple), hash));
             }
@@ -70,13 +70,13 @@ pub async fn copy_to_attachments(
             } else {
                 format!("{}_{}.{}", stem, &hash[..6], ext)
             };
-            
+
             let hashed_path = format!("{}/{}", month_dir, hashed_name);
             if Path::new(&hashed_path).exists() {
                 // Already exists with hash
                 return Ok((PathBuf::from(hashed_path), hash));
             }
-            
+
             hashed_name
         }
     };
@@ -250,7 +250,7 @@ mod tests {
         assert_ne!(p1, p3); // Path should be different (hash appended)
         assert_ne!(h1, h3);
         assert!(p3.exists());
-        
+
         let file_name = p3.file_name().unwrap().to_string_lossy();
         assert!(file_name.contains(&h3[..6]));
     }
@@ -260,13 +260,17 @@ mod tests {
         let dir = tempdir().unwrap();
         let kb_path = dir.path().to_str().unwrap().to_string();
 
-        let p1 = copy_image_to_attachments(&kb_path, b"fake image", "capture", "jpg").await.unwrap();
+        let p1 = copy_image_to_attachments(&kb_path, b"fake image", "capture", "jpg")
+            .await
+            .unwrap();
         assert!(p1.exists());
         let name = p1.file_name().unwrap().to_string_lossy();
         assert!(name.starts_with("capture_"));
         assert!(name.ends_with(".jpg"));
-        
-        let p2 = copy_image_to_attachments(&kb_path, b"fake image 2", "screenshot", "png").await.unwrap();
+
+        let p2 = copy_image_to_attachments(&kb_path, b"fake image 2", "screenshot", "png")
+            .await
+            .unwrap();
         assert!(p2.exists());
         let name2 = p2.file_name().unwrap().to_string_lossy();
         assert!(name2.starts_with("screenshot_"));
@@ -276,47 +280,62 @@ mod tests {
     #[tokio::test]
     async fn test_delete_if_orphaned() {
         let dir = tempdir().unwrap();
-        
+
         // Setup SQLite for testing
         let db_path = dir.path().join("test.db");
-        let db = sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_string_lossy())).await.unwrap();
-        
+        let db =
+            sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_string_lossy()))
+                .await
+                .unwrap();
+
         sqlx::query("CREATE TABLE sources (id TEXT PRIMARY KEY, file_path TEXT)")
-            .execute(&db).await.unwrap();
+            .execute(&db)
+            .await
+            .unwrap();
         sqlx::query("CREATE TABLE chunks (id TEXT PRIMARY KEY, source_id TEXT)")
-            .execute(&db).await.unwrap();
+            .execute(&db)
+            .await
+            .unwrap();
 
         // Create a fake file
         let file_path = dir.path().join("fake_file.txt");
         std::fs::File::create(&file_path).unwrap();
-        
+
         // Insert source
         sqlx::query("INSERT INTO sources (id, file_path) VALUES (?, ?)")
             .bind("s1")
             .bind(file_path.to_string_lossy().to_string())
-            .execute(&db).await.unwrap();
-        
+            .execute(&db)
+            .await
+            .unwrap();
+
         // Insert chunk
         sqlx::query("INSERT INTO chunks (id, source_id) VALUES (?, ?)")
             .bind("c1")
             .bind("s1")
-            .execute(&db).await.unwrap();
-            
+            .execute(&db)
+            .await
+            .unwrap();
+
         // Delete if orphaned should KEEP file (since c1 exists)
         delete_if_orphaned(&db, "s1").await.unwrap();
         assert!(file_path.exists());
-        
+
         // Remove chunk
         sqlx::query("DELETE FROM chunks WHERE id = ?")
             .bind("c1")
-            .execute(&db).await.unwrap();
-            
+            .execute(&db)
+            .await
+            .unwrap();
+
         // Delete if orphaned should DELETE file & source
         delete_if_orphaned(&db, "s1").await.unwrap();
         assert!(!file_path.exists());
-        
+
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sources WHERE id = 's1'")
-            .fetch_one(&db).await.unwrap();
+            .fetch_one(&db)
+            .await
+            .unwrap();
         assert_eq!(count, 0);
     }
 }

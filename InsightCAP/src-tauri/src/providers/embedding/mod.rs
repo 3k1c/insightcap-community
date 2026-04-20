@@ -30,6 +30,10 @@ impl Embedder for NoopEmbedder {
     async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
         Ok(texts.iter().map(|_| vec![0.0; 384]).collect())
     }
-    fn dimension(&self) -> usize { 384 }
-    fn model_name(&self) -> &str { "noop" }
+    fn dimension(&self) -> usize {
+        384
+    }
+    fn model_name(&self) -> &str {
+        "noop"
+    }
 }

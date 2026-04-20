@@ -2,8 +2,8 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 
-use crate::providers::llm::{LLMError, LLMOptions, LLMProvider, StreamResult, StreamToken};
 use crate::providers::llm::model_caps::{self, ReasoningStyle};
+use crate::providers::llm::{LLMError, LLMOptions, LLMProvider, StreamResult, StreamToken};
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -14,21 +14,27 @@ pub struct OpenAiProvider {
 }
 
 impl OpenAiProvider {
-    pub fn new(api_key: String, base_url_opt: Option<String>, model: String, provider_name: String) -> Self {
+    pub fn new(
+        api_key: String,
+        base_url_opt: Option<String>,
+        model: String,
+        provider_name: String,
+    ) -> Self {
         let mut base_url = base_url_opt
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| {
-                match provider_name.as_str() {
-                    "openai" => "https://api.openai.com/v1".to_string(),
-                    "google" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
-                    "xai" => "https://api.x.ai/v1".to_string(),
-                    "openrouter" => "https://openrouter.ai/api/v1".to_string(),
-                    _ => "http://localhost:11434/v1".to_string(),
-                }
+            .unwrap_or_else(|| match provider_name.as_str() {
+                "openai" => "https://api.openai.com/v1".to_string(),
+                "google" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+                "xai" => "https://api.x.ai/v1".to_string(),
+                "openrouter" => "https://openrouter.ai/api/v1".to_string(),
+                _ => "http://localhost:11434/v1".to_string(),
             });
 
         let trimmed = base_url.trim_end_matches('/');
-        if trimmed.contains("localhost") || trimmed.contains("127.0.0.1") || trimmed.contains(":11434") {
+        if trimmed.contains("localhost")
+            || trimmed.contains("127.0.0.1")
+            || trimmed.contains(":11434")
+        {
             // 如果是本地模型，且沒有以 /v1 結尾，自動補齊以相容 OpenAI API
             if !trimmed.ends_with("/v1") {
                 base_url = format!("{}/v1", trimmed);
@@ -47,9 +53,19 @@ impl OpenAiProvider {
     }
 
     /// 根據模型能力建構 messages 陣列（system vs developer role）
-    fn build_messages(&self, system_prompt: &str, history: &[(String, String)], user_query: &str, think_mode: bool) -> Vec<serde_json::Value> {
+    fn build_messages(
+        &self,
+        system_prompt: &str,
+        history: &[(String, String)],
+        user_query: &str,
+        think_mode: bool,
+    ) -> Vec<serde_json::Value> {
         let style = model_caps::detect(&self.model, &self.provider_name);
-        let system_role = if style == ReasoningStyle::OpenAiReasoning { "developer" } else { "system" };
+        let system_role = if style == ReasoningStyle::OpenAiReasoning {
+            "developer"
+        } else {
+            "system"
+        };
 
         // Gemma4Think：只有 think_mode=true 時才在 system prompt 開頭加 <|think|>
         let effective_system_prompt;
@@ -69,7 +85,12 @@ impl OpenAiProvider {
     }
 
     /// 根據模型能力建構 request body 參數
-    fn build_request_body(&self, messages: Vec<serde_json::Value>, options: &LLMOptions, stream: bool) -> serde_json::Value {
+    fn build_request_body(
+        &self,
+        messages: Vec<serde_json::Value>,
+        options: &LLMOptions,
+        stream: bool,
+    ) -> serde_json::Value {
         let style = model_caps::detect(&self.model, &self.provider_name);
 
         match style {
@@ -138,7 +159,10 @@ struct ThinkTagParser {
 
 impl ThinkTagParser {
     fn new() -> Self {
-        Self { in_think: false, tag_buffer: String::new() }
+        Self {
+            in_think: false,
+            tag_buffer: String::new(),
+        }
     }
 
     /// 處理一段 content token，回傳分類後的 StreamToken 列表
@@ -194,7 +218,9 @@ impl ThinkTagParser {
     }
 
     fn emit(&self, text: &str, tokens: &mut Vec<StreamToken>) {
-        if text.is_empty() { return; }
+        if text.is_empty() {
+            return;
+        }
         if self.in_think {
             tokens.push(StreamToken::Reasoning(text.to_string()));
         } else {
@@ -217,11 +243,15 @@ struct Gemma4ChannelParser {
 }
 
 impl Gemma4ChannelParser {
-    const OPEN:  &'static str = "<|channel>thought\n";
+    const OPEN: &'static str = "<|channel>thought\n";
     const CLOSE: &'static str = "<channel|>";
 
     fn new() -> Self {
-        Self { in_think: false, buf: String::new(), skip_first_newline: false }
+        Self {
+            in_think: false,
+            buf: String::new(),
+            skip_first_newline: false,
+        }
     }
 
     fn parse(&mut self, raw: &str) -> Vec<StreamToken> {
@@ -254,7 +284,17 @@ impl Gemma4ChannelParser {
                     }
                     self.in_think = false;
                     self.buf.clear();
-                } else if Self::CLOSE.starts_with(&*self.buf.chars().rev().take(Self::CLOSE.len()).collect::<String>().chars().rev().collect::<String>()) {
+                } else if Self::CLOSE.starts_with(
+                    &*self
+                        .buf
+                        .chars()
+                        .rev()
+                        .take(Self::CLOSE.len())
+                        .collect::<String>()
+                        .chars()
+                        .rev()
+                        .collect::<String>(),
+                ) {
                     // partial CLOSE — 保留在 buf 繼續等待
                 } else {
                     // 沒有 partial CLOSE 風險，可以 flush 到 buf[-CLOSE.len()+1] 為止
@@ -271,7 +311,9 @@ impl Gemma4ChannelParser {
     }
 
     fn flush(&mut self) -> Vec<StreamToken> {
-        if self.buf.is_empty() { return vec![]; }
+        if self.buf.is_empty() {
+            return vec![];
+        }
         let s = std::mem::take(&mut self.buf);
         if self.in_think {
             vec![StreamToken::Reasoning(s)]
@@ -290,7 +332,9 @@ impl LLMProvider for OpenAiProvider {
         let messages = vec![json!({ "role": "user", "content": prompt })];
         let req_body = self.build_request_body(messages, &options, options.stream);
 
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req_body)
             .send()
@@ -303,12 +347,17 @@ impl LLMProvider for OpenAiProvider {
             return Err(LLMError::Api(format!("{} - {}", status, err_body)));
         }
 
-        let json_res: serde_json::Value = res.json().await.map_err(|e| LLMError::Parse(e.to_string()))?;
+        let json_res: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| LLMError::Parse(e.to_string()))?;
 
         if let Some(text) = json_res["choices"][0]["message"]["content"].as_str() {
             Ok(text.to_string())
         } else {
-            Err(LLMError::Parse("Unexpected API response format".to_string()))
+            Err(LLMError::Parse(
+                "Unexpected API response format".to_string(),
+            ))
         }
     }
 
@@ -321,10 +370,17 @@ impl LLMProvider for OpenAiProvider {
     ) -> Result<String, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let messages = self.build_messages(system_prompt, history, user_query, options.think_mode.unwrap_or(false));
+        let messages = self.build_messages(
+            system_prompt,
+            history,
+            user_query,
+            options.think_mode.unwrap_or(false),
+        );
         let req_body = self.build_request_body(messages, &options, false);
 
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req_body)
             .send()
@@ -337,11 +393,16 @@ impl LLMProvider for OpenAiProvider {
             return Err(LLMError::Api(format!("{} - {}", status, err_body)));
         }
 
-        let json_res: serde_json::Value = res.json().await.map_err(|e| LLMError::Parse(e.to_string()))?;
+        let json_res: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| LLMError::Parse(e.to_string()))?;
         if let Some(text) = json_res["choices"][0]["message"]["content"].as_str() {
             Ok(text.to_string())
         } else {
-            Err(LLMError::Parse("Unexpected API response format".to_string()))
+            Err(LLMError::Parse(
+                "Unexpected API response format".to_string(),
+            ))
         }
     }
 
@@ -356,10 +417,17 @@ impl LLMProvider for OpenAiProvider {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
         let style = self.reasoning_style();
 
-        let messages = self.build_messages(system_prompt, history, user_query, options.think_mode.unwrap_or(false));
+        let messages = self.build_messages(
+            system_prompt,
+            history,
+            user_query,
+            options.think_mode.unwrap_or(false),
+        );
         let req_body = self.build_request_body(messages, &options, true);
 
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Accept", "text/event-stream")
             .json(&req_body)
@@ -390,8 +458,12 @@ impl LLMProvider for OpenAiProvider {
 
                 for line in event.lines() {
                     let data = line.strip_prefix("data: ").unwrap_or_default();
-                    if data == "[DONE]" { break; }
-                    if data.is_empty() { continue; }
+                    if data == "[DONE]" {
+                        break;
+                    }
+                    if data.is_empty() {
+                        continue;
+                    }
 
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
                         let delta = &v["choices"][0]["delta"];
@@ -420,8 +492,12 @@ impl LLMProvider for OpenAiProvider {
                                         let parsed = think_parser.parse(c);
                                         for tok in parsed {
                                             match &tok {
-                                                StreamToken::Reasoning(r) => result.reasoning.push_str(r),
-                                                StreamToken::Content(ct) => result.content.push_str(ct),
+                                                StreamToken::Reasoning(r) => {
+                                                    result.reasoning.push_str(r)
+                                                }
+                                                StreamToken::Content(ct) => {
+                                                    result.content.push_str(ct)
+                                                }
                                             }
                                             on_token(tok);
                                         }
@@ -435,8 +511,12 @@ impl LLMProvider for OpenAiProvider {
                                         let parsed = gemma4_parser.parse(c);
                                         for tok in parsed {
                                             match &tok {
-                                                StreamToken::Reasoning(r) => result.reasoning.push_str(r),
-                                                StreamToken::Content(ct) => result.content.push_str(ct),
+                                                StreamToken::Reasoning(r) => {
+                                                    result.reasoning.push_str(r)
+                                                }
+                                                StreamToken::Content(ct) => {
+                                                    result.content.push_str(ct)
+                                                }
                                             }
                                             on_token(tok);
                                         }
@@ -474,18 +554,24 @@ impl LLMProvider for OpenAiProvider {
         Ok(result)
     }
 
-    async fn complete_json(&self, prompt: &str, options: LLMOptions) -> Result<serde_json::Value, LLMError> {
+    async fn complete_json(
+        &self,
+        prompt: &str,
+        options: LLMOptions,
+    ) -> Result<serde_json::Value, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
         let messages = vec![json!({ "role": "user", "content": prompt })];
         let mut req_body = self.build_request_body(messages, &options, options.stream);
-        
+
         // Ollama 的 JSON mode 有時會與 think 模型衝突導致輸出空字串，因此在 Ollama 避開強制 json_object
         if self.provider_name != "ollama" {
             req_body["response_format"] = json!({ "type": "json_object" });
         }
 
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req_body)
             .send()
@@ -498,11 +584,14 @@ impl LLMProvider for OpenAiProvider {
             return Err(LLMError::Api(format!("{} - {}", status, err_body)));
         }
 
-        let json_res: serde_json::Value = res.json().await.map_err(|e| LLMError::Parse(e.to_string()))?;
+        let json_res: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| LLMError::Parse(e.to_string()))?;
 
         if let Some(text) = json_res["choices"][0]["message"]["content"].as_str() {
             let mut clean_text = text.trim();
-            
+
             // 移除可能干擾 JSON 解析的 reasoning tags
             if let Some(end_idx) = clean_text.find("</think>") {
                 clean_text = clean_text[end_idx + "</think>".len()..].trim();
@@ -512,27 +601,42 @@ impl LLMProvider for OpenAiProvider {
             }
 
             if clean_text.starts_with("```json") {
-                clean_text = clean_text.trim_start_matches("```json").trim_end_matches("```").trim();
+                clean_text = clean_text
+                    .trim_start_matches("```json")
+                    .trim_end_matches("```")
+                    .trim();
             } else if clean_text.starts_with("```") {
-                clean_text = clean_text.trim_start_matches("```").trim_end_matches("```").trim();
+                clean_text = clean_text
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim();
             }
 
             // 防呆處理：有時候 LLM 會在 JSON 外面再包一層或是前面有奇怪的話
             // 我們直接找第一個 { 和最後一個 }
             let start = clean_text.find('{').unwrap_or(0);
-            let end = clean_text.rfind('}').map(|i| i + 1).unwrap_or(clean_text.len());
+            let end = clean_text
+                .rfind('}')
+                .map(|i| i + 1)
+                .unwrap_or(clean_text.len());
             let final_clean_text = if start < end {
                 &clean_text[start..end]
             } else {
                 clean_text
             };
 
-
-            let parsed: serde_json::Value = serde_json::from_str(final_clean_text)
-                .map_err(|e| LLMError::Parse(format!("Failed to parse JSON string from LLM: {}\nRaw: {}", e, final_clean_text)))?;
+            let parsed: serde_json::Value =
+                serde_json::from_str(final_clean_text).map_err(|e| {
+                    LLMError::Parse(format!(
+                        "Failed to parse JSON string from LLM: {}\nRaw: {}",
+                        e, final_clean_text
+                    ))
+                })?;
             Ok(parsed)
         } else {
-            Err(LLMError::Parse("Unexpected API response format for JSON".to_string()))
+            Err(LLMError::Parse(
+                "Unexpected API response format for JSON".to_string(),
+            ))
         }
     }
 }

@@ -72,7 +72,10 @@ struct VectorState {
 impl VectorStore {
     /// Loads an existing index from disk or creates a new one.
     pub fn load_or_create(db_dir: &Path, dimensions: usize) -> Result<Self, String> {
-        let path = db_dir.join(".insightcap").join("vectors").join("default.bin");
+        let path = db_dir
+            .join(".insightcap")
+            .join("vectors")
+            .join("default.bin");
 
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -140,7 +143,11 @@ impl VectorStore {
                                 eprintln!("Vector store dimension mismatch at {:?}! Expected {}, found {}. Resetting...", path, dimensions, loaded_state.dimensions);
                             } else {
                                 state = loaded_state;
-                                println!("Loaded external vector store from {:?} with {} vectors.", path, state.vectors.len());
+                                println!(
+                                    "Loaded external vector store from {:?} with {} vectors.",
+                                    path,
+                                    state.vectors.len()
+                                );
                             }
                         }
                     }
@@ -236,7 +243,10 @@ impl VectorStore {
 
         // ── Store in cache ──
         drop(state);
-        self.search_cache.lock().unwrap().insert(cache_key, results.clone());
+        self.search_cache
+            .lock()
+            .unwrap()
+            .insert(cache_key, results.clone());
 
         Ok(results)
     }

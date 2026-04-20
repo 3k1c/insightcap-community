@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use chrono::Utc;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use uuid::Uuid;
-use chrono::Utc;
 
 use crate::providers::embedding::Embedder;
 use crate::providers::llm::openai::OpenAiProvider;
@@ -28,13 +28,21 @@ pub struct MemoryEngine {
 
 impl MemoryEngine {
     pub fn new(pool: SqlitePool, vector_store: VectorStore, embedder: Arc<dyn Embedder>) -> Self {
-        Self { pool, vector_store, embedder }
+        Self {
+            pool,
+            vector_store,
+            embedder,
+        }
     }
 
     // ─── 路徑 A：擷取入庫標籤提取（captures 固定 data）──────────────────────
 
     /// 對新 capture 執行輕量 tagger，只提取標籤，knowledge_type 固定 data
-    pub async fn tag_capture(&self, capture_id: &str, content: &str) -> Result<Vec<String>, String> {
+    pub async fn tag_capture(
+        &self,
+        capture_id: &str,
+        content: &str,
+    ) -> Result<Vec<String>, String> {
         let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
         let cfg = settings.ai_models.content_processor_llm;
         let api_key = cfg.api_key.clone().unwrap_or_default();
@@ -57,8 +65,18 @@ impl MemoryEngine {
             content = content
         );
 
-        let provider = OpenAiProvider::new(api_key, cfg.base_url, cfg.model.clone(), cfg.provider.clone());
-        let opts = LLMOptions { temperature: 0.1, max_tokens: 200, stream: false, think_mode: None };
+        let provider = OpenAiProvider::new(
+            api_key,
+            cfg.base_url,
+            cfg.model.clone(),
+            cfg.provider.clone(),
+        );
+        let opts = LLMOptions {
+            temperature: 0.1,
+            max_tokens: 200,
+            stream: false,
+            think_mode: None,
+        };
 
         // 15 秒超時
         let result = tokio::time::timeout(
@@ -70,7 +88,10 @@ impl MemoryEngine {
         let tags = match result {
             Ok(Ok(json)) => parse_tags_from_json(&json),
             _ => {
-                eprintln!("[MemoryEngine] tag_capture timeout/error for {}", capture_id);
+                eprintln!(
+                    "[MemoryEngine] tag_capture timeout/error for {}",
+                    capture_id
+                );
                 vec!["untagged".to_string()]
             }
         };
@@ -97,9 +118,20 @@ impl MemoryEngine {
         // 若無 LLM，降級為 data + pending_confirm
         let (knowledge_type, tags, trigger_context, confidence) =
             if api_key.is_empty() && cfg.provider != "ollama" {
-                ("data".to_string(), vec!["untagged".to_string()], String::new(), 0.5_f32)
+                (
+                    "data".to_string(),
+                    vec!["untagged".to_string()],
+                    String::new(),
+                    0.5_f32,
+                )
             } else {
-                self.deep_infer_knowledge_type(summary_text, &api_key, cfg.base_url.unwrap_or_default(), cfg.model).await
+                self.deep_infer_knowledge_type(
+                    summary_text,
+                    &api_key,
+                    cfg.base_url.unwrap_or_default(),
+                    cfg.model,
+                )
+                .await
             };
 
         let pending_confirm = if confidence < 0.75 { 1_i32 } else { 0_i32 };
@@ -110,7 +142,9 @@ impl MemoryEngine {
                 let chunk_id_hash = str_to_u64(conversation_id);
                 if let Ok(()) = self.vector_store.add_vector(chunk_id_hash, &vec).await {
                     let vs = self.vector_store.clone();
-                    tokio::spawn(async move { let _ = vs.save().await; });
+                    tokio::spawn(async move {
+                        let _ = vs.save().await;
+                    });
                     Some(chunk_id_hash as i64)
                 } else {
                     None
@@ -128,26 +162,29 @@ impl MemoryEngine {
 
         // 驗證 project_id 是否存在（sqlx 0.8 預設啟用 FK，不存在的 project_id 會觸發 constraint）
         let valid_project_id: Option<&str> = if let Some(pid) = project_id {
-            let exists: bool = sqlx::query_scalar::<_, i32>(
-                "SELECT COUNT(*) FROM projects WHERE id = ?"
-            )
-            .bind(pid)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0) > 0;
-            if exists { Some(pid) } else { None }
+            let exists: bool =
+                sqlx::query_scalar::<_, i32>("SELECT COUNT(*) FROM projects WHERE id = ?")
+                    .bind(pid)
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap_or(0)
+                    > 0;
+            if exists {
+                Some(pid)
+            } else {
+                None
+            }
         } else {
             None
         };
 
         // 查找是否已有此對話的 chunk
-        let existing_id: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM memory_chunks WHERE conversation_id = ? LIMIT 1"
-        )
-        .bind(conversation_id)
-        .fetch_optional(&self.pool)
-        .await
-        .unwrap_or(None);
+        let existing_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM memory_chunks WHERE conversation_id = ? LIMIT 1")
+                .bind(conversation_id)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or(None);
 
         let chunk_id = if let Some(eid) = existing_id {
             // 更新既有記錄
@@ -156,7 +193,7 @@ impl MemoryEngine {
                  project_id = ?, knowledge_type = ?, content = ?, tags = ?, \
                  trigger_context = ?, confidence = ?, pending_confirm = ?, \
                  vector_id = ?, updated_at = ? \
-                 WHERE id = ?"
+                 WHERE id = ?",
             )
             .bind(valid_project_id)
             .bind(&knowledge_type)
@@ -180,7 +217,7 @@ impl MemoryEngine {
                  (id, conversation_id, project_id, knowledge_type, content, tags, \
                   trigger_context, confidence, pending_confirm, vector_id, placed_by, \
                   created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?, ?)",
             )
             .bind(&chunk_id)
             .bind(conversation_id)
@@ -211,7 +248,7 @@ impl MemoryEngine {
     pub async fn confirm_memory_chunk(&self, chunk_id: &str, accept: bool) -> Result<(), String> {
         if accept {
             sqlx::query(
-                "UPDATE memory_chunks SET pending_confirm = 0, updated_at = ? WHERE id = ?"
+                "UPDATE memory_chunks SET pending_confirm = 0, updated_at = ? WHERE id = ?",
             )
             .bind(Utc::now().to_rfc3339())
             .bind(chunk_id)
@@ -263,8 +300,14 @@ impl MemoryEngine {
             content = content
         );
 
-        let provider = OpenAiProvider::new(api_key.to_string(), Some(base_url), model, String::new());
-        let opts = LLMOptions { temperature: 0.1, max_tokens: 300, stream: false, think_mode: None };
+        let provider =
+            OpenAiProvider::new(api_key.to_string(), Some(base_url), model, String::new());
+        let opts = LLMOptions {
+            temperature: 0.1,
+            max_tokens: 300,
+            stream: false,
+            think_mode: None,
+        };
 
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(20),
@@ -293,7 +336,12 @@ impl MemoryEngine {
             }
             _ => {
                 eprintln!("[MemoryEngine] deep_infer timeout/error，降級為 data");
-                ("data".to_string(), vec!["untagged".to_string()], String::new(), 0.5)
+                (
+                    "data".to_string(),
+                    vec!["untagged".to_string()],
+                    String::new(),
+                    0.5,
+                )
             }
         }
     }
@@ -340,7 +388,9 @@ fn str_to_u64(s: &str) -> u64 {
     // 嘗試解析為 UUID，取高 64 位 bytes
     if let Ok(uuid) = s.parse::<uuid::Uuid>() {
         let bytes = uuid.as_bytes();
-        u64::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
+        u64::from_be_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ])
     } else {
         // 非 UUID 格式：用 FNV-1a 64-bit（比 DefaultHasher 穩定）
         let mut hash: u64 = 14695981039346656037;

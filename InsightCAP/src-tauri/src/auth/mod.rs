@@ -1,10 +1,10 @@
 pub mod key_derivation;
-pub mod recovery;
 pub mod login_guard;
+pub mod recovery;
 
 pub use key_derivation::{derive_db_key, derive_recovery_key_new, derive_recovery_key_verify};
-pub use recovery::{RecoveryBin, write_recovery_bin, read_recovery_bin};
-pub use login_guard::{LoginGuard, load_login_guard, persist_login_guard};
+pub use login_guard::{load_login_guard, persist_login_guard, LoginGuard};
+pub use recovery::{read_recovery_bin, write_recovery_bin, RecoveryBin};
 
 use thiserror::Error;
 

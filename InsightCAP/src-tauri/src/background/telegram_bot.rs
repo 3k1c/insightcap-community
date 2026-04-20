@@ -1,4 +1,4 @@
-﻿//! Telegram Bot Polling Worker
+//! Telegram Bot Polling Worker
 //!
 //! 負責與 Telegram API 進行長輪詢 (long-polling)，
 //! 接收訊息並處理 RAG 查詢或指令。
@@ -15,8 +15,8 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::db::AppState;
-use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
 use crate::providers::llm::openai::OpenAiProvider;
+use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
 use crate::services::rag_engine::RagEngine;
 
 const POLL_TIMEOUT_SECS: u64 = 30;
@@ -140,9 +140,12 @@ async fn telegram_poll_loop(app: AppHandle) {
 
                 // 回應 callback
                 let _ = answer_callback_query(&bot_token, &cb_id).await;
-                if let Err(e) = handle_callback(&app, &bot_token, cb_chat_id, &cb_data, cb_msg_id).await {
+                if let Err(e) =
+                    handle_callback(&app, &bot_token, cb_chat_id, &cb_data, cb_msg_id).await
+                {
                     eprintln!("[TelegramBot] callback 處理失敗: {}", e);
-                    let _ = send_message(&bot_token, cb_chat_id, &format!("⚠️ 處理失敗：{}", e)).await;
+                    let _ =
+                        send_message(&bot_token, cb_chat_id, &format!("⚠️ 處理失敗：{}", e)).await;
                 }
                 continue;
             }
@@ -164,12 +167,17 @@ async fn telegram_poll_loop(app: AppHandle) {
 
             // 安全檢查：若未設定允許的用戶，則自動將第一個發送訊息的人加入白名單
             if allowed_ids.is_empty() {
-                println!("[TelegramBot] 偵測到第一個權限請求 User ID: {} (Chat ID: {})", user_id, chat_id);
+                println!(
+                    "[TelegramBot] 偵測到第一個權限請求 User ID: {} (Chat ID: {})",
+                    user_id, chat_id
+                );
                 let state = app.state::<AppState>();
                 if let Ok(mut settings) = crate::settings::store::get_settings(&state.db).await {
                     if !settings.telegram.allowed_user_ids.contains(&user_id) {
                         settings.telegram.allowed_user_ids.push(user_id);
-                        if let Err(e) = crate::settings::store::save_settings(&state.db, settings).await {
+                        if let Err(e) =
+                            crate::settings::store::save_settings(&state.db, settings).await
+                        {
                             eprintln!("[TelegramBot] 自動加入 User ID 失敗: {}", e);
                         } else {
                             allowed_ids.push(user_id);
@@ -181,7 +189,10 @@ async fn telegram_poll_loop(app: AppHandle) {
                     }
                 }
             } else if !allowed_ids.contains(&user_id) {
-                println!("[TelegramBot] 未授權的訪問 User ID: {} (Chat ID: {})", user_id, chat_id);
+                println!(
+                    "[TelegramBot] 未授權的訪問 User ID: {} (Chat ID: {})",
+                    user_id, chat_id
+                );
                 continue;
             }
 
@@ -203,21 +214,41 @@ async fn telegram_poll_loop(app: AppHandle) {
                 let photos = message["photo"].as_array().unwrap();
                 let largest = &photos[photos.len() - 1];
                 let file_id = largest["file_id"].as_str().unwrap_or("").to_string();
-                let label = if !caption.is_empty() { caption.clone() } else { text.clone() };
+                let label = if !caption.is_empty() {
+                    caption.clone()
+                } else {
+                    text.clone()
+                };
 
                 tokio::spawn(async move {
-                    if let Err(e) = handle_photo_capture(&app_clone, &token, chat_id, &file_id, &label).await {
+                    if let Err(e) =
+                        handle_photo_capture(&app_clone, &token, chat_id, &file_id, &label).await
+                    {
                         eprintln!("[TelegramBot] 圖片處理失敗: {}", e);
-                        let _ = send_message(&token, chat_id, &format!("❌ 圖片處理失敗：{}", e)).await;
+                        let _ =
+                            send_message(&token, chat_id, &format!("❌ 圖片處理失敗：{}", e)).await;
                     }
                 });
             } else if has_document {
-                let caption_clone = if !caption.is_empty() { caption.clone() } else { text.clone() };
+                let caption_clone = if !caption.is_empty() {
+                    caption.clone()
+                } else {
+                    text.clone()
+                };
 
                 tokio::spawn(async move {
-                    if let Err(e) = handle_document_capture(&app_clone, &token, chat_id, &document, &caption_clone).await {
+                    if let Err(e) = handle_document_capture(
+                        &app_clone,
+                        &token,
+                        chat_id,
+                        &document,
+                        &caption_clone,
+                    )
+                    .await
+                    {
                         eprintln!("[TelegramBot] 文件處理失敗: {}", e);
-                        let _ = send_message(&token, chat_id, &format!("❌ 文件處理失敗：{}", e)).await;
+                        let _ =
+                            send_message(&token, chat_id, &format!("❌ 文件處理失敗：{}", e)).await;
                     }
                 });
             } else {
@@ -238,7 +269,12 @@ async fn telegram_poll_loop(app: AppHandle) {
 }
 
 /// 處理傳入訊息：指令、URL 擷取或 RAG 查詢
-async fn handle_message(app: &AppHandle, bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
+async fn handle_message(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    text: &str,
+) -> Result<(), String> {
     // 指令處理
     if text.starts_with('/') {
         return handle_command(app, bot_token, chat_id, text).await;
@@ -280,26 +316,38 @@ fn classify_url_label(url: &str) -> &'static str {
 }
 
 /// 將 URL 擷取請求存入 inbox
-async fn handle_url_capture(app: &AppHandle, bot_token: &str, chat_id: i64, url: &str) -> Result<(), String> {
+async fn handle_url_capture(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    url: &str,
+) -> Result<(), String> {
     let label = classify_url_label(url);
-    send_message(bot_token, chat_id, &format!("⏳ 偵測到 {} 連結，排程擷取中...", label)).await?;
+    send_message(
+        bot_token,
+        chat_id,
+        &format!("⏳ 偵測到 {} 連結，排程擷取中...", label),
+    )
+    .await?;
 
     let state = app.state::<AppState>();
     let pool = &state.db;
 
     // 檢查是否已存在
-    let existing: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM sources WHERE url = ? AND type = 'url' LIMIT 1"
-    )
-    .bind(url)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT id FROM sources WHERE url = ? AND type = 'url' LIMIT 1")
+            .bind(url)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     if existing.is_some() {
-        return send_message(bot_token, chat_id,
-            &format!("💡 該 {} 連結已在知識庫中，跳過重複擷取。", label)
-        ).await;
+        return send_message(
+            bot_token,
+            chat_id,
+            &format!("💡 該 {} 連結已在知識庫中，跳過重複擷取。", label),
+        )
+        .await;
     }
 
     let inbox_id = Uuid::now_v7().to_string();
@@ -318,14 +366,31 @@ async fn handle_url_capture(app: &AppHandle, bot_token: &str, chat_id: i64, url:
     .await
     .map_err(|e| format!("寫入 inbox 失敗: {}", e))?;
 
-    send_message(bot_token, chat_id,
-        &format!("✅ {} 擷取任務已建立，完成後可使用 /recent 查看結果。", label)
-    ).await
+    send_message(
+        bot_token,
+        chat_id,
+        &format!(
+            "✅ {} 擷取任務已建立，完成後可使用 /recent 查看結果。",
+            label
+        ),
+    )
+    .await
 }
 
 /// 處理 Bot 指令
-async fn handle_command(app: &AppHandle, bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
-    let cmd = text.split_whitespace().next().unwrap_or("").split('@').next().unwrap_or("");
+async fn handle_command(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    text: &str,
+) -> Result<(), String> {
+    let cmd = text
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .split('@')
+        .next()
+        .unwrap_or("");
 
     match cmd {
         "/start" => {
@@ -367,14 +432,31 @@ async fn handle_command(app: &AppHandle, bot_token: &str, chat_id: i64, text: &s
 }
 
 /// 處理照片擷取並存入 inbox 待 OCR 處理
-async fn handle_photo_capture(app: &AppHandle, bot_token: &str, chat_id: i64, file_id: &str, caption: &str) -> Result<(), String> {
-    send_message(bot_token, chat_id, "📸 已收到照片，正在下載並排程 OCR 解析...").await?;
+async fn handle_photo_capture(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    file_id: &str,
+    caption: &str,
+) -> Result<(), String> {
+    send_message(
+        bot_token,
+        chat_id,
+        "📸 已收到照片，正在下載並排程 OCR 解析...",
+    )
+    .await?;
 
     let client = Client::new();
 
     // 1. 獲取 file_path
-    let get_file_url = format!("https://api.telegram.org/bot{}/getFile?file_id={}", bot_token, file_id);
-    let resp = client.get(&get_file_url).send().await
+    let get_file_url = format!(
+        "https://api.telegram.org/bot{}/getFile?file_id={}",
+        bot_token, file_id
+    );
+    let resp = client
+        .get(&get_file_url)
+        .send()
+        .await
         .map_err(|e| format!("getFile 失敗: {}", e))?;
     let body: Value = resp.json().await.map_err(|e| e.to_string())?;
 
@@ -382,15 +464,23 @@ async fn handle_photo_capture(app: &AppHandle, bot_token: &str, chat_id: i64, fi
         return Err(format!("getFile API 錯誤: {}", body));
     }
 
-    let file_path = body["result"]["file_path"].as_str()
+    let file_path = body["result"]["file_path"]
+        .as_str()
         .ok_or_else(|| "無法獲取 file_path".to_string())?
         .to_string();
 
     // 2. 下載照片
-    let download_url = format!("https://api.telegram.org/file/bot{}/{}", bot_token, file_path);
-    let image_bytes: Vec<u8> = client.get(&download_url).send().await
+    let download_url = format!(
+        "https://api.telegram.org/file/bot{}/{}",
+        bot_token, file_path
+    );
+    let image_bytes: Vec<u8> = client
+        .get(&download_url)
+        .send()
+        .await
         .map_err(|e| format!("下載照片失敗: {}", e))?
-        .bytes().await
+        .bytes()
+        .await
         .map_err(|e| format!("解析照片數據失敗: {}", e))?
         .to_vec();
 
@@ -418,56 +508,110 @@ async fn handle_photo_capture(app: &AppHandle, bot_token: &str, chat_id: i64, fi
     .await
     .map_err(|e| format!("寫入 inbox 失敗: {}", e))?;
 
-    send_message(bot_token, chat_id,
-        "✅ 照片已存入，OCR 解析完成後可使用 /recent 查看。"
-    ).await
+    send_message(
+        bot_token,
+        chat_id,
+        "✅ 照片已存入，OCR 解析完成後可使用 /recent 查看。",
+    )
+    .await
 }
 
 /// 處理文檔擷取（PDF, DOCX, etc.）
-async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64, document: &Value, caption: &str) -> Result<(), String> {
-    let file_name = document["file_name"].as_str().unwrap_or("document").to_string();
+async fn handle_document_capture(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    document: &Value,
+    caption: &str,
+) -> Result<(), String> {
+    let file_name = document["file_name"]
+        .as_str()
+        .unwrap_or("document")
+        .to_string();
     let mime_type = document["mime_type"].as_str().unwrap_or("").to_string();
-    let file_id = document["file_id"].as_str()
+    let file_id = document["file_id"]
+        .as_str()
         .ok_or_else(|| "遺失 file_id".to_string())?
         .to_string();
     let file_size = document["file_size"].as_i64().unwrap_or(0);
 
     // Telegram Bot API 限制下載 20MB
     if file_size > 20 * 1024 * 1024 {
-        return send_message(bot_token, chat_id,
-            "⚠️ 文件過大 (超過 20MB)，Bot 模式無法下載，請手動上傳。"
-        ).await;
+        return send_message(
+            bot_token,
+            chat_id,
+            "⚠️ 文件過大 (超過 20MB)，Bot 模式無法下載，請手動上傳。",
+        )
+        .await;
     }
 
     let ext = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
     let is_image = mime_type.starts_with("image/")
         || matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif");
 
-    let is_supported_doc = matches!(ext.as_str(),
-        "txt" | "log" | "md" | "pdf" | "docx" | "xlsx" | "pptx" | "csv"
-        | "rtf" | "epub" | "html" | "htm"
-        | "py" | "js" | "ts" | "tsx" | "jsx" | "rs" | "go" | "java"
-        | "cpp" | "c" | "h" | "rb" | "php"
+    let is_supported_doc = matches!(
+        ext.as_str(),
+        "txt"
+            | "log"
+            | "md"
+            | "pdf"
+            | "docx"
+            | "xlsx"
+            | "pptx"
+            | "csv"
+            | "rtf"
+            | "epub"
+            | "html"
+            | "htm"
+            | "py"
+            | "js"
+            | "ts"
+            | "tsx"
+            | "jsx"
+            | "rs"
+            | "go"
+            | "java"
+            | "cpp"
+            | "c"
+            | "h"
+            | "rb"
+            | "php"
     );
 
     if !is_image && !is_supported_doc {
-        return send_message(bot_token, chat_id,
+        return send_message(
+            bot_token,
+            chat_id,
             &format!(
                 "❌ 不支援的檔案格式: {}\n\
                  目前僅支援 PDF, DOCX, Office 文檔、純文字與常見程式碼檔案。",
                 ext
-            )
-        ).await;
+            ),
+        )
+        .await;
     }
 
-    let label = if is_image { "🖼️ 圖片文檔" } else { "📄 文檔" };
-    send_message(bot_token, chat_id,
-        &format!("⏳ 偵測到{}：{}，下載中...", label, file_name)
-    ).await?;
+    let label = if is_image {
+        "🖼️ 圖片文檔"
+    } else {
+        "📄 文檔"
+    };
+    send_message(
+        bot_token,
+        chat_id,
+        &format!("⏳ 偵測到{}：{}，下載中...", label, file_name),
+    )
+    .await?;
 
     let client = Client::new();
-    let get_file_url = format!("https://api.telegram.org/bot{}/getFile?file_id={}", bot_token, file_id);
-    let resp = client.get(&get_file_url).send().await
+    let get_file_url = format!(
+        "https://api.telegram.org/bot{}/getFile?file_id={}",
+        bot_token, file_id
+    );
+    let resp = client
+        .get(&get_file_url)
+        .send()
+        .await
         .map_err(|e| format!("getFile 失敗: {}", e))?;
     let body: Value = resp.json().await.map_err(|e| e.to_string())?;
 
@@ -475,14 +619,22 @@ async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64,
         return Err(format!("getFile API 錯誤: {}", body));
     }
 
-    let remote_path = body["result"]["file_path"].as_str()
+    let remote_path = body["result"]["file_path"]
+        .as_str()
         .ok_or_else(|| "無法獲取檔案路徑".to_string())?
         .to_string();
 
-    let download_url = format!("https://api.telegram.org/file/bot{}/{}", bot_token, remote_path);
-    let file_bytes: Vec<u8> = client.get(&download_url).send().await
+    let download_url = format!(
+        "https://api.telegram.org/file/bot{}/{}",
+        bot_token, remote_path
+    );
+    let file_bytes: Vec<u8> = client
+        .get(&download_url)
+        .send()
+        .await
         .map_err(|e| format!("下載失敗: {}", e))?
-        .bytes().await
+        .bytes()
+        .await
         .map_err(|e| format!("數據解析失敗: {}", e))?
         .to_vec();
 
@@ -491,7 +643,11 @@ async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64,
     let inbox_id = Uuid::now_v7().to_string();
     let now = Utc::now().to_rfc3339();
     let title = if !caption.is_empty() {
-        format!("{} ({})", caption.chars().take(60).collect::<String>(), file_name)
+        format!(
+            "{} ({})",
+            caption.chars().take(60).collect::<String>(),
+            file_name
+        )
     } else {
         file_name.clone()
     };
@@ -509,15 +665,13 @@ async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64,
         .await
         .map_err(|e| format!("寫入 inbox 失敗: {}", e))?;
 
-        send_message(bot_token, chat_id,
-            "✅ 圖片已存入並排程解析。"
-        ).await
+        send_message(bot_token, chat_id, "✅ 圖片已存入並排程解析。").await
     } else {
         let temp_path = std::env::temp_dir().join(format!("tg_{}_{}", inbox_id, file_name));
-        std::fs::write(&temp_path, &file_bytes)
-            .map_err(|e| format!("寫入臨時檔案失敗: {}", e))?;
+        std::fs::write(&temp_path, &file_bytes).map_err(|e| format!("寫入臨時檔案失敗: {}", e))?;
 
-        let settings = crate::settings::store::get_settings(pool).await
+        let settings = crate::settings::store::get_settings(pool)
+            .await
             .map_err(|e| e.to_string())?;
         let vision_config = crate::providers::llm::vision::VisionConfig::from_settings(
             &settings.ai_models.vision_model,
@@ -527,13 +681,15 @@ async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64,
             &settings.knowledge.kb_path,
             temp_path.to_str().unwrap_or(""),
             vision_config.as_ref(),
-        ).await;
+        )
+        .await;
 
         let _ = std::fs::remove_file(&temp_path);
 
         let extracted_text = parse_result
             .map(|doc| {
-                doc.chunks.iter()
+                doc.chunks
+                    .iter()
                     .map(|c| c.content.as_str())
                     .collect::<Vec<_>>()
                     .join("\n\n")
@@ -541,9 +697,12 @@ async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64,
             .map_err(|e| format!("解析文檔 {} 失敗: {}", file_name, e))?;
 
         if extracted_text.trim().is_empty() {
-            return send_message(bot_token, chat_id,
-                &format!("⚠️ 文件 {} 解析後內容為空，跳過擷取。", file_name)
-            ).await;
+            return send_message(
+                bot_token,
+                chat_id,
+                &format!("⚠️ 文件 {} 解析後內容為空，跳過擷取。", file_name),
+            )
+            .await;
         }
 
         sqlx::query(
@@ -558,14 +717,21 @@ async fn handle_document_capture(app: &AppHandle, bot_token: &str, chat_id: i64,
         .await
         .map_err(|e| format!("寫入 inbox 失敗: {}", e))?;
 
-        send_message(bot_token, chat_id,
-            &format!("✅ 文檔 {} 內容已提取並存入知識庫。", file_name)
-        ).await
+        send_message(
+            bot_token,
+            chat_id,
+            &format!("✅ 文檔 {} 內容已提取並存入知識庫。", file_name),
+        )
+        .await
     }
 }
 
 /// /new 開啟新對話並自動設置上下文
-async fn handle_new_conversation(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result<(), String> {
+async fn handle_new_conversation(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
 
@@ -585,35 +751,51 @@ async fn handle_new_conversation(app: &AppHandle, bot_token: &str, chat_id: i64)
     // 紀錄此 chat 的當前對話
     set_telegram_context(pool, chat_id, &id).await?;
 
-    send_message(bot_token, chat_id,
-        "🆕 已為您開啟新對話，現在可以直接輸入問題囉！"
-    ).await
+    send_message(
+        bot_token,
+        chat_id,
+        "🆕 已為您開啟新對話，現在可以直接輸入問題囉！",
+    )
+    .await
 }
 
 /// /list 顯示最近對話列表（Inline Keyboard）
-async fn handle_list_conversations(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result<(), String> {
+async fn handle_list_conversations(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
 
     let rows = sqlx::query(
         "SELECT id, title, updated_at FROM conversations \
-         WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 10"
+         WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 10",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     if rows.is_empty() {
-        return send_message(bot_token, chat_id, "📭 目前沒有活躍對話。輸入 /new 開啟新對話。").await;
+        return send_message(
+            bot_token,
+            chat_id,
+            "📭 目前沒有活躍對話。輸入 /new 開啟新對話。",
+        )
+        .await;
     }
 
-    let current_conv = get_telegram_context(pool, chat_id).await.unwrap_or_default();
+    let current_conv = get_telegram_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
 
     // 構造 Inline Keyboard：左側選擇，右側封存
     let mut keyboard: Vec<Value> = Vec::new();
     for row in &rows {
         let id: String = row.get("id");
-        let title: String = row.try_get("title").unwrap_or_else(|_| "未命名".to_string());
+        let title: String = row
+            .try_get("title")
+            .unwrap_or_else(|_| "未命名".to_string());
         let marker = if id == current_conv { " ✅" } else { "" };
         keyboard.push(json!([
             {
@@ -629,7 +811,8 @@ async fn handle_list_conversations(app: &AppHandle, bot_token: &str, chat_id: i6
 
     let client = Client::new();
     let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
-    let _ = client.post(&url)
+    let _ = client
+        .post(&url)
         .json(&json!({
             "chat_id": chat_id,
             "text": "💬 請選擇對話或將其封存：",
@@ -645,18 +828,23 @@ async fn handle_list_conversations(app: &AppHandle, bot_token: &str, chat_id: i6
 }
 
 /// 處理 Inline Keyboard 回傳
-async fn handle_callback(app: &AppHandle, bot_token: &str, chat_id: i64, data: &str, keyboard_msg_id: Option<i64>) -> Result<(), String> {
+async fn handle_callback(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    data: &str,
+    keyboard_msg_id: Option<i64>,
+) -> Result<(), String> {
     if let Some(conv_id) = data.strip_prefix("conv_") {
         let state = app.state::<AppState>();
         let pool = &state.db;
 
-        let title: Option<String> = sqlx::query_scalar(
-            "SELECT title FROM conversations WHERE id = ?"
-        )
-        .bind(conv_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let title: Option<String> =
+            sqlx::query_scalar("SELECT title FROM conversations WHERE id = ?")
+                .bind(conv_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         match title {
             Some(t) => {
@@ -668,21 +856,18 @@ async fn handle_callback(app: &AppHandle, bot_token: &str, chat_id: i64, data: &
                     send_message(bot_token, chat_id, &reply).await
                 }
             }
-            None => {
-                send_message(bot_token, chat_id, "❌ 該對話已不存在。").await
-            }
+            None => send_message(bot_token, chat_id, "❌ 該對話已不存在。").await,
         }
     } else if let Some(conv_id) = data.strip_prefix("arch_") {
         let state = app.state::<AppState>();
         let pool = &state.db;
 
-        let title: Option<String> = sqlx::query_scalar(
-            "SELECT title FROM conversations WHERE id = ? AND is_archived = 0"
-        )
-        .bind(conv_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let title: Option<String> =
+            sqlx::query_scalar("SELECT title FROM conversations WHERE id = ? AND is_archived = 0")
+                .bind(conv_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         let Some(t) = title else {
             return send_message(bot_token, chat_id, "⚠️ 該對話已封存或不存在。").await;
@@ -696,7 +881,9 @@ async fn handle_callback(app: &AppHandle, bot_token: &str, chat_id: i64, data: &
             .map_err(|e| e.to_string())?;
 
         // 若封存的是當前使用的對話，清除或切換上下文
-        let current = get_telegram_context(pool, chat_id).await.unwrap_or_default();
+        let current = get_telegram_context(pool, chat_id)
+            .await
+            .unwrap_or_default();
         if current == conv_id {
             let next: Option<String> = sqlx::query_scalar(
                 "SELECT id FROM conversations WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 1"
@@ -722,13 +909,12 @@ async fn handle_callback(app: &AppHandle, bot_token: &str, chat_id: i64, data: &
         let state = app.state::<AppState>();
         let pool = &state.db;
 
-        let name: Option<String> = sqlx::query_scalar(
-            "SELECT name FROM projects WHERE id = ? AND is_archived = 0"
-        )
-        .bind(proj_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM projects WHERE id = ? AND is_archived = 0")
+                .bind(proj_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         let Some(n) = name else {
             return send_message(bot_token, chat_id, "⚠️ 該專案不存在。").await;
@@ -775,7 +961,11 @@ async fn handle_callback(app: &AppHandle, bot_token: &str, chat_id: i64, data: &
 }
 
 /// /reminders 顯示活動中的提醒事項
-async fn handle_list_reminders(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result<(), String> {
+async fn handle_list_reminders(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let engine = crate::services::reminder_engine::ReminderEngine::new(state.db.clone());
     let reminders: Vec<Value> = engine.get_active_reminders().await?;
@@ -791,7 +981,11 @@ async fn handle_list_reminders(app: &AppHandle, bot_token: &str, chat_id: i64) -
         let title = item["title"].as_str().unwrap_or("未命名內容");
         let date = item["eventDate"].as_str().unwrap_or("未定日期");
         let time = item["eventTime"].as_str().unwrap_or("");
-        let time_display = if time.is_empty() { date.to_string() } else { format!("{} {}", date, time) };
+        let time_display = if time.is_empty() {
+            date.to_string()
+        } else {
+            format!("{} {}", date, time)
+        };
         let event_type = match item["eventType"].as_str().unwrap_or("") {
             "meeting" => "📅 會議",
             "deliverable" => "📦 交付物",
@@ -801,7 +995,7 @@ async fn handle_list_reminders(app: &AppHandle, bot_token: &str, chat_id: i64) -
         };
 
         let msg = format!("{}\n📌 {}\n⏰ {}", event_type, title, time_display);
-        
+
         let keyboard = json!([
             [
                 { "text": "✅ 已完成", "callback_data": format!("rmd_done_{}", id) },
@@ -811,7 +1005,8 @@ async fn handle_list_reminders(app: &AppHandle, bot_token: &str, chat_id: i64) -
 
         let client = Client::new();
         let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
-        let _ = client.post(&url)
+        let _ = client
+            .post(&url)
             .json(&json!({
                 "chat_id": chat_id,
                 "text": msg,
@@ -828,10 +1023,16 @@ async fn handle_list_reminders(app: &AppHandle, bot_token: &str, chat_id: i64) -
 }
 
 /// 編輯訊息文本（用於動態更新或 Inline Keyboard 回應）
-async fn edit_message_text(bot_token: &str, chat_id: i64, message_id: i64, text: &str) -> Result<(), String> {
+async fn edit_message_text(
+    bot_token: &str,
+    chat_id: i64,
+    message_id: i64,
+    text: &str,
+) -> Result<(), String> {
     let client = Client::new();
     let url = format!("https://api.telegram.org/bot{}/editMessageText", bot_token);
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .json(&json!({
             "chat_id": chat_id,
             "message_id": message_id,
@@ -847,7 +1048,8 @@ async fn edit_message_text(bot_token: &str, chat_id: i64, message_id: i64, text:
     if body["ok"].as_bool() != Some(true) {
         let desc = body["description"].as_str().unwrap_or("");
         if desc.contains("parse") || desc.contains("markdown") {
-            let _ = client.post(&url)
+            let _ = client
+                .post(&url)
                 .json(&json!({
                     "chat_id": chat_id,
                     "message_id": message_id,
@@ -864,7 +1066,8 @@ async fn edit_message_text(bot_token: &str, chat_id: i64, message_id: i64, text:
 async fn send_chat_action(bot_token: &str, chat_id: i64) {
     let client = Client::new();
     let url = format!("https://api.telegram.org/bot{}/sendChatAction", bot_token);
-    let _ = client.post(&url)
+    let _ = client
+        .post(&url)
         .json(&json!({
             "chat_id": chat_id,
             "action": "typing",
@@ -876,8 +1079,12 @@ async fn send_chat_action(bot_token: &str, chat_id: i64) {
 /// 回應 callback_query
 async fn answer_callback_query(bot_token: &str, callback_query_id: &str) -> Result<(), String> {
     let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/answerCallbackQuery", bot_token);
-    let _ = client.post(&url)
+    let url = format!(
+        "https://api.telegram.org/bot{}/answerCallbackQuery",
+        bot_token
+    );
+    let _ = client
+        .post(&url)
         .json(&json!({ "callback_query_id": callback_query_id }))
         .send()
         .await;
@@ -891,19 +1098,30 @@ async fn handle_status(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
 
     // 數據統計
     let capture_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM captures")
-        .fetch_one(pool).await.unwrap_or(0);
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
     let source_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sources")
-        .fetch_one(pool).await.unwrap_or(0);
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
-    let conv_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM conversations WHERE is_archived = 0")
-        .fetch_one(pool).await.unwrap_or(0);
+    let conv_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM conversations WHERE is_archived = 0")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
     let chunk_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_chunks")
-        .fetch_one(pool).await.unwrap_or(0);
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
     // 資料庫大小
-    let settings = crate::settings::store::get_settings(pool).await.map_err(|e| e.to_string())?;
+    let settings = crate::settings::store::get_settings(pool)
+        .await
+        .map_err(|e| e.to_string())?;
     let kb_size = dir_size_mb(&settings.knowledge.kb_path);
 
     let msg = format!(
@@ -921,7 +1139,12 @@ async fn handle_status(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
 }
 
 /// /rename 重命名當前對話
-async fn handle_rename_conversation(app: &AppHandle, bot_token: &str, chat_id: i64, new_name: &str) -> Result<(), String> {
+async fn handle_rename_conversation(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    new_name: &str,
+) -> Result<(), String> {
     if new_name.is_empty() {
         return send_message(bot_token, chat_id, "⚠️ 請輸入新的名稱：/rename <名稱>").await;
     }
@@ -929,9 +1152,16 @@ async fn handle_rename_conversation(app: &AppHandle, bot_token: &str, chat_id: i
     let state = app.state::<AppState>();
     let pool = &state.db;
 
-    let conv_id = get_telegram_context(pool, chat_id).await.unwrap_or_default();
+    let conv_id = get_telegram_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
     if conv_id.is_empty() {
-        return send_message(bot_token, chat_id, "⚠️ 當前沒有選定的對話，請使用 /new 建立新對話。").await;
+        return send_message(
+            bot_token,
+            chat_id,
+            "⚠️ 當前沒有選定的對話，請使用 /new 建立新對話。",
+        )
+        .await;
     }
 
     let now = Utc::now().to_rfc3339();
@@ -943,7 +1173,12 @@ async fn handle_rename_conversation(app: &AppHandle, bot_token: &str, chat_id: i
         .await
         .map_err(|e| e.to_string())?;
 
-    send_message(bot_token, chat_id, &format!("✅ 對話已重命名為：{}", new_name)).await
+    send_message(
+        bot_token,
+        chat_id,
+        &format!("✅ 對話已重命名為：{}", new_name),
+    )
+    .await
 }
 
 /// /recent 查看最近擷取的內容
@@ -953,7 +1188,7 @@ async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
 
     let rows = sqlx::query(
         "SELECT title, type, captured_at FROM sources \
-         ORDER BY captured_at DESC LIMIT 10"
+         ORDER BY captured_at DESC LIMIT 10",
     )
     .fetch_all(pool)
     .await
@@ -965,7 +1200,9 @@ async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
 
     let mut msg = String::from("⏳ 最近擷取的內容：\n\n");
     for row in &rows {
-        let title: String = row.try_get("title").unwrap_or_else(|_| "未命名".to_string());
+        let title: String = row
+            .try_get("title")
+            .unwrap_or_else(|_| "未命名".to_string());
         let source_type: String = row.try_get("type").unwrap_or_else(|_| "text".to_string());
         let captured_at: String = row.get("captured_at");
         let type_emoji = match source_type.as_str() {
@@ -975,25 +1212,36 @@ async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
             "editor" => "📝",
             _ => "ℹ️",
         };
-        msg.push_str(&format!("{} {} @ {}\n", type_emoji, title, &captured_at[..10]));
+        msg.push_str(&format!(
+            "{} {} @ {}\n",
+            type_emoji,
+            title,
+            &captured_at[..10]
+        ));
     }
 
     send_message(bot_token, chat_id, &msg).await
 }
 
 /// /project 顯示專案列表（Inline Keyboard）
-async fn handle_list_projects(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result<(), String> {
+async fn handle_list_projects(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
 
     let rows = sqlx::query(
-        "SELECT id, name FROM projects WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 15"
+        "SELECT id, name FROM projects WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 15",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let current_proj = get_telegram_project_context(pool, chat_id).await.unwrap_or_default();
+    let current_proj = get_telegram_project_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
 
     let mut keyboard: Vec<Value> = Vec::new();
     for row in &rows {
@@ -1022,7 +1270,8 @@ async fn handle_list_projects(app: &AppHandle, bot_token: &str, chat_id: i64) ->
 
     let client = Client::new();
     let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
-    let _ = client.post(&url)
+    let _ = client
+        .post(&url)
         .json(&json!({
             "chat_id": chat_id,
             "text": text,
@@ -1036,9 +1285,19 @@ async fn handle_list_projects(app: &AppHandle, bot_token: &str, chat_id: i64) ->
 }
 
 /// /newproject <名稱> 建立新專案
-async fn handle_new_project(app: &AppHandle, bot_token: &str, chat_id: i64, name: &str) -> Result<(), String> {
+async fn handle_new_project(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    name: &str,
+) -> Result<(), String> {
     if name.is_empty() {
-        return send_message(bot_token, chat_id, "⚠️ 請輸入專案名稱，例如：/newproject 學習筆記").await;
+        return send_message(
+            bot_token,
+            chat_id,
+            "⚠️ 請輸入專案名稱，例如：/newproject 學習筆記",
+        )
+        .await;
     }
 
     let state = app.state::<AppState>();
@@ -1068,29 +1327,38 @@ async fn handle_new_project(app: &AppHandle, bot_token: &str, chat_id: i64, name
     // 自動切換至新建立的專案
     set_telegram_project_context(pool, chat_id, &id).await?;
 
-    send_message(bot_token, chat_id,
-        &format!("✅ 專案「{}」已建立，並已自動切換為當前工作專案。", name)
-    ).await
+    send_message(
+        bot_token,
+        chat_id,
+        &format!("✅ 專案「{}」已建立，並已自動切換為當前工作專案。", name),
+    )
+    .await
 }
 
 /// RAG 查詢處理
-async fn handle_rag_query(app: &AppHandle, bot_token: &str, chat_id: i64, query: &str) -> Result<(), String> {
+async fn handle_rag_query(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    query: &str,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
 
     // 獲取當前對話上下文
-    let conv_id_raw = get_telegram_context(pool, chat_id).await.unwrap_or_default();
+    let conv_id_raw = get_telegram_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
     let mut conv_id = conv_id_raw.clone();
 
     // 檢查對話是否存在
     if !conv_id.is_empty() {
-        let exists: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM conversations WHERE id = ?"
-        )
-        .bind(&conv_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT id FROM conversations WHERE id = ?")
+                .bind(&conv_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         if exists.is_none() {
             conv_id = "".to_string();
@@ -1120,34 +1388,39 @@ async fn handle_rag_query(app: &AppHandle, bot_token: &str, chat_id: i64, query:
     send_chat_action(bot_token, chat_id).await;
 
     // 獲取對話標題
-    let conv_title: String = sqlx::query_scalar(
-        "SELECT title FROM conversations WHERE id = ?"
-    )
-    .bind(&conv_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .unwrap_or_else(|| "對話".to_string());
+    let conv_title: String = sqlx::query_scalar("SELECT title FROM conversations WHERE id = ?")
+        .bind(&conv_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "對話".to_string());
 
     // 獲取最近對話歷史
     let history = get_conversation_history(pool, &conv_id, 10).await?;
 
     // 獲取對話摘要
-    let summary: Option<String> = sqlx::query_scalar(
-        "SELECT summary FROM conversations WHERE id = ?"
-    )
-    .bind(&conv_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .and_then(|s: String| if s.is_empty() { None } else { Some(s) });
+    let summary: Option<String> =
+        sqlx::query_scalar("SELECT summary FROM conversations WHERE id = ?")
+            .bind(&conv_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .and_then(|s: String| if s.is_empty() { None } else { Some(s) });
 
     // 獲取當前專案設定
-    let project_id = get_telegram_project_context(pool, chat_id).await.unwrap_or_default();
-    let project_id_opt = if project_id.is_empty() { None } else { Some(project_id.clone()) };
+    let project_id = get_telegram_project_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
+    let project_id_opt = if project_id.is_empty() {
+        None
+    } else {
+        Some(project_id.clone())
+    };
 
     // 獲取設定
-    let settings = crate::settings::store::get_settings(pool).await.map_err(|e| e.to_string())?;
+    let settings = crate::settings::store::get_settings(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // 構造 RAG prompt
     let engine = RagEngine::new(
@@ -1156,26 +1429,38 @@ async fn handle_rag_query(app: &AppHandle, bot_token: &str, chat_id: i64, query:
         state.embedder.clone(),
     );
 
-    let telegram_override = settings.telegram.prompt_instruction_override.as_ref().filter(|s| !s.is_empty()).cloned();
+    let telegram_override = settings
+        .telegram
+        .prompt_instruction_override
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .cloned();
 
-    let (base_prompt, history_vec, _citation_sources, _context_hints) = engine.build_prompt(
-        query,
-        history,
-        summary.clone(),
-        project_id_opt.clone(),
-        None,
-        None,
-        true,
-        None,
-        telegram_override.clone(),
-    ).await?;
+    let (base_prompt, history_vec, _citation_sources, _context_hints) = engine
+        .build_prompt(
+            query,
+            history,
+            summary.clone(),
+            project_id_opt.clone(),
+            None,
+            None,
+            true,
+            None,
+            telegram_override.clone(),
+        )
+        .await?;
 
     let cfg = settings.ai_models.chat_llm;
     let api_key = cfg.api_key.clone().unwrap_or_default();
     let is_ollama = cfg.provider == "ollama";
 
     if api_key.is_empty() && !is_ollama {
-        return send_message(bot_token, chat_id, "⚠️ 未設定 AI 模型，請於主程式設定 AI 連結。").await;
+        return send_message(
+            bot_token,
+            chat_id,
+            "⚠️ 未設定 AI 模型，請於主程式設定 AI 連結。",
+        )
+        .await;
     }
 
     let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model, cfg.provider);
@@ -1186,48 +1471,83 @@ async fn handle_rag_query(app: &AppHandle, bot_token: &str, chat_id: i64, query:
         let token_str = bot_token.to_string();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         const DRAFT_ID: i64 = 1;
+        let initial_draft = format!("{}{}", prefix, "⏳ 生成中...");
+        let draft_message_id = send_message_draft(&token_str, chat_id, DRAFT_ID, &initial_draft)
+            .await
+            .ok();
 
         let bot_token_draft = token_str.clone();
         let prefix_draft = prefix.clone();
+        let has_draft = draft_message_id.is_some();
         let draft_task = tokio::spawn(async move {
             let mut accumulated = prefix_draft;
             let mut last_sent = std::time::Instant::now();
             let mut overflow = false;
 
             while let Some(chunk) = rx.recv().await {
-                if overflow { continue; }
+                if overflow {
+                    continue;
+                }
                 accumulated.push_str(&chunk);
 
                 if accumulated.len() > TELEGRAM_MSG_LIMIT {
                     overflow = true;
-                    let _ = send_message_draft(&bot_token_draft, chat_id, DRAFT_ID, "⚠️ 訊息過長，已截斷。").await;
+                    if has_draft {
+                        if let Some(mid) = draft_message_id {
+                            let _ = edit_message_text(
+                                &bot_token_draft,
+                                chat_id,
+                                mid,
+                                "⚠️ 訊息過長，改以分段訊息發送。",
+                            )
+                            .await;
+                        }
+                    }
                     continue;
                 }
 
-                if last_sent.elapsed().as_millis() as u64 >= DRAFT_THROTTLE_MS {
-                    let _ = send_message_draft(&bot_token_draft, chat_id, DRAFT_ID, &accumulated).await;
+                if has_draft && last_sent.elapsed().as_millis() as u64 >= DRAFT_THROTTLE_MS {
+                    if let Some(mid) = draft_message_id {
+                        let _ =
+                            edit_message_text(&bot_token_draft, chat_id, mid, &accumulated).await;
+                    }
                     last_sent = std::time::Instant::now();
                 }
             }
 
-            if !overflow {
-                let _ = send_message_draft(&bot_token_draft, chat_id, DRAFT_ID, &accumulated).await;
+            if has_draft && !overflow {
+                if let Some(mid) = draft_message_id {
+                    let _ = edit_message_text(&bot_token_draft, chat_id, mid, &accumulated).await;
+                }
             }
+            overflow
         });
 
-        let stream_result = llm.complete_stream(
-            &base_prompt,
-            &history_vec,
-            query,
-            LLMOptions { think_mode: Some(false), ..LLMOptions::default() },
-            move |token| {
-                if let StreamToken::Content(c) = token {
-                    let _ = tx.send(c);
-                }
-            },
-        ).await.map_err(|e| e.to_string())?;
+        let stream_result = llm
+            .complete_stream(
+                &base_prompt,
+                &history_vec,
+                query,
+                LLMOptions {
+                    think_mode: Some(false),
+                    ..LLMOptions::default()
+                },
+                move |token| {
+                    if let StreamToken::Content(c) = token {
+                        let _ = tx.send(c);
+                    }
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
 
-        let _ = draft_task.await;
+        let overflow = draft_task.await.unwrap_or(true);
+        let final_reply = format!("{}{}", prefix, stream_result.content);
+        if overflow || draft_message_id.is_none() {
+            send_long_message(bot_token, chat_id, &final_reply).await?;
+        } else if let Some(mid) = draft_message_id {
+            let _ = edit_message_text(bot_token, chat_id, mid, &final_reply).await;
+        }
         stream_result.content
     } else {
         // 非串流模式
@@ -1236,15 +1556,32 @@ async fn handle_rag_query(app: &AppHandle, bot_token: &str, chat_id: i64, query:
             state.vector_store.clone(),
             state.embedder.clone(),
         );
-        let result = engine2.generate_answer(
-            query, history_vec.iter().map(|(r, c)| (r.clone(), c.clone())).collect(),
-            summary, project_id_opt, None, None, true, None, false, None, telegram_override.clone()
-        ).await?;
-        result["answer"].as_str().unwrap_or("無法獲得有效回答").to_string()
+        let result = engine2
+            .generate_answer(
+                query,
+                history_vec
+                    .iter()
+                    .map(|(r, c)| (r.clone(), c.clone()))
+                    .collect(),
+                summary,
+                project_id_opt,
+                None,
+                None,
+                true,
+                None,
+                false,
+                None,
+                telegram_override.clone(),
+            )
+            .await?;
+        let answer = result["answer"]
+            .as_str()
+            .unwrap_or("無法獲得有效回答")
+            .to_string();
+        let final_reply = format!("{}{}", prefix, answer);
+        send_long_message(bot_token, chat_id, &final_reply).await?;
+        answer
     };
-
-    let final_reply = format!("{}{}", prefix, answer);
-    send_long_message(bot_token, chat_id, &final_reply).await?;
 
     // 存入對話歷史紀錄
     save_message(pool, &conv_id, "user", query).await?;
@@ -1260,12 +1597,17 @@ pub async fn send_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(
     send_long_message(bot_token, chat_id, text).await
 }
 
-/// sendMessageDraft 使用 Telegram Bot API 擴展功能（或用於動態更新）
-async fn send_message_draft(bot_token: &str, chat_id: i64, _draft_id: i64, text: &str) -> Result<(), String> {
+/// 發送草稿訊息並回傳 message_id，後續可用 editMessageText 更新同一條訊息
+async fn send_message_draft(
+    bot_token: &str,
+    chat_id: i64,
+    _draft_id: i64,
+    text: &str,
+) -> Result<i64, String> {
     let client = Client::new();
-    // 這裡實作為發送文字訊息，用來顯示即時進展
     let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
-    let _ = client.post(&url)
+    let resp = client
+        .post(&url)
         .json(&json!({
             "chat_id": chat_id,
             "text": text,
@@ -1273,7 +1615,17 @@ async fn send_message_draft(bot_token: &str, chat_id: i64, _draft_id: i64, text:
         .send()
         .await
         .map_err(|e| format!("send_message_draft 失敗: {}", e))?;
-    Ok(())
+
+    let body: Value = resp.json().await.map_err(|e| e.to_string())?;
+    if body["ok"].as_bool() != Some(true) {
+        return Err(format!(
+            "send_message_draft API 錯誤: {}",
+            body["description"].as_str().unwrap_or("unknown")
+        ));
+    }
+    body["result"]["message_id"]
+        .as_i64()
+        .ok_or_else(|| "send_message_draft 未回傳 message_id".to_string())
 }
 
 /// 發送長訊息（自動分段處理）
@@ -1285,7 +1637,8 @@ async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<
     let chunks = split_message(text, TELEGRAM_MSG_LIMIT);
 
     for chunk in &chunks {
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .json(&json!({
                 "chat_id": chat_id,
                 "text": chunk,
@@ -1303,7 +1656,8 @@ async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<
 
             if desc.contains("parse") || desc.contains("markdown") {
                 println!("[TelegramBot] 嘗試以純文本模式重新發送至 {}...", chat_id);
-                let resp2 = client.post(&url)
+                let resp2 = client
+                    .post(&url)
                     .json(&json!({
                         "chat_id": chat_id,
                         "text": chunk,
@@ -1311,10 +1665,13 @@ async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<
                     .send()
                     .await
                     .map_err(|e| format!("純文本重發失敗: {}", e))?;
-                
+
                 let body2: Value = resp2.json().await.map_err(|e| e.to_string())?;
                 if body2["ok"].as_bool() != Some(true) {
-                    return Err(format!("Telegram API 錯誤: {}", body2["description"].as_str().unwrap_or("unknown")));
+                    return Err(format!(
+                        "Telegram API 錯誤: {}",
+                        body2["description"].as_str().unwrap_or("unknown")
+                    ));
                 }
             } else {
                 return Err(format!("Telegram API 錯誤: {}", desc));
@@ -1346,9 +1703,7 @@ fn split_message(text: &str, limit: usize) -> Vec<String> {
         }
 
         // 嘗試在換行處切斷
-        let split_at = remaining[..limit]
-            .rfind('\n')
-            .unwrap_or(limit);
+        let split_at = remaining[..limit].rfind('\n').unwrap_or(limit);
 
         let (chunk, rest) = remaining.split_at(split_at);
         parts.push(chunk.to_string());
@@ -1366,7 +1721,7 @@ async fn ensure_telegram_table(pool: &SqlitePool) -> Result<(), String> {
         "CREATE TABLE IF NOT EXISTS telegram_state (\
          chat_id INTEGER PRIMARY KEY, \
          current_conversation_id TEXT NOT NULL, \
-         updated_at TEXT NOT NULL)"
+         updated_at TEXT NOT NULL)",
     )
     .execute(pool)
     .await
@@ -1374,7 +1729,7 @@ async fn ensure_telegram_table(pool: &SqlitePool) -> Result<(), String> {
 
     // 若 current_project_id 欄位不存在則新增
     let _ = sqlx::query(
-        "ALTER TABLE telegram_state ADD COLUMN current_project_id TEXT NOT NULL DEFAULT ''"
+        "ALTER TABLE telegram_state ADD COLUMN current_project_id TEXT NOT NULL DEFAULT ''",
     )
     .execute(pool)
     .await;
@@ -1383,7 +1738,11 @@ async fn ensure_telegram_table(pool: &SqlitePool) -> Result<(), String> {
 }
 
 /// 設置特定 chat 的當前對話上下文
-async fn set_telegram_context(pool: &SqlitePool, chat_id: i64, conversation_id: &str) -> Result<(), String> {
+async fn set_telegram_context(
+    pool: &SqlitePool,
+    chat_id: i64,
+    conversation_id: &str,
+) -> Result<(), String> {
     ensure_telegram_table(pool).await?;
     let now = Utc::now().to_rfc3339();
     sqlx::query(
@@ -1403,18 +1762,21 @@ async fn set_telegram_context(pool: &SqlitePool, chat_id: i64, conversation_id: 
 /// 獲取特定 chat 的當前對話 ID
 async fn get_telegram_context(pool: &SqlitePool, chat_id: i64) -> Result<String, String> {
     ensure_telegram_table(pool).await?;
-    let row: Option<String> = sqlx::query_scalar(
-        "SELECT current_conversation_id FROM telegram_state WHERE chat_id = ?"
-    )
-    .bind(chat_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let row: Option<String> =
+        sqlx::query_scalar("SELECT current_conversation_id FROM telegram_state WHERE chat_id = ?")
+            .bind(chat_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(row.unwrap_or_default())
 }
 
 /// 設置特定 chat 的當前專案上下文
-async fn set_telegram_project_context(pool: &SqlitePool, chat_id: i64, project_id: &str) -> Result<(), String> {
+async fn set_telegram_project_context(
+    pool: &SqlitePool,
+    chat_id: i64,
+    project_id: &str,
+) -> Result<(), String> {
     ensure_telegram_table(pool).await?;
     let now = Utc::now().to_rfc3339();
     sqlx::query(
@@ -1434,20 +1796,23 @@ async fn set_telegram_project_context(pool: &SqlitePool, chat_id: i64, project_i
 /// 獲取特定 chat 的當前專案 ID
 async fn get_telegram_project_context(pool: &SqlitePool, chat_id: i64) -> Result<String, String> {
     ensure_telegram_table(pool).await?;
-    let row: Option<String> = sqlx::query_scalar(
-        "SELECT current_project_id FROM telegram_state WHERE chat_id = ?"
-    )
-    .bind(chat_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let row: Option<String> =
+        sqlx::query_scalar("SELECT current_project_id FROM telegram_state WHERE chat_id = ?")
+            .bind(chat_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(row.unwrap_or_default())
 }
 
 // --- DB 數據操作輔助功能 ---
 
 /// 獲取對話歷史
-async fn get_conversation_history(pool: &SqlitePool, conversation_id: &str, limit: i32) -> Result<Vec<(String, String)>, String> {
+async fn get_conversation_history(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    limit: i32,
+) -> Result<Vec<(String, String)>, String> {
     let rows = sqlx::query(
         "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?"
     )
@@ -1458,7 +1823,8 @@ async fn get_conversation_history(pool: &SqlitePool, conversation_id: &str, limi
     .map_err(|e| e.to_string())?;
 
     // 順序調整回正向
-    let mut history: Vec<(String, String)> = rows.into_iter()
+    let mut history: Vec<(String, String)> = rows
+        .into_iter()
         .map(|r| (r.get::<String, _>("role"), r.get::<String, _>("content")))
         .collect();
     history.reverse();
@@ -1467,7 +1833,12 @@ async fn get_conversation_history(pool: &SqlitePool, conversation_id: &str, limi
 }
 
 /// 儲存對話中的單筆訊息
-async fn save_message(pool: &SqlitePool, conversation_id: &str, role: &str, content: &str) -> Result<(), String> {
+async fn save_message(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    role: &str,
+    content: &str,
+) -> Result<(), String> {
     let id = Uuid::now_v7().to_string();
     let now = Utc::now().to_rfc3339();
 
@@ -1484,7 +1855,7 @@ async fn save_message(pool: &SqlitePool, conversation_id: &str, role: &str, cont
     .map_err(|e| e.to_string())?;
 
     sqlx::query(
-        "UPDATE conversations SET updated_at = ?, message_count = message_count + 1 WHERE id = ?"
+        "UPDATE conversations SET updated_at = ?, message_count = message_count + 1 WHERE id = ?",
     )
     .bind(&now)
     .bind(conversation_id)
@@ -1502,7 +1873,10 @@ fn dir_size_mb(path: &str) -> f64 {
         return 0.0;
     }
     let mut total: u64 = 0;
-    if let Ok(entries) = walkdir::WalkDir::new(path).into_iter().collect::<Result<Vec<_>, _>>() {
+    if let Ok(entries) = walkdir::WalkDir::new(path)
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+    {
         for entry in entries {
             if entry.file_type().is_file() {
                 total += entry.metadata().map(|m| m.len()).unwrap_or(0);

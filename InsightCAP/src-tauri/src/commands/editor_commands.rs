@@ -1,11 +1,11 @@
+use crate::db::AppState;
+use base64::{engine::general_purpose, Engine as _};
+use chrono::Utc;
+use sqlx::SqlitePool;
 use std::fs;
 use std::path::PathBuf;
 use tauri::State;
-use sqlx::SqlitePool;
 use uuid::Uuid;
-use chrono::Utc;
-use base64::{Engine as _, engine::general_purpose};
-use crate::db::AppState;
 
 #[tauri::command]
 pub async fn open_document(path: String) -> Result<String, String> {
@@ -30,11 +30,16 @@ pub async fn create_document(path: String, format: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub async fn write_binary_file(absolute_path: String, base64_content: String) -> Result<(), String> {
+pub async fn write_binary_file(
+    absolute_path: String,
+    base64_content: String,
+) -> Result<(), String> {
     if let Some(parent) = PathBuf::from(&absolute_path).parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let decoded = general_purpose::STANDARD.decode(base64_content).map_err(|e| e.to_string())?;
+    let decoded = general_purpose::STANDARD
+        .decode(base64_content)
+        .map_err(|e| e.to_string())?;
     fs::write(&absolute_path, decoded).map_err(|e| e.to_string())
 }
 
@@ -63,19 +68,30 @@ pub async fn read_image_base64(absolute_path: String) -> Result<String, String> 
 }
 
 #[tauri::command]
-pub async fn copy_image_to_assets(doc_path: String, image_abs_path: String) -> Result<String, String> {
+pub async fn copy_image_to_assets(
+    doc_path: String,
+    image_abs_path: String,
+) -> Result<String, String> {
     let doc_buf = PathBuf::from(doc_path);
     let parent = doc_buf.parent().unwrap_or_else(|| std::path::Path::new(""));
     let assets_dir = parent.join("assets");
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
-    
+
     let img_buf = PathBuf::from(&image_abs_path);
     let file_name = img_buf.file_name().ok_or("Invalid image path")?;
-    let unique_name = format!("{}_{}", Uuid::now_v7().to_string().chars().take(8).collect::<String>(), file_name.to_string_lossy());
-    
+    let unique_name = format!(
+        "{}_{}",
+        Uuid::now_v7()
+            .to_string()
+            .chars()
+            .take(8)
+            .collect::<String>(),
+        file_name.to_string_lossy()
+    );
+
     let dest_path = assets_dir.join(&unique_name);
     fs::copy(&image_abs_path, &dest_path).map_err(|e| e.to_string())?;
-    
+
     // Return relative path like ./assets/filename.png
     Ok(format!("./assets/{}", unique_name))
 }
@@ -88,22 +104,21 @@ pub async fn save_editor_to_knowledge(
     content: String,
 ) -> Result<(), String> {
     use sha2::{Digest, Sha256};
-    
+
     let clean_content = content.clone(); // Tiptap content is markdown
-    
+
     let mut hasher = Sha256::new();
     hasher.update(clean_content.as_bytes());
     let content_hash = format!("{:x}", hasher.finalize());
     let now = Utc::now().to_rfc3339();
 
     // Check if source with same title and type editor already exists
-    let existing_source_id: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM sources WHERE title = ? AND type = 'editor'"
-    )
-    .bind(&title)
-    .fetch_optional(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    let existing_source_id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM sources WHERE title = ? AND type = 'editor'")
+            .bind(&title)
+            .fetch_optional(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
     let source_id = if let Some(id) = existing_source_id {
         // Source exists, clear old captures
@@ -112,16 +127,18 @@ pub async fn save_editor_to_knowledge(
             .execute(pool.inner())
             .await
             .map_err(|e| e.to_string())?;
-        
+
         // Update source hash and time
-        sqlx::query("UPDATE sources SET content_hash = ?, updated_at = ?, clean_content = ? WHERE id = ?")
-            .bind(&content_hash)
-            .bind(&now)
-            .bind(&clean_content)
-            .bind(&id)
-            .execute(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
+        sqlx::query(
+            "UPDATE sources SET content_hash = ?, updated_at = ?, clean_content = ? WHERE id = ?",
+        )
+        .bind(&content_hash)
+        .bind(&now)
+        .bind(&clean_content)
+        .bind(&id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
         id
     } else {
         // Create new source
@@ -160,7 +177,7 @@ pub async fn save_editor_to_knowledge(
 
     // Split content by Markdown headers (H1, H2, H3)
     let chunks = split_markdown_by_headings(&clean_content);
-    
+
     for (idx, chunk_text) in chunks.into_iter().enumerate() {
         if chunk_text.trim().is_empty() {
             continue;
@@ -189,10 +206,18 @@ pub async fn save_editor_to_knowledge(
         let vs_clone = state.vector_store.clone();
         tauri::async_runtime::spawn(async move {
             let tag_engine = crate::services::tag_engine::TagEngine::new(pool_clone.clone());
-            let _ = tag_engine.process_new_capture(&capture_id_clone, &chunk_text_clone).await;
+            let _ = tag_engine
+                .process_new_capture(&capture_id_clone, &chunk_text_clone)
+                .await;
 
-            let space_engine = crate::services::space_engine::SpaceEngine::new(pool_clone, embedder_clone, vs_clone);
-            let _ = space_engine.assign_to_space(&capture_id_clone, &chunk_text_clone).await; // (space_id, is_new) — editor 頻率低，不 emit event
+            let space_engine = crate::services::space_engine::SpaceEngine::new(
+                pool_clone,
+                embedder_clone,
+                vs_clone,
+            );
+            let _ = space_engine
+                .assign_to_space(&capture_id_clone, &chunk_text_clone)
+                .await; // (space_id, is_new) — editor 頻率低，不 emit event
         });
     }
 
@@ -213,7 +238,7 @@ fn split_markdown_by_headings(markdown: &str) -> Vec<String> {
         current_chunk.push_str(line);
         current_chunk.push('\n');
     }
-    
+
     if !current_chunk.trim().is_empty() {
         chunks.push(current_chunk);
     }

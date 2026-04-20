@@ -5,7 +5,6 @@
 ///   Processing → 黃色  (擷取處理中)
 ///   Done       → 藍色  (完成，3 秒後自動回 Idle)
 ///   Error      → 紅色  (發生錯誤)
-
 use image::{Rgba, RgbaImage};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
@@ -23,10 +22,10 @@ pub enum TrayStatus {
 impl TrayStatus {
     fn dot_color(self) -> Rgba<u8> {
         match self {
-            TrayStatus::Idle       => Rgba([34,  197, 94,  255]), // 綠
-            TrayStatus::Processing => Rgba([234, 179, 8,   255]), // 黃
-            TrayStatus::Done       => Rgba([59,  130, 246, 255]), // 藍
-            TrayStatus::Error      => Rgba([239, 68,  68,  255]), // 紅
+            TrayStatus::Idle => Rgba([34, 197, 94, 255]), // 綠
+            TrayStatus::Processing => Rgba([234, 179, 8, 255]), // 黃
+            TrayStatus::Done => Rgba([59, 130, 246, 255]), // 藍
+            TrayStatus::Error => Rgba([239, 68, 68, 255]), // 紅
         }
     }
 }
@@ -40,7 +39,9 @@ pub struct TrayState {
 
 impl TrayState {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(TrayStatus::Idle)) }
+        Self {
+            inner: Arc::new(Mutex::new(TrayStatus::Idle)),
+        }
     }
 
     pub fn get(&self) -> TrayStatus {
@@ -67,19 +68,24 @@ fn draw_circle(img: &mut RgbaImage, cx: f32, cy: f32, r: f32, color: Rgba<u8>) {
             let fy = py as f32 + 0.5;
             let dist = ((fx - cx).powi(2) + (fy - cy).powi(2)).sqrt();
             let alpha = ((r - dist + 0.5).clamp(0.0, 1.0) * 255.0) as u8;
-            if alpha == 0 { continue; }
+            if alpha == 0 {
+                continue;
+            }
             let bg = *img.get_pixel(px, py);
             let a = alpha as f32 / 255.0;
-            img.put_pixel(px, py, Rgba([
-                (color[0] as f32 * a + bg[0] as f32 * (1.0 - a)) as u8,
-                (color[1] as f32 * a + bg[1] as f32 * (1.0 - a)) as u8,
-                (color[2] as f32 * a + bg[2] as f32 * (1.0 - a)) as u8,
-                (alpha as f32 + bg[3] as f32 * (1.0 - a)) as u8,
-            ]));
+            img.put_pixel(
+                px,
+                py,
+                Rgba([
+                    (color[0] as f32 * a + bg[0] as f32 * (1.0 - a)) as u8,
+                    (color[1] as f32 * a + bg[1] as f32 * (1.0 - a)) as u8,
+                    (color[2] as f32 * a + bg[2] as f32 * (1.0 - a)) as u8,
+                    (alpha as f32 + bg[3] as f32 * (1.0 - a)) as u8,
+                ]),
+            );
         }
     }
 }
-
 
 // ─── InsightCAP Logo 圖示 ────────────────────────────────────────────────────
 //

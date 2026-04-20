@@ -96,7 +96,7 @@ pub fn read_xlsx_full(file_path: &str) -> Result<String, AppError> {
     for sheet_name in sheet_names {
         if let Ok(range) = excel.worksheet_range(&sheet_name) {
             full_content.push_str(&format!("\n=== Sheet: {} ===\n", sheet_name));
-            
+
             for row in range.rows() {
                 let row_str: Vec<String> = row.iter().map(|c| c.to_string()).collect();
                 full_content.push_str(&format!("{}\n", row_str.join(" | ")));

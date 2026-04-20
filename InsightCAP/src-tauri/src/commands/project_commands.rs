@@ -50,22 +50,25 @@ pub async fn get_projects(pool: State<'_, SqlitePool>) -> Result<Vec<Project>, S
     .await
     .map_err(|e| e.to_string())?;
 
-    let projects = rows.into_iter().map(|r| {
-        let tags_json: String = r.try_get("default_tags").unwrap_or_default();
-        let default_tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-        
-        Project {
-            id: r.get("id"),
-            name: r.get("name"),
-            default_tags,
-            color: r.try_get("color").ok(),
-            is_pinned: r.get::<i32, _>("is_pinned") != 0,
-            is_archived: r.get::<i32, _>("is_archived") != 0,
-            sort_order: r.get("sort_order"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-        }
-    }).collect();
+    let projects = rows
+        .into_iter()
+        .map(|r| {
+            let tags_json: String = r.try_get("default_tags").unwrap_or_default();
+            let default_tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+            Project {
+                id: r.get("id"),
+                name: r.get("name"),
+                default_tags,
+                color: r.try_get("color").ok(),
+                is_pinned: r.get::<i32, _>("is_pinned") != 0,
+                is_archived: r.get::<i32, _>("is_archived") != 0,
+                sort_order: r.get("sort_order"),
+                created_at: r.get("created_at"),
+                updated_at: r.get("updated_at"),
+            }
+        })
+        .collect();
 
     Ok(projects)
 }
@@ -85,8 +88,9 @@ pub async fn get_project_conversations(
     .await
     .map_err(|e| e.to_string())?;
 
-    let conversations = rows.into_iter().map(|r| {
-        crate::commands::conversation_commands::Conversation {
+    let conversations = rows
+        .into_iter()
+        .map(|r| crate::commands::conversation_commands::Conversation {
             id: r.get("id"),
             title: r.try_get("title").unwrap_or_default(),
             summary: r.try_get("summary").unwrap_or_default(),
@@ -95,8 +99,8 @@ pub async fn get_project_conversations(
             is_locked: r.try_get::<i32, _>("is_locked").unwrap_or(0) != 0,
             created_at: r.get("created_at"),
             updated_at: r.get("updated_at"),
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(conversations)
 }
@@ -109,8 +113,8 @@ pub async fn create_project(
 ) -> Result<Project, String> {
     let id = Uuid::now_v7().to_string();
     let now = Utc::now().to_rfc3339();
-    let default_tags: String = serde_json::to_string(&Vec::<String>::new())
-        .map_err(|e| e.to_string())?;
+    let default_tags: String =
+        serde_json::to_string(&Vec::<String>::new()).map_err(|e| e.to_string())?;
 
     // 確保 color 列存在（自動遷移）
     let _ = sqlx::query("ALTER TABLE projects ADD COLUMN color TEXT")
@@ -119,7 +123,7 @@ pub async fn create_project(
 
     sqlx::query(
         "INSERT INTO projects (id, name, default_tags, color, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&name)
@@ -174,11 +178,19 @@ pub async fn update_project(
     }
     if is_pinned.is_some() {
         query_str.push_str(", is_pinned = ?");
-        bindings.push(if is_pinned.unwrap() { "1".to_string() } else { "0".to_string() });
+        bindings.push(if is_pinned.unwrap() {
+            "1".to_string()
+        } else {
+            "0".to_string()
+        });
     }
     if is_archived.is_some() {
         query_str.push_str(", is_archived = ?");
-        bindings.push(if is_archived.unwrap() { "1".to_string() } else { "0".to_string() });
+        bindings.push(if is_archived.unwrap() {
+            "1".to_string()
+        } else {
+            "0".to_string()
+        });
     }
 
     query_str.push_str(" WHERE id = ?");
@@ -200,10 +212,7 @@ pub async fn update_project(
 }
 
 #[tauri::command]
-pub async fn delete_project(
-    pool: State<'_, SqlitePool>,
-    project_id: String,
-) -> Result<(), String> {
+pub async fn delete_project(pool: State<'_, SqlitePool>, project_id: String) -> Result<(), String> {
     // 先將該 project 下的所有對話的 project_id 設為 NULL
     sqlx::query("UPDATE conversations SET project_id = NULL WHERE project_id = ?")
         .bind(&project_id)
@@ -228,7 +237,7 @@ pub async fn update_project_sort_order(
     sort_order: i32,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
-    
+
     sqlx::query("UPDATE projects SET sort_order = ?, updated_at = ? WHERE id = ?")
         .bind(sort_order)
         .bind(&now)
@@ -247,7 +256,7 @@ pub async fn move_conversation_to_project(
     project_id: Option<String>,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
-    
+
     sqlx::query("UPDATE conversations SET project_id = ?, updated_at = ? WHERE id = ?")
         .bind(&project_id)
         .bind(&now)

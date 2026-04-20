@@ -51,7 +51,10 @@ pub async fn open_bilibili_login(app: AppHandle) -> Result<String, String> {
                     }
 
                     if let Some(sessdata) = found_sessdata {
-                        println!("[BILI_AUTH] ✅ Success! Captured SESSDATA (len={})", sessdata.len());
+                        println!(
+                            "[BILI_AUTH] ✅ Success! Captured SESSDATA (len={})",
+                            sessdata.len()
+                        );
                         if let Ok(mut guard) = tx_clone.lock() {
                             if let Some(sender) = guard.take() {
                                 let _ = sender.send(sessdata);

@@ -1,8 +1,8 @@
-use sqlx::Row;
-use tauri::State;
 use crate::db::AppState;
 use crate::services::memory_engine::MemoryEngine;
 use chrono;
+use sqlx::Row;
+use tauri::State;
 
 /// 手動更新 memory_chunk 的 tags / space_id
 #[tauri::command]
@@ -57,22 +57,29 @@ pub async fn get_pending_memory_chunks(
 ) -> Result<Vec<serde_json::Value>, String> {
     let rows = sqlx::query(
         "SELECT id, knowledge_type, content, tags, confidence, created_at \
-         FROM memory_chunks WHERE pending_confirm = 1 ORDER BY created_at DESC LIMIT 20"
+         FROM memory_chunks \
+         WHERE pending_confirm = 1 \
+           AND content IS NOT NULL \
+           AND TRIM(content) != '' \
+         ORDER BY created_at DESC LIMIT 20",
     )
     .fetch_all(&state.db)
     .await
     .map_err(|e| e.to_string())?;
 
-    let chunks = rows.into_iter().map(|r| {
-        serde_json::json!({
-            "id": r.try_get::<String, _>("id").unwrap_or_default(),
-            "knowledgeType": r.try_get::<String, _>("knowledge_type").unwrap_or_default(),
-            "content": r.try_get::<String, _>("content").unwrap_or_default(),
-            "tags": r.try_get::<String, _>("tags").unwrap_or_else(|_| "[]".to_string()),
-            "confidence": r.try_get::<f64, _>("confidence").unwrap_or(0.0),
-            "createdAt": r.try_get::<String, _>("created_at").unwrap_or_default(),
+    let chunks = rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                "knowledgeType": r.try_get::<String, _>("knowledge_type").unwrap_or_default(),
+                "content": r.try_get::<String, _>("content").unwrap_or_default(),
+                "tags": r.try_get::<String, _>("tags").unwrap_or_else(|_| "[]".to_string()),
+                "confidence": r.try_get::<f64, _>("confidence").unwrap_or(0.0),
+                "createdAt": r.try_get::<String, _>("created_at").unwrap_or_default(),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(chunks)
 }
@@ -86,23 +93,29 @@ pub async fn get_pending_patterns(
     let rows = sqlx::query(
         "SELECT id, knowledge_type, content, tags, confidence, created_at \
          FROM memory_chunks \
-         WHERE pending_confirm = 1 AND knowledge_type = 'pattern' \
-         ORDER BY created_at DESC LIMIT 20"
+         WHERE pending_confirm = 1 \
+           AND knowledge_type = 'pattern' \
+           AND content IS NOT NULL \
+           AND TRIM(content) != '' \
+         ORDER BY created_at DESC LIMIT 20",
     )
     .fetch_all(&state.db)
     .await
     .map_err(|e| e.to_string())?;
 
-    let chunks = rows.into_iter().map(|r| {
-        serde_json::json!({
-            "id": r.try_get::<String, _>("id").unwrap_or_default(),
-            "knowledgeType": r.try_get::<String, _>("knowledge_type").unwrap_or_default(),
-            "content": r.try_get::<String, _>("content").unwrap_or_default(),
-            "tags": r.try_get::<String, _>("tags").unwrap_or_else(|_| "[]".to_string()),
-            "confidence": r.try_get::<f64, _>("confidence").unwrap_or(0.0),
-            "createdAt": r.try_get::<String, _>("created_at").unwrap_or_default(),
+    let chunks = rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                "knowledgeType": r.try_get::<String, _>("knowledge_type").unwrap_or_default(),
+                "content": r.try_get::<String, _>("content").unwrap_or_default(),
+                "tags": r.try_get::<String, _>("tags").unwrap_or_else(|_| "[]".to_string()),
+                "confidence": r.try_get::<f64, _>("confidence").unwrap_or(0.0),
+                "createdAt": r.try_get::<String, _>("created_at").unwrap_or_default(),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(chunks)
 }
@@ -135,13 +148,12 @@ pub async fn cleanup_expired_pending_chunks(
     days: i64,
 ) -> Result<u64, String> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
-    let result = sqlx::query(
-        "DELETE FROM memory_chunks WHERE pending_confirm = 1 AND created_at < ?"
-    )
-    .bind(&cutoff)
-    .execute(&state.db)
-    .await
-    .map_err(|e| e.to_string())?;
+    let result =
+        sqlx::query("DELETE FROM memory_chunks WHERE pending_confirm = 1 AND created_at < ?")
+            .bind(&cutoff)
+            .execute(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(result.rows_affected())
 }
 

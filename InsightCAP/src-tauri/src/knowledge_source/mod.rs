@@ -1,7 +1,6 @@
 /// KnowledgeSource trait — 抽象知識源接口
 /// 按 Architecture-v2.md「抽象層」章節定義
 /// Phase 1 只定義 trait，具體實現在 Phase 2 (personal.rs) 和 Phase 5 (enterprise.rs)
-
 pub mod enterprise;
 pub mod personal;
 

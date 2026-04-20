@@ -1,3 +1,4 @@
+use super::AuthError;
 /// recovery.bin 二進制格式 v1（共 77 bytes）
 ///
 /// 偏移  長度  欄位
@@ -7,7 +8,6 @@
 /// 29    32    密文（db_key 32 bytes 加密後仍 32 bytes）
 /// 61    16    Poly1305 認證標籤
 ///       77    total
-
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
@@ -15,7 +15,6 @@ use chacha20poly1305::{
 use rand::Rng;
 use std::path::Path;
 use zeroize::Zeroize;
-use super::AuthError;
 
 pub const RECOVERY_BIN_VERSION: u8 = 0x01;
 pub const RECOVERY_BIN_SIZE: usize = 77;

@@ -27,10 +27,7 @@ struct TavilyResponse {
 
 /// 呼叫 Tavily 搜尋 API，回傳格式化的 web context 字串（可直接注入 system prompt）
 /// 回傳 (formatted_context, sources_list)
-pub async fn tavily_search(
-    api_key: &str,
-    query: &str,
-) -> Result<(String, Vec<String>), String> {
+pub async fn tavily_search(api_key: &str, query: &str) -> Result<(String, Vec<String>), String> {
     let client = Client::new();
     let body = TavilyRequest {
         api_key: api_key.to_string(),
@@ -53,7 +50,10 @@ pub async fn tavily_search(
         return Err(format!("Tavily API 錯誤 {}: {}", status, text));
     }
 
-    let data: TavilyResponse = resp.json().await.map_err(|e| format!("Tavily 回應解析失敗: {}", e))?;
+    let data: TavilyResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Tavily 回應解析失敗: {}", e))?;
 
     let mut parts: Vec<String> = Vec::new();
     let mut sources: Vec<String> = Vec::new();

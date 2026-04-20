@@ -77,7 +77,11 @@ pub fn start_scheduler(app: AppHandle) {
 }
 
 /// 前端通知：將對話加入總結佇列（對話切換 / 關閉時呼叫）
-pub async fn enqueue_conversation(pool: &sqlx::SqlitePool, conversation_id: &str, trigger_type: &str) -> Result<(), String> {
+pub async fn enqueue_conversation(
+    pool: &sqlx::SqlitePool,
+    conversation_id: &str,
+    trigger_type: &str,
+) -> Result<(), String> {
     // 若已有 pending 任務，不重複加入
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT id FROM conversation_summary_queue WHERE conversation_id = ? AND status = 'pending'"
@@ -106,7 +110,10 @@ pub async fn enqueue_conversation(pool: &sqlx::SqlitePool, conversation_id: &str
     .await
     .map_err(|e| e.to_string())?;
 
-    println!("[ConversationScheduler] 已加入佇列: {} ({})", conversation_id, trigger_type);
+    println!(
+        "[ConversationScheduler] 已加入佇列: {} ({})",
+        conversation_id, trigger_type
+    );
     Ok(())
 }
 
@@ -119,7 +126,7 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
     // 1. 取出最舊的 pending 任務
     let row = sqlx::query(
         "SELECT id, conversation_id FROM conversation_summary_queue \
-         WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+         WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
     )
     .fetch_optional(pool)
     .await
@@ -135,16 +142,18 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
 
     // 2. 標記處理中
     let now = Utc::now().to_rfc3339();
-    sqlx::query("UPDATE conversation_summary_queue SET status = 'processing', updated_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&queue_id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE conversation_summary_queue SET status = 'processing', updated_at = ? WHERE id = ?",
+    )
+    .bind(&now)
+    .bind(&queue_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     // 3. 取得對話訊息
     let msgs = sqlx::query(
-        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
     )
     .bind(&conversation_id)
     .fetch_all(pool)
@@ -176,26 +185,31 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
         .unwrap_or_else(|| "follow_chat".to_string());
 
     let (primary_cfg, fallback_cfg) = if summary_model == "follow_content_processor" {
-        (ai_models.content_processor_llm.clone(), Some(ai_models.chat_llm.clone()))
+        (
+            ai_models.content_processor_llm.clone(),
+            Some(ai_models.chat_llm.clone()),
+        )
     } else {
-        (ai_models.chat_llm.clone(), Some(ai_models.content_processor_llm.clone()))
+        (
+            ai_models.chat_llm.clone(),
+            Some(ai_models.content_processor_llm.clone()),
+        )
     };
 
     let api_key = primary_cfg.api_key.clone().unwrap_or_default();
     let is_ollama = primary_cfg.provider == "ollama";
 
     // 取得現有摘要（若有，用增量模式）
-    let existing_summary: Option<String> = sqlx::query_scalar(
-        "SELECT summary FROM conversations WHERE id = ?"
-    )
-    .bind(&conversation_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None)
-    .flatten()
-    .filter(|s: &String| !s.trim().is_empty());
+    let existing_summary: Option<String> =
+        sqlx::query_scalar("SELECT summary FROM conversations WHERE id = ?")
+            .bind(&conversation_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None)
+            .flatten()
+            .filter(|s: &String| !s.trim().is_empty());
 
-    let summary = if !api_key.is_empty() || is_ollama {
+    let raw_summary = if !api_key.is_empty() || is_ollama {
         let prompt = if let Some(prev) = &existing_summary {
             format!(
                 "以下是一段對話的【舊有摘要】和【新增訊息】。\n\
@@ -274,6 +288,26 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
     };
 
     // 6. 寫回 conversations.summary
+    let summary = {
+        let trimmed = raw_summary.trim();
+        if !trimmed.is_empty() {
+            trimmed.to_string()
+        } else {
+            let fallback = dialogue
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .take(8)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if fallback.is_empty() {
+                "Summary unavailable".to_string()
+            } else {
+                fallback
+            }
+        }
+    };
+
     let now = Utc::now().to_rfc3339();
     sqlx::query("UPDATE conversations SET summary = ?, updated_at = ? WHERE id = ?")
         .bind(&summary)
@@ -284,13 +318,12 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     // 7. 取得對話的 project_id
-    let project_id: Option<String> = sqlx::query_scalar(
-        "SELECT project_id FROM conversations WHERE id = ?"
-    )
-    .bind(&conversation_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let project_id: Option<String> =
+        sqlx::query_scalar("SELECT project_id FROM conversations WHERE id = ?")
+            .bind(&conversation_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
     // 8. 呼叫 MemoryEngine 深度推斷 knowledge_type → 寫入 memory_chunks
     let engine = MemoryEngine::new(
@@ -298,12 +331,9 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
         state.vector_store.clone(),
         state.embedder.clone(),
     );
-    match engine.process_conversation_summary(
-        &conversation_id,
-        &summary,
-        project_id.as_deref(),
-    )
-    .await
+    match engine
+        .process_conversation_summary(&conversation_id, &summary, project_id.as_deref())
+        .await
     {
         Ok(chunk_id) => {
             println!(
@@ -311,10 +341,13 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
                 conversation_id, chunk_id
             );
             // 通知前端摘要完成（觸發 pending confirmation toast）
-            let _ = app.emit("summary-completed", serde_json::json!({
-                "conversationId": conversation_id,
-                "chunkId": chunk_id,
-            }));
+            let _ = app.emit(
+                "summary-completed",
+                serde_json::json!({
+                    "conversationId": conversation_id,
+                    "chunkId": chunk_id,
+                }),
+            );
 
             // 非同步為 memory_chunk 分配 Space（向量相似度，不呼叫 LLM）
             let pool_space = pool.clone();
@@ -324,9 +357,14 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
             let chunk_id_for_space = chunk_id.clone();
             tauri::async_runtime::spawn(async move {
                 let se = crate::services::space_engine::SpaceEngine::new(
-                    pool_space, embedder_space, vs_space,
+                    pool_space,
+                    embedder_space,
+                    vs_space,
                 );
-                if let Err(e) = se.assign_memory_chunk_to_space(&chunk_id_for_space, &summary_for_space).await {
+                if let Err(e) = se
+                    .assign_memory_chunk_to_space(&chunk_id_for_space, &summary_for_space)
+                    .await
+                {
                     eprintln!("[ConversationScheduler] Space 分配失敗: {}", e);
                 }
             });
@@ -339,9 +377,14 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
             let chunk_id_clone = chunk_id.clone();
             tauri::async_runtime::spawn(async move {
                 let rel_engine = crate::services::chunk_relation_engine::ChunkRelationEngine::new(
-                    pool_rel, embedder_rel, vs_rel,
+                    pool_rel,
+                    embedder_rel,
+                    vs_rel,
                 );
-                if let Err(e) = rel_engine.analyze_and_link(&chunk_id_clone, "memory_chunk", &summary_clone).await {
+                if let Err(e) = rel_engine
+                    .analyze_and_link(&chunk_id_clone, "memory_chunk", &summary_clone)
+                    .await
+                {
                     eprintln!("[ChunkRelation] 分析失敗: {}", e);
                 }
             });
@@ -351,18 +394,18 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
             let chunk_id_wiki = chunk_id.clone();
             tauri::async_runtime::spawn(async move {
                 // 查 memory_chunk 的 space_id
-                let space_id: Option<String> = sqlx::query_scalar(
-                    "SELECT space_id FROM memory_chunks WHERE id = ?"
-                )
-                .bind(&chunk_id_wiki)
-                .fetch_optional(&pool_wiki)
-                .await
-                .ok()
-                .flatten();
+                let space_id: Option<String> =
+                    sqlx::query_scalar("SELECT space_id FROM memory_chunks WHERE id = ?")
+                        .bind(&chunk_id_wiki)
+                        .fetch_optional(&pool_wiki)
+                        .await
+                        .ok()
+                        .flatten();
 
                 if let Some(sid) = space_id {
                     if !sid.is_empty() {
-                        let wiki_engine = crate::services::space_wiki_engine::SpaceWikiEngine::new(pool_wiki);
+                        let wiki_engine =
+                            crate::services::space_wiki_engine::SpaceWikiEngine::new(pool_wiki);
                         if let Err(e) = wiki_engine.update_wiki_for_space(&sid).await {
                             eprintln!("[SpaceWiki] 更新失敗 (space {}): {}", &sid, e);
                         }
@@ -371,14 +414,18 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
             });
 
             // --- 新增：從對話與摘要中提取提醒事項 ---
-            let reminder_engine = crate::services::reminder_engine::ReminderEngine::new(pool.clone());
-            if let Err(e) = reminder_engine.extract_reminders(
-                &conversation_id,
-                &summary,
-                &dialogue,
-                &now,
-                project_id.as_deref()
-            ).await {
+            let reminder_engine =
+                crate::services::reminder_engine::ReminderEngine::new(pool.clone());
+            if let Err(e) = reminder_engine
+                .extract_reminders(
+                    &conversation_id,
+                    &summary,
+                    &dialogue,
+                    &now,
+                    project_id.as_deref(),
+                )
+                .await
+            {
                 eprintln!("[ConversationScheduler] 提醒提取失敗: {}", e);
             }
         }
@@ -392,7 +439,11 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-async fn mark_queue_done(pool: &sqlx::SqlitePool, queue_id: &str, success: bool) -> Result<(), String> {
+async fn mark_queue_done(
+    pool: &sqlx::SqlitePool,
+    queue_id: &str,
+    success: bool,
+) -> Result<(), String> {
     let status = if success { "done" } else { "failed" };
     sqlx::query("UPDATE conversation_summary_queue SET status = ?, updated_at = ? WHERE id = ?")
         .bind(status)

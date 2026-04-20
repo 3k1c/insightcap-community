@@ -38,16 +38,16 @@ pub async fn extract_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs::File;
     use std::io::Write;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_extract_html() {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().join("test.html");
         let mut file = File::create(&path).unwrap();
-        
+
         let html_content = r#"
             <!DOCTYPE html>
             <html>
@@ -68,20 +68,24 @@ mod tests {
             </body>
             </html>
         "#;
-        
+
         file.write_all(html_content.as_bytes()).unwrap();
 
-        let chunks = extract_html("kb_path", path.to_str().unwrap(), "test").await.unwrap();
-        
+        let chunks = extract_html("kb_path", path.to_str().unwrap(), "test")
+            .await
+            .unwrap();
+
         // Should only be one chunk since it extracts the page into one document
         assert_eq!(chunks.len(), 1);
-        
+
         let chunk = &chunks[0];
         assert_eq!(chunk.title, "Test Page Title");
-        
+
         // Assert clean content retains the real text
-        assert!(chunk.clean_content.contains("This is the main readable content."));
-        
+        assert!(chunk
+            .clean_content
+            .contains("This is the main readable content."));
+
         // Assert it strips out tags/noise
         assert!(!chunk.clean_content.contains("noisy script"));
         assert!(!chunk.clean_content.contains("body { color: red; }"));

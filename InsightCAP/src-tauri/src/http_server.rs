@@ -1,4 +1,4 @@
-﻿/// Phase 6 — 本地 HTTP API Server（Axum）
+/// Phase 6 — 本地 HTTP API Server（Axum）
 ///
 /// 端點：
 ///   GET  /api/health   — 連線確認
@@ -6,7 +6,6 @@
 ///   POST /api/rag      — 查詢桌面知識庫，回傳 chunks + context_text
 ///   POST /api/chat     — 桌面代理推理（SSE streaming）
 ///   GET  /             — 手機 PWA 快速擷取頁
-
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -30,8 +29,8 @@ use uuid::Uuid;
 
 use crate::{
     db::AppState,
-    providers::llm::{LLMOptions, LLMProvider, StreamToken},
     providers::llm::openai::OpenAiProvider,
+    providers::llm::{LLMOptions, LLMProvider, StreamToken},
     services::rag_engine::RagEngine,
     settings,
 };
@@ -296,25 +295,19 @@ async fn handle_chat(
         };
 
         let _ = llm
-            .complete_stream(
-                &sp,
-                &hist,
-                &msg,
-                opts,
-                move |token| {
-                    if let StreamToken::Content(c) = token {
-                        let _ = tx.send(c);
-                    }
-                },
-            )
+            .complete_stream(&sp, &hist, &msg, opts, move |token| {
+                if let StreamToken::Content(c) = token {
+                    let _ = tx.send(c);
+                }
+            })
             .await;
         // tx 在此 drop，rx.recv() 將回傳 None，stream 結束
     });
 
     let sse_stream = stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|token| {
-            (Ok::<Event, Infallible>(Event::default().data(token)), rx)
-        })
+        rx.recv()
+            .await
+            .map(|token| (Ok::<Event, Infallible>(Event::default().data(token)), rx))
     });
 
     Ok(Sse::new(sse_stream).keep_alive(KeepAlive::default()))
@@ -365,11 +358,10 @@ fn rag_to_text(ctx: &serde_json::Value) -> String {
 // ─── Token Management ──────────────────────────────────────────────────────
 
 async fn load_or_create_token(pool: &SqlitePool) -> String {
-    if let Ok(Some(token)) = sqlx::query_scalar::<_, String>(
-        "SELECT value FROM settings WHERE key = 'mobile_api_token'",
-    )
-    .fetch_optional(pool)
-    .await
+    if let Ok(Some(token)) =
+        sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'mobile_api_token'")
+            .fetch_optional(pool)
+            .await
     {
         return token;
     }
@@ -410,7 +402,10 @@ pub async fn start_api_server(app: AppHandle) {
         .route("/api/capture", post(handle_capture))
         .route("/api/rag", post(handle_rag))
         .route("/api/chat", post(handle_chat))
-        .route("/api/conversations", get(handle_list_conversations).post(handle_create_conversation))
+        .route(
+            "/api/conversations",
+            get(handle_list_conversations).post(handle_create_conversation),
+        )
         .route("/api/conversations/{id}/messages", get(handle_get_messages))
         .route("/api/sources", get(handle_list_sources))
         .with_state(state);
@@ -546,14 +541,16 @@ async fn handle_list_sources(
 
     let items = rows
         .into_iter()
-        .map(|(id, title, media_type, source_category, capture_count, captured_at)| SourceItem {
-            id,
-            title,
-            media_type,
-            source_category,
-            capture_count,
-            captured_at,
-        })
+        .map(
+            |(id, title, media_type, source_category, capture_count, captured_at)| SourceItem {
+                id,
+                title,
+                media_type,
+                source_category,
+                capture_count,
+                captured_at,
+            },
+        )
         .collect();
 
     Ok(Json(items))

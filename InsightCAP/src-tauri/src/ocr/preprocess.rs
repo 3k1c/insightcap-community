@@ -3,7 +3,6 @@
 /// 在送 OCR 之前對掃描頁圖像做基本前處理：
 /// 灰階化 → Otsu 二值化 → 對比度增強
 /// 使用現有 `image` crate，無需新增依賴。
-
 use image::{DynamicImage, GrayImage, Luma};
 use std::io::Cursor;
 
@@ -12,8 +11,7 @@ use std::io::Cursor;
 /// 輸出：二值化後的圖像 bytes（PNG）
 /// 若前處理失敗，回傳 Err，呼叫方應降級使用原始圖像
 pub fn preprocess_for_ocr(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let img = image::load_from_memory(image_bytes)
-        .map_err(|e| format!("圖像載入失敗: {}", e))?;
+    let img = image::load_from_memory(image_bytes).map_err(|e| format!("圖像載入失敗: {}", e))?;
 
     // 1. 灰階化（去除顏色干擾）
     let gray = img.to_luma8();

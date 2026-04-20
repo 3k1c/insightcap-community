@@ -80,7 +80,9 @@ pub async fn extract_csv(
 pub fn read_csv_full(file_path: &str) -> Result<String, AppError> {
     let file =
         File::open(file_path).map_err(|e| AppError::Capture(format!("CSV 開啟失敗: {}", e)))?;
-    let mut rdr = csv::ReaderBuilder::new().has_headers(false).from_reader(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(file);
 
     let mut full_content = String::new();
     for result in rdr.records() {

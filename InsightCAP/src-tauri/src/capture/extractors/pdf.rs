@@ -18,9 +18,9 @@ fn bind_pdfium() -> Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()));
 
     if let Some(dir) = exe_dir {
-        let result = Pdfium::bind_to_library(
-            Pdfium::pdfium_platform_library_name_at_path(dir.to_string_lossy().as_ref()),
-        );
+        let result = Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
+            dir.to_string_lossy().as_ref(),
+        ));
         if result.is_ok() {
             return result;
         }
@@ -51,8 +51,7 @@ pub async fn extract_pdf(
     let doc_content = tokio::task::spawn_blocking(
         move || -> Result<Vec<(usize, Option<Vec<u8>>, String, String)>, AppError> {
             let pdfium = Pdfium::new(
-                bind_pdfium()
-                    .map_err(|e| AppError::Capture(format!("Pdfium 綁定失敗: {}", e)))?,
+                bind_pdfium().map_err(|e| AppError::Capture(format!("Pdfium 綁定失敗: {}", e)))?,
             );
 
             let doc = pdfium
@@ -183,8 +182,7 @@ pub async fn render_specific_page(file_path: &str, page_num: usize) -> Result<Ve
 
     let img_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         let pdfium = Pdfium::new(
-            bind_pdfium()
-                .map_err(|e| AppError::Capture(format!("Pdfium 綁定失敗: {}", e)))?,
+            bind_pdfium().map_err(|e| AppError::Capture(format!("Pdfium 綁定失敗: {}", e)))?,
         );
 
         let doc = pdfium

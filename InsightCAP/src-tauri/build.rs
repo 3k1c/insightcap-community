@@ -35,7 +35,8 @@ fn download_pdfium_if_needed() {
 
     println!("cargo:warning=正在下載 pdfium.dll ...");
 
-    let url = "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-win-x64.tgz";
+    let url =
+        "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-win-x64.tgz";
     let dest_str = dll_dest.to_string_lossy().replace('\\', "\\\\");
     let src_tauri_str = src_tauri_dll.to_string_lossy().replace('\\', "\\\\");
 
@@ -88,7 +89,10 @@ Write-Host 'Done.'
             );
         }
         Err(e) => {
-            println!("cargo:warning=無法執行 PowerShell：{}，PDF 功能將無法使用", e);
+            println!(
+                "cargo:warning=無法執行 PowerShell：{}，PDF 功能將無法使用",
+                e
+            );
         }
     }
 }

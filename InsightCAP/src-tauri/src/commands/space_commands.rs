@@ -1,7 +1,7 @@
+use crate::db::AppState;
+use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use tauri::State;
-use chrono::Utc;
-use crate::db::AppState;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,19 +41,25 @@ pub async fn get_all_spaces(pool: State<'_, SqlitePool>) -> Result<Vec<SpaceItem
     .await
     .map_err(|e| e.to_string())?;
 
-    let spaces = rows.into_iter().map(|r| SpaceItem {
-        id: r.get("id"),
-        name: r.get("name"),
-        description: r.try_get("description").unwrap_or_default(),
-        chunk_count: r.try_get("chunk_count").unwrap_or(0),
-    }).collect();
+    let spaces = rows
+        .into_iter()
+        .map(|r| SpaceItem {
+            id: r.get("id"),
+            name: r.get("name"),
+            description: r.try_get("description").unwrap_or_default(),
+            chunk_count: r.try_get("chunk_count").unwrap_or(0),
+        })
+        .collect();
 
     Ok(spaces)
 }
 
 /// 取得指定 Space 的知識可用性洞察：memory_chunks 按 knowledge_type 分佈 + 標籤統計
 #[tauri::command]
-pub async fn get_space_insight(pool: State<'_, SqlitePool>, space_id: String) -> Result<SpaceInsight, String> {
+pub async fn get_space_insight(
+    pool: State<'_, SqlitePool>,
+    space_id: String,
+) -> Result<SpaceInsight, String> {
     // Space 基本資訊
     let space_row = sqlx::query("SELECT name FROM spaces WHERE id = ?")
         .bind(&space_id)
@@ -87,20 +93,18 @@ pub async fn get_space_insight(pool: State<'_, SqlitePool>, space_id: String) ->
     }
 
     // captures 統計（屬於此 Space 的擷取）
-    let cap_row = sqlx::query(
-        "SELECT COUNT(*) as cnt FROM captures WHERE space_id = ?"
-    )
-    .bind(&space_id)
-    .fetch_one(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    let cap_row = sqlx::query("SELECT COUNT(*) as cnt FROM captures WHERE space_id = ?")
+        .bind(&space_id)
+        .fetch_one(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
     let capture_count: i64 = cap_row.try_get("cnt").unwrap_or(0);
 
     // 標籤統計：合併 memory_chunks.tags + captures.tags，取 Top-10
     let tag_rows = sqlx::query(
         "SELECT tags FROM memory_chunks WHERE space_id = ? AND tags IS NOT NULL AND tags != '[]'
          UNION ALL
-         SELECT tags FROM captures WHERE space_id = ? AND tags IS NOT NULL AND tags != '[]'"
+         SELECT tags FROM captures WHERE space_id = ? AND tags IS NOT NULL AND tags != '[]'",
     )
     .bind(&space_id)
     .bind(&space_id)
@@ -144,9 +148,7 @@ pub async fn get_space_insight(pool: State<'_, SqlitePool>, space_id: String) ->
 
 /// 手動觸發 Space 全量重聚類（新 Space 建立後或前端主動呼叫）
 #[tauri::command]
-pub async fn trigger_space_recluster(
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn trigger_space_recluster(state: State<'_, AppState>) -> Result<usize, String> {
     let engine = crate::services::space_engine::SpaceEngine::new(
         state.db.clone(),
         state.embedder.clone(),
@@ -169,14 +171,12 @@ pub async fn get_space_wiki(
     pool: State<'_, SqlitePool>,
     space_id: String,
 ) -> Result<SpaceWiki, String> {
-    let row = sqlx::query(
-        "SELECT id, wiki_content, wiki_updated_at FROM spaces WHERE id = ?"
-    )
-    .bind(&space_id)
-    .fetch_optional(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "Space not found".to_string())?;
+    let row = sqlx::query("SELECT id, wiki_content, wiki_updated_at FROM spaces WHERE id = ?")
+        .bind(&space_id)
+        .fetch_optional(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Space not found".to_string())?;
 
     Ok(SpaceWiki {
         space_id,
@@ -193,15 +193,13 @@ pub async fn save_space_wiki(
     wiki_content: String,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
-    sqlx::query(
-        "UPDATE spaces SET wiki_content = ?, wiki_updated_at = ? WHERE id = ?"
-    )
-    .bind(&wiki_content)
-    .bind(&now)
-    .bind(&space_id)
-    .execute(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE spaces SET wiki_content = ?, wiki_updated_at = ? WHERE id = ?")
+        .bind(&wiki_content)
+        .bind(&now)
+        .bind(&space_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

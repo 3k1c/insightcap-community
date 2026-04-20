@@ -182,42 +182,62 @@ mod tests {
         let file = File::create(&path).unwrap();
 
         let doc = Docx::new()
-            .add_paragraph(Paragraph::new().style("Heading1").add_run(Run::new().add_text("My Title")))
-            .add_paragraph(Paragraph::new().add_run(Run::new().add_text("First paragraph below title.")))
-            .add_paragraph(Paragraph::new().style("Heading2").add_run(Run::new().add_text("My Subtitle")))
-            .add_paragraph(Paragraph::new().add_run(Run::new().add_text("Second paragraph below subtitle.")))
-            .add_table(
-                Table::new(vec![
-                    TableRow::new(vec![
-                        TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("Col1"))),
-                        TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("Col2"))),
-                    ]),
-                    TableRow::new(vec![
-                        TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("Val1"))),
-                        TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("Val2"))),
-                    ])
-                ])
-            );
+            .add_paragraph(
+                Paragraph::new()
+                    .style("Heading1")
+                    .add_run(Run::new().add_text("My Title")),
+            )
+            .add_paragraph(
+                Paragraph::new().add_run(Run::new().add_text("First paragraph below title.")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .style("Heading2")
+                    .add_run(Run::new().add_text("My Subtitle")),
+            )
+            .add_paragraph(
+                Paragraph::new().add_run(Run::new().add_text("Second paragraph below subtitle.")),
+            )
+            .add_table(Table::new(vec![
+                TableRow::new(vec![
+                    TableCell::new()
+                        .add_paragraph(Paragraph::new().add_run(Run::new().add_text("Col1"))),
+                    TableCell::new()
+                        .add_paragraph(Paragraph::new().add_run(Run::new().add_text("Col2"))),
+                ]),
+                TableRow::new(vec![
+                    TableCell::new()
+                        .add_paragraph(Paragraph::new().add_run(Run::new().add_text("Val1"))),
+                    TableCell::new()
+                        .add_paragraph(Paragraph::new().add_run(Run::new().add_text("Val2"))),
+                ]),
+            ]));
 
         doc.build().pack(file).unwrap();
 
-        let chunks = extract_docx("kb_path", path.to_str().unwrap(), "test").await.unwrap();
+        let chunks = extract_docx("kb_path", path.to_str().unwrap(), "test")
+            .await
+            .unwrap();
 
         // 根據 extract_docx 邏輯，遇到標題會將「前一段累積的內容」切分成 chunk，
         // 並不會將標題本身單獨分開，而是包含在它後續的內容中。
         assert_eq!(chunks.len(), 2);
-        
+
         let chunk1 = &chunks[0];
         assert_eq!(chunk1.title_level, Some(1));
         assert!(chunk1.clean_content.contains("My Title"));
-        assert!(chunk1.clean_content.contains("First paragraph below title."));
+        assert!(chunk1
+            .clean_content
+            .contains("First paragraph below title."));
         assert_eq!(chunk1.chunk_type, "text");
-        
+
         let chunk2 = &chunks[1];
         assert_eq!(chunk2.title_level, Some(2));
         assert!(chunk2.clean_content.contains("My Subtitle"));
-        assert!(chunk2.clean_content.contains("Second paragraph below subtitle."));
-        
+        assert!(chunk2
+            .clean_content
+            .contains("Second paragraph below subtitle."));
+
         // Check structural table extraction
         assert!(chunk2.clean_content.contains("Col1 | Col2"));
         assert!(chunk2.clean_content.contains("Val1 | Val2"));

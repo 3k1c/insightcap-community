@@ -1,10 +1,10 @@
-use tauri::{Emitter, State};
 use crate::db::AppState;
-use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
 use crate::providers::llm::model_caps;
 use crate::providers::llm::openai::OpenAiProvider;
+use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
 use crate::services::rag_engine::RagEngine;
 use crate::services::web_search::tavily_search;
+use tauri::{Emitter, State};
 
 #[tauri::command]
 pub async fn rag_query(
@@ -21,34 +21,45 @@ pub async fn rag_query(
     thinking_mode: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let web_context = if web_enabled.unwrap_or(false) {
-        let settings = crate::settings::store::get_settings(&state.db).await.map_err(|e| e.to_string())?;
+        let settings = crate::settings::store::get_settings(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
         let ws = &settings.web_search;
         if ws.enabled && !ws.api_key.is_empty() {
             match tavily_search(&ws.api_key, &query).await {
                 Ok((ctx, _)) => Some(ctx),
-                Err(e) => { eprintln!("[WebSearch] 搜尋失敗: {}", e); None }
+                Err(e) => {
+                    eprintln!("[WebSearch] 搜尋失敗: {}", e);
+                    None
+                }
             }
-        } else { None }
-    } else { None };
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let engine = RagEngine::new(
         state.db.clone(),
         state.vector_store.clone(),
         state.embedder.clone(),
     );
-    engine.generate_answer(
-        &query,
-        history.unwrap_or_default(),
-        conversation_summary,
-        project_id,
-        source_ids,
-        tag_filter,
-        rag_enabled.unwrap_or(true),
-        temp_chunk_ids,
-        thinking_mode.as_deref().unwrap_or("normal") == "think",
-        web_context,
-        None,
-    ).await
+    engine
+        .generate_answer(
+            &query,
+            history.unwrap_or_default(),
+            conversation_summary,
+            project_id,
+            source_ids,
+            tag_filter,
+            rag_enabled.unwrap_or(true),
+            temp_chunk_ids,
+            thinking_mode.as_deref().unwrap_or("normal") == "think",
+            web_context,
+            None,
+        )
+        .await
 }
 
 /// Streaming 版本：每個 token 透過 Tauri event 推送到前端
@@ -75,15 +86,24 @@ pub async fn rag_query_stream(
 
     // 聯網搜尋：若啟用則先呼叫 Tavily，取得 web context 及來源清單
     let (web_ctx_text, web_sources) = if web_enabled.unwrap_or(false) {
-        let settings = crate::settings::store::get_settings(&state.db).await.map_err(|e| e.to_string())?;
+        let settings = crate::settings::store::get_settings(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
         let ws = &settings.web_search;
         if ws.enabled && !ws.api_key.is_empty() {
             match tavily_search(&ws.api_key, &query).await {
                 Ok((ctx, srcs)) => (Some(ctx), srcs),
-                Err(e) => { eprintln!("[WebSearch] 搜尋失敗: {}", e); (None, vec![]) }
+                Err(e) => {
+                    eprintln!("[WebSearch] 搜尋失敗: {}", e);
+                    (None, vec![])
+                }
             }
-        } else { (None, vec![]) }
-    } else { (None, vec![]) };
+        } else {
+            (None, vec![])
+        }
+    } else {
+        (None, vec![])
+    };
 
     let engine = RagEngine::new(
         state.db.clone(),
@@ -91,17 +111,19 @@ pub async fn rag_query_stream(
         state.embedder.clone(),
     );
 
-    let (base_prompt, history_vec, mut citation_sources, context_hints) = engine.build_prompt(
-        &query,
-        history.unwrap_or_default(),
-        conversation_summary,
-        project_id,
-        source_ids,
-        tag_filter,
-        rag_enabled.unwrap_or(true),
-        temp_chunk_ids,
-        None,
-    ).await?;
+    let (base_prompt, history_vec, mut citation_sources, context_hints) = engine
+        .build_prompt(
+            &query,
+            history.unwrap_or_default(),
+            conversation_summary,
+            project_id,
+            source_ids,
+            tag_filter,
+            rag_enabled.unwrap_or(true),
+            temp_chunk_ids,
+            None,
+        )
+        .await?;
 
     // 將網路搜尋來源加入 citation_sources
     for src in &web_sources {
@@ -110,7 +132,9 @@ pub async fn rag_query_stream(
         }
     }
 
-    let settings = crate::settings::store::get_settings(&state.db).await.map_err(|e| e.to_string())?;
+    let settings = crate::settings::store::get_settings(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
     let cfg = settings.ai_models.chat_llm;
     let is_ollama = cfg.provider == "ollama";
     let api_key = cfg.api_key.clone().unwrap_or_default();
@@ -137,43 +161,67 @@ pub async fn rag_query_stream(
 
     // 只有非原生推理模型才注入 THINK_MODE_PREFIX
     let system_prompt = if is_think && !has_native_reasoning {
-        format!("{}{}", crate::prompts::THINK_MODE_PREFIX, base_prompt_with_web)
+        format!(
+            "{}{}",
+            crate::prompts::THINK_MODE_PREFIX,
+            base_prompt_with_web
+        )
     } else {
         base_prompt_with_web
     };
 
-    let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model.clone(), cfg.provider.clone());
+    let llm = OpenAiProvider::new(
+        api_key,
+        cfg.base_url.clone(),
+        cfg.model.clone(),
+        cfg.provider.clone(),
+    );
     let app_clone = app.clone();
     let conv_id = conversation_id.clone();
 
     let llm_opts = if is_think {
-        LLMOptions { temperature: 0.6, max_tokens: 8192, stream: false, think_mode: Some(true) }
+        LLMOptions {
+            temperature: 0.6,
+            max_tokens: 8192,
+            stream: false,
+            think_mode: Some(true),
+        }
     } else {
-        LLMOptions { think_mode: Some(false), ..LLMOptions::default() }
+        LLMOptions {
+            think_mode: Some(false),
+            ..LLMOptions::default()
+        }
     };
 
-    let stream_result = llm.complete_stream(
-        &system_prompt,
-        &history_vec,
-        &query,
-        llm_opts,
-        move |token| {
-            match &token {
+    let stream_result = llm
+        .complete_stream(
+            &system_prompt,
+            &history_vec,
+            &query,
+            llm_opts,
+            move |token| match &token {
                 StreamToken::Reasoning(r) => {
-                    let _ = app_clone.emit("rag-stream-reasoning", serde_json::json!({
-                        "conversationId": conv_id,
-                        "token": r,
-                    }));
+                    let _ = app_clone.emit(
+                        "rag-stream-reasoning",
+                        serde_json::json!({
+                            "conversationId": conv_id,
+                            "token": r,
+                        }),
+                    );
                 }
                 StreamToken::Content(c) => {
-                    let _ = app_clone.emit("rag-stream-token", serde_json::json!({
-                        "conversationId": conv_id,
-                        "token": c,
-                    }));
+                    let _ = app_clone.emit(
+                        "rag-stream-token",
+                        serde_json::json!({
+                            "conversationId": conv_id,
+                            "token": c,
+                        }),
+                    );
                 }
-            }
-        },
-    ).await.map_err(|e| e.to_string())?;
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
 
     let _ = app.emit("rag-stream-done", serde_json::json!({
         "conversationId": conversation_id,

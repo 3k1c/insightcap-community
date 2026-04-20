@@ -135,8 +135,10 @@ mod tests {
         let mut file = File::create(&path).unwrap();
         writeln!(file, "fn main() {{\n    println!(\"Hello World\");\n}}").unwrap();
 
-        let chunks = extract_code("kb_path", path.to_str().unwrap(), "main").await.unwrap();
-        
+        let chunks = extract_code("kb_path", path.to_str().unwrap(), "main")
+            .await
+            .unwrap();
+
         // Small file < 2000 chars should produce exactly 1 chunk
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].language, "Rust");
@@ -149,29 +151,41 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().join("app.js");
         let mut file = File::create(&path).unwrap();
-        
+
         // Make sure it exceeds 2000 chars to trigger boundary splitting
         let padding = "/* ".to_string() + &"padding ".repeat(300) + "*/\n";
-        
+
         // Write content with identifiable boundaries
         writeln!(file, "{}", padding).unwrap();
         writeln!(file, "function firstFunc() {{\n    console.log(1);\n}}\n").unwrap();
         writeln!(file, "class MyClass {{\n    constructor() {{}}\n}}\n").unwrap();
-        writeln!(file, "const arrowFunc = async () => {{\n    return 1;\n}}\n").unwrap();
+        writeln!(
+            file,
+            "const arrowFunc = async () => {{\n    return 1;\n}}\n"
+        )
+        .unwrap();
 
-        let chunks = extract_code("kb_path", path.to_str().unwrap(), "app").await.unwrap();
-        
+        let chunks = extract_code("kb_path", path.to_str().unwrap(), "app")
+            .await
+            .unwrap();
+
         // At least 3 chunks (might be 4 if padding ends up in its own initial chunk)
         assert!(chunks.len() >= 3);
-        
+
         // All chunks should be JavaScript
         for chunk in &chunks {
             assert_eq!(chunk.language, "JavaScript");
-            assert!(chunk.clean_content.contains("[程式碼: app.js | JavaScript]"));
+            assert!(chunk
+                .clean_content
+                .contains("[程式碼: app.js | JavaScript]"));
         }
-        
+
         // Check if our specific functions were extracted
-        let content_concat = chunks.iter().map(|c| c.clean_content.as_str()).collect::<Vec<_>>().join("\n---chunk---\n");
+        let content_concat = chunks
+            .iter()
+            .map(|c| c.clean_content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n---chunk---\n");
         assert!(content_concat.contains("function firstFunc()"));
         assert!(content_concat.contains("class MyClass"));
         assert!(content_concat.contains("const arrowFunc = async () =>"));

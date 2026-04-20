@@ -19,8 +19,8 @@ impl FastEmbedder {
         let mut options = InitOptions::new(embedding_model);
         options.show_download_progress = true;
 
-        let model = TextEmbedding::try_new(options)
-            .map_err(|e| format!("FastEmbed init failed: {}", e))?;
+        let model =
+            TextEmbedding::try_new(options).map_err(|e| format!("FastEmbed init failed: {}", e))?;
 
         let canonical = canonical_embedding_model_name(model_name).to_string();
         println!("[Embedder] 就緒: {}", canonical);
@@ -36,17 +36,22 @@ impl FastEmbedder {
 impl Embedder for FastEmbedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, crate::providers::embedding::EmbedError> {
         let mut model = self.model.lock().await;
-        let mut res = model.embed(vec![text], None)
+        let mut res = model
+            .embed(vec![text], None)
             .map_err(|e| crate::providers::embedding::EmbedError::Failed(e.to_string()))?;
         Ok(res.remove(0))
     }
 
-    async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, crate::providers::embedding::EmbedError> {
+    async fn embed_batch(
+        &self,
+        texts: &[&str],
+    ) -> Result<Vec<Vec<f32>>, crate::providers::embedding::EmbedError> {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
         let mut model = self.model.lock().await;
-        model.embed(texts.to_vec(), None)
+        model
+            .embed(texts.to_vec(), None)
             .map_err(|e| crate::providers::embedding::EmbedError::Failed(e.to_string()))
     }
 

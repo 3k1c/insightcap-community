@@ -154,11 +154,8 @@ fn generate_probe_image() -> Vec<u8> {
         image::Rgb([255u8, 0, 0]),
     ));
     let mut buf = Vec::new();
-    img.write_to(
-        &mut std::io::Cursor::new(&mut buf),
-        image::ImageFormat::Png,
-    )
-    .expect("Failed to encode probe image");
+    img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+        .expect("Failed to encode probe image");
     buf
 }
 
@@ -201,8 +198,15 @@ pub async fn describe_image(
             let is_openai_compat = is_openai_compatible_model(model);
 
             if is_openai_compat {
-                call_openai_compat_vision(&client, &b64_img, model, normalized_base, api_key, prompt)
-                    .await
+                call_openai_compat_vision(
+                    &client,
+                    &b64_img,
+                    model,
+                    normalized_base,
+                    api_key,
+                    prompt,
+                )
+                .await
             } else {
                 call_ollama_legacy_vision(&client, &b64_img, model, normalized_base, prompt).await
             }

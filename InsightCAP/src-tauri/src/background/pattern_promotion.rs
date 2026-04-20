@@ -1,7 +1,7 @@
-use std::time::Duration;
-use tauri::{AppHandle, Manager, Emitter};
 use crate::db::AppState;
 use crate::services::pattern_engine::PatternEngine;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Pattern Promotion 背景工作程式
 /// 定期喚醒檢視是否有多對話記憶重疊

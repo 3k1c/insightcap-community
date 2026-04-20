@@ -4,8 +4,8 @@ mod windows;
 #[cfg(target_os = "macos")]
 mod macos;
 
-pub mod preprocess;
 pub mod postprocess;
+pub mod preprocess;
 
 /// 統一的 OCR 入口 (ADR-025：原生系統 OCR 替代 GLM-OCR)
 /// 對外介面: 接收二進制圖片資料

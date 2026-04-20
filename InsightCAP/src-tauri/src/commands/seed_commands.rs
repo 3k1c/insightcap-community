@@ -1,17 +1,29 @@
-/// 測試用資料注入指令 — 用完請移除此檔案及相關登記
-use tauri::State;
 use crate::db::AppState;
 use chrono::Utc;
+/// 測試用資料注入指令 — 用完請移除此檔案及相關登記
+use tauri::State;
 use uuid::Uuid;
 
 #[tauri::command]
 pub async fn clear_seed_data(state: State<'_, AppState>) -> Result<String, String> {
     let pool = &state.db;
     // 依照 id 前綴刪除所有 seed 資料
-    sqlx::query("DELETE FROM memory_chunks WHERE id LIKE 'seed-mc-%'").execute(pool).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM captures WHERE id LIKE 'seed-cap-%'").execute(pool).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM sources WHERE id LIKE 'seed-src-%'").execute(pool).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM spaces WHERE id LIKE 'seed-space-%'").execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM memory_chunks WHERE id LIKE 'seed-mc-%'")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM captures WHERE id LIKE 'seed-cap-%'")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM sources WHERE id LIKE 'seed-src-%'")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM spaces WHERE id LIKE 'seed-space-%'")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok("已清除所有測試資料".to_string())
 }
 
@@ -143,10 +155,14 @@ pub async fn seed_test_data(state: State<'_, AppState>) -> Result<String, String
                 SELECT COUNT(*) FROM memory_chunks WHERE space_id = ? AND pending_confirm = 0
              ) + (
                 SELECT COUNT(*) FROM captures WHERE space_id = ?
-             ) WHERE id = ?"
+             ) WHERE id = ?",
         )
-        .bind(space_id).bind(space_id).bind(space_id)
-        .execute(pool).await.map_err(|e| e.to_string())?;
+        .bind(space_id)
+        .bind(space_id)
+        .bind(space_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
     }
 
     Ok(format!(

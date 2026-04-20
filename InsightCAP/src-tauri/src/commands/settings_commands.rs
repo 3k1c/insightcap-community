@@ -1,5 +1,5 @@
-use crate::settings::store::{self, AllSettings};
 use crate::providers::llm::model_caps;
+use crate::settings::store::{self, AllSettings};
 use reqwest::Client;
 use sqlx::SqlitePool;
 use tauri::{Manager, State};
@@ -28,10 +28,7 @@ pub async fn save_settings(
         .app_data_dir()
         .map_err(|e| format!("Path error: {}", e))?;
 
-    crate::db::connection::write_bootstrap(
-        &app_data_dir,
-        &settings.knowledge.kb_path,
-    )?;
+    crate::db::connection::write_bootstrap(&app_data_dir, &settings.knowledge.kb_path)?;
 
     Ok(())
 }
@@ -139,18 +136,25 @@ pub async fn test_model_connection(
     api_key: Option<String>,
 ) -> Result<String, String> {
     use crate::providers::llm::openai::OpenAiProvider;
-    use crate::providers::llm::{LLMProvider, LLMOptions};
+    use crate::providers::llm::{LLMOptions, LLMProvider};
 
     let base_url_str = base_url.unwrap_or_default();
     let api_key_str = api_key.unwrap_or_default();
 
     let ai_provider = OpenAiProvider::new(api_key_str, Some(base_url_str), model, provider);
-    let options = LLMOptions { max_tokens: 20, stream: false, temperature: 0.1, think_mode: None };
-    
+    let options = LLMOptions {
+        max_tokens: 20,
+        stream: false,
+        temperature: 0.1,
+        think_mode: None,
+    };
+
     match tokio::time::timeout(
         std::time::Duration::from_secs(15),
-        ai_provider.complete("Hi", options)
-    ).await {
+        ai_provider.complete("Hi", options),
+    )
+    .await
+    {
         Ok(Ok(res)) => Ok(res),
         Ok(Err(e)) => Err(e.to_string()),
         Err(_) => Err("Timeout".to_string()),
@@ -159,9 +163,7 @@ pub async fn test_model_connection(
 
 /// 查詢當前 chat_llm 是否支援 thinking
 #[tauri::command]
-pub async fn get_chat_llm_supports_thinking(
-    pool: State<'_, SqlitePool>,
-) -> Result<bool, String> {
+pub async fn get_chat_llm_supports_thinking(pool: State<'_, SqlitePool>) -> Result<bool, String> {
     let settings = store::get_settings(pool.inner())
         .await
         .map_err(|e| format!("Database error: {}", e))?;

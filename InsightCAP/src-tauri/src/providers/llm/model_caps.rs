@@ -57,11 +57,7 @@ pub fn detect(model: &str, provider: &str) -> ReasoningStyle {
 
     // Ollama 上支援 "think" 參數的模型（輸出以 <think> tag 包裹）
     // 包含：qwq、qwen3、以及名稱含 "thinking" 的模型
-    if p == "ollama" && (
-        m.contains("qwq")
-        || m.contains("thinking")
-        || m.contains("qwen3")
-    ) {
+    if p == "ollama" && (m.contains("qwq") || m.contains("thinking") || m.contains("qwen3")) {
         return ReasoningStyle::OllamaThinkTag;
     }
 
@@ -123,7 +119,10 @@ mod tests {
         assert_eq!(detect("o3", "openai"), ReasoningStyle::OpenAiReasoning);
         assert_eq!(detect("o3-mini", "openai"), ReasoningStyle::OpenAiReasoning);
         assert_eq!(detect("o4-mini", "openai"), ReasoningStyle::OpenAiReasoning);
-        assert_eq!(detect("o1-preview", "openai"), ReasoningStyle::OpenAiReasoning);
+        assert_eq!(
+            detect("o1-preview", "openai"),
+            ReasoningStyle::OpenAiReasoning
+        );
     }
 
     #[test]
@@ -131,24 +130,51 @@ mod tests {
         assert_eq!(detect("gpt-4o", "openai"), ReasoningStyle::None);
         assert_eq!(detect("gpt-4o-mini", "openai"), ReasoningStyle::None);
         assert_eq!(detect("qwen2.5:7b", "ollama"), ReasoningStyle::None);
-        assert_eq!(detect("claude-3.5-sonnet", "anthropic"), ReasoningStyle::None);
+        assert_eq!(
+            detect("claude-3.5-sonnet", "anthropic"),
+            ReasoningStyle::None
+        );
         assert_eq!(detect("gemini-2.0-flash", "google"), ReasoningStyle::None);
     }
 
     #[test]
     fn test_gemini_reasoning() {
-        assert_eq!(detect("gemini-2.5-pro", "google"), ReasoningStyle::DeepSeekReasoning);
-        assert_eq!(detect("gemini-2.5-flash", "google"), ReasoningStyle::DeepSeekReasoning);
-        assert_eq!(detect("gemini-3-flash-preview", "google"), ReasoningStyle::DeepSeekReasoning);
-        assert_eq!(detect("gemini-3.1-pro-preview", "google"), ReasoningStyle::DeepSeekReasoning);
-        assert_eq!(detect("google/gemini-2.5-pro-preview", "openrouter"), ReasoningStyle::DeepSeekReasoning);
+        assert_eq!(
+            detect("gemini-2.5-pro", "google"),
+            ReasoningStyle::DeepSeekReasoning
+        );
+        assert_eq!(
+            detect("gemini-2.5-flash", "google"),
+            ReasoningStyle::DeepSeekReasoning
+        );
+        assert_eq!(
+            detect("gemini-3-flash-preview", "google"),
+            ReasoningStyle::DeepSeekReasoning
+        );
+        assert_eq!(
+            detect("gemini-3.1-pro-preview", "google"),
+            ReasoningStyle::DeepSeekReasoning
+        );
+        assert_eq!(
+            detect("google/gemini-2.5-pro-preview", "openrouter"),
+            ReasoningStyle::DeepSeekReasoning
+        );
     }
 
     #[test]
     fn test_deepseek_r1() {
-        assert_eq!(detect("deepseek-r1", "ollama"), ReasoningStyle::OllamaThinkTag);
-        assert_eq!(detect("deepseek-r1:latest", "ollama"), ReasoningStyle::OllamaThinkTag);
-        assert_eq!(detect("deepseek/deepseek-r1", "openrouter"), ReasoningStyle::DeepSeekReasoning);
+        assert_eq!(
+            detect("deepseek-r1", "ollama"),
+            ReasoningStyle::OllamaThinkTag
+        );
+        assert_eq!(
+            detect("deepseek-r1:latest", "ollama"),
+            ReasoningStyle::OllamaThinkTag
+        );
+        assert_eq!(
+            detect("deepseek/deepseek-r1", "openrouter"),
+            ReasoningStyle::DeepSeekReasoning
+        );
     }
 
     #[test]

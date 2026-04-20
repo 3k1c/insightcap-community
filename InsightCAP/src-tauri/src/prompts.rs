@@ -18,11 +18,9 @@ pub const RAG_CONTEXT_PATTERN: &str =
 pub const RAG_CONTEXT_LOG: &str =
     "## 背景參考：已知風險\n以下是用戶過去記錄的已知問題，僅供背景參考。只有當用戶的問題直接相關時才簡短提及，不要主動輸出或複述這些內容：";
 
-pub const RAG_CONTEXT_DATA: &str =
-    "## 參考資料\n以下是相關的具體資料，請用於填充回答內容：";
+pub const RAG_CONTEXT_DATA: &str = "## 參考資料\n以下是相關的具體資料，請用於填充回答內容：";
 
-pub const RAG_CONTEXT_EXTERNAL: &str =
-    "## 外部知識庫參考（只讀）";
+pub const RAG_CONTEXT_EXTERNAL: &str = "## 外部知識庫參考（只讀）";
 
 pub const RAG_CONTEXT_WEB_SEARCH: &str =
     "## 即時網路搜尋結果（來源截至今日，請優先參考用於回答時效性問題）";
@@ -45,8 +43,7 @@ pub const AUTO_TITLE_SYSTEM: &str =
 // ─── 思考模式（Think Mode）────────────────────────────────────────────────────
 
 /// 注入在 system prompt 最前面，啟用模型的深度推理行為
-pub const THINK_MODE_PREFIX: &str =
-    "<thinking>\n\
+pub const THINK_MODE_PREFIX: &str = "<thinking>\n\
      請在回答前進行深度推理：\n\
      1. 仔細分析問題的核心與隱含假設\n\
      2. 列出所有可能的解法或角度\n\
@@ -63,8 +60,7 @@ pub const PATTERN_ANALYSIS: &str =
 
 // ─── Space Wiki 生成（不開放用戶修改）────────────────────────────────────────
 
-pub const SPACE_WIKI_SYSTEM: &str =
-    "你是 InsightCAP 的知識文件維護引擎。\
+pub const SPACE_WIKI_SYSTEM: &str = "你是 InsightCAP 的知識文件維護引擎。\
     你的任務是為指定 Space 維護一份結構化的 Markdown 知識文件（Wiki）。\
     Wiki 必須包含以下四個區塊（若無對應內容則省略該區塊）：\n\
     ## 核心框架\n（已驗證的工作流程或方法論）\n\

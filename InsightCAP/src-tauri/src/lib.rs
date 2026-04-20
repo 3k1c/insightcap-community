@@ -4,19 +4,19 @@
 pub mod auth;
 pub mod background;
 pub mod capture;
-pub mod ocr;
 pub mod commands;
 pub mod db;
+pub mod error;
+pub mod http_server;
 pub mod knowledge_source;
+pub mod ocr;
 pub mod prompts;
 pub mod providers;
 pub mod services;
 pub mod settings;
+pub mod tray_status;
 pub mod utils;
 pub mod vector_store;
-pub mod error;
-pub mod http_server;
-pub mod tray_status;
 
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -28,9 +28,9 @@ use tauri::{
 fn set_zoom(window: WebviewWindow, factor: f64) -> Result<(), String> {
     window.set_zoom(factor).map_err(|e| e.to_string())
 }
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use serde_json::json;
 use std::sync::Arc;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

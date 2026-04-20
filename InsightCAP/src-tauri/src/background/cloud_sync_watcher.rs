@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
-use std::time::Duration;
 use crate::db::AppState;
+use std::path::PathBuf;
+use std::time::Duration;
+use tauri::{AppHandle, Manager};
 
 pub fn start_cloud_sync_watcher(app: AppHandle, _kb_path: PathBuf) {
     let mut shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();

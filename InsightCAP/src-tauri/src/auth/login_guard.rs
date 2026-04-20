@@ -1,7 +1,7 @@
+use super::AuthError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use super::AuthError;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LoginGuard {
@@ -17,8 +17,8 @@ impl LoginGuard {
         let wait_secs: u64 = match self.fail_count {
             0..=4 => 0,
             5..=9 => 30,
-            10..=19 => 300,   // 5 分鐘
-            20..=49 => 3600,  // 1 小時
+            10..=19 => 300,    // 5 分鐘
+            20..=49 => 3600,   // 1 小時
             _ => u64::MAX / 2, // 永久鎖定（只能用恢復碼）
         };
         if wait_secs > 0 {

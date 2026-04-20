@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use sqlx::{Row, SqlitePool};
 use crate::providers::embedding::Embedder;
 use crate::vector_store::local::VectorStore;
+use sqlx::{Row, SqlitePool};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// 重聚類一批的大小
 const BATCH_SIZE: usize = 50;
@@ -19,13 +19,23 @@ pub struct SpaceEngine {
 
 impl SpaceEngine {
     pub fn new(pool: SqlitePool, embedder: Arc<dyn Embedder>, vector_store: VectorStore) -> Self {
-        Self { pool, embedder, vector_store }
+        Self {
+            pool,
+            embedder,
+            vector_store,
+        }
     }
 
     /// 將給定的 Capture 分配到現有的 Space，或者建立新的 Space。
     /// 回傳 (space_id, is_new_space)；is_new_space=true 表示新建了 Space。
-    pub async fn assign_to_space(&self, capture_id: &str, content: &str) -> Result<Option<(String, bool)>, String> {
-        let settings = crate::settings::store::get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+    pub async fn assign_to_space(
+        &self,
+        capture_id: &str,
+        content: &str,
+    ) -> Result<Option<(String, bool)>, String> {
+        let settings = crate::settings::store::get_settings(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
         let cfg = settings.ai_models.content_processor_llm;
 
         let mut opt_provider: Option<crate::providers::llm::openai::OpenAiProvider> = None;
@@ -33,7 +43,12 @@ impl SpaceEngine {
         let api_key = cfg.api_key.unwrap_or_default();
 
         if !api_key.is_empty() || is_ollama {
-            opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(api_key, cfg.base_url, cfg.model, cfg.provider.clone()));
+            opt_provider = Some(crate::providers::llm::openai::OpenAiProvider::new(
+                api_key,
+                cfg.base_url,
+                cfg.model,
+                cfg.provider.clone(),
+            ));
         }
 
         if let Some(llm) = opt_provider {
@@ -41,7 +56,7 @@ impl SpaceEngine {
 
             // 查出現有 Space 名稱清單，讓 LLM 優先重用
             let existing_names: Vec<String> = sqlx::query_scalar(
-                "SELECT name FROM spaces WHERE is_archived = 0 ORDER BY chunk_count DESC LIMIT 30"
+                "SELECT name FROM spaces WHERE is_archived = 0 ORDER BY chunk_count DESC LIMIT 30",
             )
             .fetch_all(&self.pool)
             .await
@@ -66,14 +81,18 @@ impl SpaceEngine {
                 )
             };
 
-            if let Ok(category) = llm.complete(&prompt, crate::providers::llm::LLMOptions::default()).await {
+            if let Ok(category) = llm
+                .complete(&prompt, crate::providers::llm::LLMOptions::default())
+                .await
+            {
                 let clean_category = category.trim().to_string();
                 if !clean_category.is_empty() {
-                    let space_id: Option<String> = sqlx::query_scalar("SELECT id FROM spaces WHERE name = ?")
-                        .bind(&clean_category)
-                        .fetch_optional(&self.pool)
-                        .await
-                        .unwrap_or(None);
+                    let space_id: Option<String> =
+                        sqlx::query_scalar("SELECT id FROM spaces WHERE name = ?")
+                            .bind(&clean_category)
+                            .fetch_optional(&self.pool)
+                            .await
+                            .unwrap_or(None);
 
                     let (active_space_id, is_new) = if let Some(id) = space_id {
                         (id, false)
@@ -109,7 +128,10 @@ impl SpaceEngine {
             }
         }
 
-        println!("[SpaceEngine] 無法為 capture {} 分配 Space，保留預設 inbox 狀態", capture_id);
+        println!(
+            "[SpaceEngine] 無法為 capture {} 分配 Space，保留預設 inbox 狀態",
+            capture_id
+        );
         Ok(None)
     }
 
@@ -120,12 +142,10 @@ impl SpaceEngine {
     /// 4. 更新 spaces.chunk_count
     pub async fn recluster_all(&self) -> Result<usize, String> {
         // Step 1: 取得所有非歸檔 Space
-        let space_rows = sqlx::query(
-            "SELECT id, name FROM spaces WHERE is_archived = 0"
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let space_rows = sqlx::query("SELECT id, name FROM spaces WHERE is_archived = 0")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
         if space_rows.is_empty() {
             return Ok(0);
@@ -165,7 +185,10 @@ impl SpaceEngine {
         self.refresh_chunk_counts().await?;
 
         let total = cap_count + mc_count;
-        println!("[SpaceEngine] 重聚類完成：captures={} memory_chunks={}", cap_count, mc_count);
+        println!(
+            "[SpaceEngine] 重聚類完成：captures={} memory_chunks={}",
+            cap_count, mc_count
+        );
         Ok(total)
     }
 
@@ -176,16 +199,19 @@ impl SpaceEngine {
         space_centers: &HashMap<String, Vec<f32>>,
     ) -> Result<Vec<(String, String)>, String> {
         // 1. 讀取 chunk_count
-        let count_rows = sqlx::query(
-            "SELECT id, chunk_count FROM spaces WHERE is_archived = 0"
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let count_rows = sqlx::query("SELECT id, chunk_count FROM spaces WHERE is_archived = 0")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
         let chunk_counts: HashMap<String, i64> = count_rows
             .iter()
-            .map(|r| (r.get::<String, _>("id"), r.try_get::<i64, _>("chunk_count").unwrap_or(0)))
+            .map(|r| {
+                (
+                    r.get::<String, _>("id"),
+                    r.try_get::<i64, _>("chunk_count").unwrap_or(0),
+                )
+            })
             .collect();
 
         // 2. 排序 space_id 確保配對順序確定
@@ -196,10 +222,8 @@ impl SpaceEngine {
         let mut merge_pairs: Vec<(String, String, f32)> = Vec::new();
         for i in 0..space_ids.len() {
             for j in (i + 1)..space_ids.len() {
-                let sim = cosine_similarity(
-                    &space_centers[space_ids[i]],
-                    &space_centers[space_ids[j]],
-                );
+                let sim =
+                    cosine_similarity(&space_centers[space_ids[i]], &space_centers[space_ids[j]]);
                 if sim >= MERGE_THRESHOLD {
                     merge_pairs.push((space_ids[i].clone(), space_ids[j].clone(), sim));
                 }
@@ -260,24 +284,22 @@ impl SpaceEngine {
             .map_err(|e| e.to_string())?;
 
         // 3. 合併 wiki_content
-        let absorbed_wiki: String = sqlx::query_scalar(
-            "SELECT wiki_content FROM spaces WHERE id = ?"
-        )
-        .bind(absorbed_id)
-        .fetch_optional(&self.pool)
-        .await
-        .unwrap_or(None)
-        .unwrap_or_default();
+        let absorbed_wiki: String =
+            sqlx::query_scalar("SELECT wiki_content FROM spaces WHERE id = ?")
+                .bind(absorbed_id)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or(None)
+                .unwrap_or_default();
 
         if !absorbed_wiki.trim().is_empty() {
-            let survivor_wiki: String = sqlx::query_scalar(
-                "SELECT wiki_content FROM spaces WHERE id = ?"
-            )
-            .bind(survivor_id)
-            .fetch_optional(&self.pool)
-            .await
-            .unwrap_or(None)
-            .unwrap_or_default();
+            let survivor_wiki: String =
+                sqlx::query_scalar("SELECT wiki_content FROM spaces WHERE id = ?")
+                    .bind(survivor_id)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .unwrap_or(None)
+                    .unwrap_or_default();
 
             let merged_wiki = if survivor_wiki.trim().is_empty() {
                 absorbed_wiki
@@ -295,12 +317,14 @@ impl SpaceEngine {
         }
 
         // 4. 歸檔被吸收的 Space
-        sqlx::query("UPDATE spaces SET is_archived = 1, chunk_count = 0, updated_at = ? WHERE id = ?")
-            .bind(&now)
-            .bind(absorbed_id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        sqlx::query(
+            "UPDATE spaces SET is_archived = 1, chunk_count = 0, updated_at = ? WHERE id = ?",
+        )
+        .bind(&now)
+        .bind(absorbed_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -311,7 +335,11 @@ impl SpaceEngine {
         chunk_id: &str,
         content: &str,
     ) -> Result<Option<String>, String> {
-        let vec = self.embedder.embed(content).await.map_err(|e| e.to_string())?;
+        let vec = self
+            .embedder
+            .embed(content)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // 讀取所有非歸檔 space 的 embedding_center
         let space_rows = sqlx::query(
@@ -427,7 +455,7 @@ impl SpaceEngine {
             let rows = sqlx::query(
                 "SELECT id, vector_id, clean_content FROM captures \
                  WHERE status = 'processed' \
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?"
+                 ORDER BY created_at DESC LIMIT ? OFFSET ?",
             )
             .bind(BATCH_SIZE as i64)
             .bind(offset as i64)
@@ -435,7 +463,9 @@ impl SpaceEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-            if rows.is_empty() { break; }
+            if rows.is_empty() {
+                break;
+            }
             let batch_len = rows.len();
 
             for r in &rows {
@@ -446,34 +476,34 @@ impl SpaceEngine {
                 // 取得向量：優先從 VectorStore，沒有則重新 embed
                 let vec = if let Some(v_id) = vid {
                     self.vector_store.get_vector(v_id as u64).await
-                } else { None };
+                } else {
+                    None
+                };
 
                 let vec = match vec {
                     Some(v) => v,
-                    None => {
-                        match self.embedder.embed(&content).await {
-                            Ok(v) => v,
-                            Err(_) => continue,
-                        }
-                    }
+                    None => match self.embedder.embed(&content).await {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    },
                 };
 
                 if let Some((best_space_id, best_sim)) = best_matching_space(space_centers, &vec) {
                     if best_sim >= ASSIGN_THRESHOLD {
-                        let _ = sqlx::query(
-                            "UPDATE captures SET space_id = ? WHERE id = ?"
-                        )
-                        .bind(&best_space_id)
-                        .bind(&cap_id)
-                        .execute(&self.pool)
-                        .await;
+                        let _ = sqlx::query("UPDATE captures SET space_id = ? WHERE id = ?")
+                            .bind(&best_space_id)
+                            .bind(&cap_id)
+                            .execute(&self.pool)
+                            .await;
                         updated_count += 1;
                     }
                 }
             }
 
             offset += batch_len as u64;
-            if batch_len < BATCH_SIZE { break; }
+            if batch_len < BATCH_SIZE {
+                break;
+            }
         }
 
         Ok(updated_count)
@@ -491,7 +521,7 @@ impl SpaceEngine {
             let rows = sqlx::query(
                 "SELECT id, vector_id, content FROM memory_chunks \
                  WHERE pending_confirm = 0 \
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?"
+                 ORDER BY created_at DESC LIMIT ? OFFSET ?",
             )
             .bind(BATCH_SIZE as i64)
             .bind(offset as i64)
@@ -499,7 +529,9 @@ impl SpaceEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-            if rows.is_empty() { break; }
+            if rows.is_empty() {
+                break;
+            }
             let batch_len = rows.len();
 
             for r in &rows {
@@ -509,34 +541,34 @@ impl SpaceEngine {
 
                 let vec = if let Some(v_id) = vid {
                     self.vector_store.get_vector(v_id as u64).await
-                } else { None };
+                } else {
+                    None
+                };
 
                 let vec = match vec {
                     Some(v) => v,
-                    None => {
-                        match self.embedder.embed(&content).await {
-                            Ok(v) => v,
-                            Err(_) => continue,
-                        }
-                    }
+                    None => match self.embedder.embed(&content).await {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    },
                 };
 
                 if let Some((best_space_id, best_sim)) = best_matching_space(space_centers, &vec) {
                     if best_sim >= ASSIGN_THRESHOLD {
-                        let _ = sqlx::query(
-                            "UPDATE memory_chunks SET space_id = ? WHERE id = ?"
-                        )
-                        .bind(&best_space_id)
-                        .bind(&mc_id)
-                        .execute(&self.pool)
-                        .await;
+                        let _ = sqlx::query("UPDATE memory_chunks SET space_id = ? WHERE id = ?")
+                            .bind(&best_space_id)
+                            .bind(&mc_id)
+                            .execute(&self.pool)
+                            .await;
                         updated_count += 1;
                     }
                 }
             }
 
             offset += batch_len as u64;
-            if batch_len < BATCH_SIZE { break; }
+            if batch_len < BATCH_SIZE {
+                break;
+            }
         }
 
         Ok(updated_count)
@@ -544,36 +576,33 @@ impl SpaceEngine {
 
     /// 重新計算各 Space 的 chunk_count
     async fn refresh_chunk_counts(&self) -> Result<(), String> {
-        let space_ids: Vec<String> = sqlx::query_scalar("SELECT id FROM spaces WHERE is_archived = 0")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        let space_ids: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM spaces WHERE is_archived = 0")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         for space_id in &space_ids {
-            let cap_cnt: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM captures WHERE space_id = ?"
-            )
-            .bind(space_id)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0);
+            let cap_cnt: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM captures WHERE space_id = ?")
+                    .bind(space_id)
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap_or(0);
 
-            let mc_cnt: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM memory_chunks WHERE space_id = ?"
-            )
-            .bind(space_id)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0);
+            let mc_cnt: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM memory_chunks WHERE space_id = ?")
+                    .bind(space_id)
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap_or(0);
 
-            let _ = sqlx::query(
-                "UPDATE spaces SET chunk_count = ?, updated_at = ? WHERE id = ?"
-            )
-            .bind(cap_cnt + mc_cnt)
-            .bind(chrono::Utc::now().to_rfc3339())
-            .bind(space_id)
-            .execute(&self.pool)
-            .await;
+            let _ = sqlx::query("UPDATE spaces SET chunk_count = ?, updated_at = ? WHERE id = ?")
+                .bind(cap_cnt + mc_cnt)
+                .bind(chrono::Utc::now().to_rfc3339())
+                .bind(space_id)
+                .execute(&self.pool)
+                .await;
         }
 
         // 自動歸檔 chunk_count = 0 的 Space
@@ -607,12 +636,16 @@ fn best_matching_space(
 
 /// 計算多個向量的平均值
 fn average_vectors(vecs: &[Vec<f32>]) -> Vec<f32> {
-    if vecs.is_empty() { return vec![]; }
+    if vecs.is_empty() {
+        return vec![];
+    }
     let dim = vecs[0].len();
     let mut sum = vec![0.0f32; dim];
     for v in vecs {
         for (i, x) in v.iter().enumerate() {
-            if i < dim { sum[i] += x; }
+            if i < dim {
+                sum[i] += x;
+            }
         }
     }
     let n = vecs.len() as f32;
@@ -633,10 +666,14 @@ fn blob_to_vec(blob: &[u8]) -> Vec<f32> {
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() || a.is_empty() { return 0.0; }
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 { return 0.0; }
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
     dot / (norm_a * norm_b)
 }

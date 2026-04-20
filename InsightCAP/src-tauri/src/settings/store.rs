@@ -1,5 +1,5 @@
 //! # 設定儲存 (Settings Store)
-//! 
+//!
 //! 本模組負責設定的持久化儲存與加密。
 //! 使用 SQLite 儲存 JSON 序列化後的設定值。
 
@@ -183,7 +183,6 @@ impl Default for ReminderSettings {
         }
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -504,44 +503,64 @@ pub async fn save_settings(
     settings.encrypt_all();
 
     let queries = vec![
-        ("general", serde_json::to_string(&settings.general).map_err(|e| sqlx::Error::Protocol(e.to_string()))?),
+        (
+            "general",
+            serde_json::to_string(&settings.general)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+        ),
         (
             "ai_models",
-            serde_json::to_string(&settings.ai_models).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.ai_models)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "knowledge",
-            serde_json::to_string(&settings.knowledge).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.knowledge)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
-        ("hotkeys", serde_json::to_string(&settings.hotkeys).map_err(|e| sqlx::Error::Protocol(e.to_string()))?),
+        (
+            "hotkeys",
+            serde_json::to_string(&settings.hotkeys)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+        ),
         (
             "auto_cleanup",
-            serde_json::to_string(&settings.auto_cleanup).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.auto_cleanup)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "web_search",
-            serde_json::to_string(&settings.web_search).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.web_search)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "telegram",
-            serde_json::to_string(&settings.telegram).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.telegram)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "reminders",
-            serde_json::to_string(&settings.reminders).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.reminders)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "bilibili",
-            serde_json::to_string(&settings.bilibili_sessdata).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.bilibili_sessdata)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
         (
             "editor",
-            serde_json::to_string(&settings.editor).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.editor)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
-        ("chat_prompt_instruction", settings.chat_prompt_instruction.clone()),
+        (
+            "chat_prompt_instruction",
+            settings.chat_prompt_instruction.clone(),
+        ),
         (
             "background_synthesis",
-            serde_json::to_string(&settings.background_synthesis).map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+            serde_json::to_string(&settings.background_synthesis)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
     ];
 

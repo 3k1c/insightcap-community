@@ -1,5 +1,5 @@
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
 
 pub fn clean_window_title(title: &str) -> String {
     if title.trim().is_empty() {
@@ -11,7 +11,7 @@ pub fn clean_window_title(title: &str) -> String {
     lazy_static! {
         static ref MODIFIED_RE: Regex = Regex::new(r"(?i)\s*[-—]\s*(modified)\s*$").unwrap();
         static ref PREFIX_RE: Regex = Regex::new(r"^[-\*\s]+").unwrap();
-        
+
         static ref APPS_RE: Regex = Regex::new(r"(?i)\s*[-—]\s*(visual studio code|vscode|insightcap|adobe acrobat.*|waterfox|google chrome|chrome|microsoft.?edge|edge|safari|firefox|brave|opera|vivaldi)\s*$").unwrap();
 
         static ref DOMAIN_RE: Regex = Regex::new(r"(?i)\s*[-—|]\s*[^-\s|]+\.(com|net|tw|hk|org|io)\s*$").unwrap();

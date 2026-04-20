@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
-use chrono::Utc;
 
 use crate::providers::embedding::Embedder;
 use crate::providers::llm::openai::OpenAiProvider;
@@ -29,7 +29,11 @@ pub struct ChunkRelationEngine {
 
 impl ChunkRelationEngine {
     pub fn new(pool: SqlitePool, embedder: Arc<dyn Embedder>, vector_store: VectorStore) -> Self {
-        Self { pool, embedder, vector_store }
+        Self {
+            pool,
+            embedder,
+            vector_store,
+        }
     }
 
     /// 針對一個新寫入的 chunk，分析並記錄它與現有 chunks 的關係
@@ -43,7 +47,11 @@ impl ChunkRelationEngine {
         content: &str,
     ) -> Result<usize, String> {
         // 1. 取 embedding
-        let vec = self.embedder.embed(content).await.map_err(|e| e.to_string())?;
+        let vec = self
+            .embedder
+            .embed(content)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // 2. 向量搜尋候選
         let candidates = self.vector_store.search(&vec, RELATION_CANDIDATES).await?;
@@ -70,7 +78,12 @@ impl ChunkRelationEngine {
             return Ok(0);
         }
 
-        let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model.clone(), cfg.provider.clone());
+        let llm = OpenAiProvider::new(
+            api_key,
+            cfg.base_url.clone(),
+            cfg.model.clone(),
+            cfg.provider.clone(),
+        );
 
         for (vec_id, _score) in &candidates {
             // 先查 captures
@@ -78,7 +91,9 @@ impl ChunkRelationEngine {
                 self.find_chunk_by_vector_id(*vec_id).await
             {
                 // 不和自己建關係
-                if cand_id == chunk_id { continue; }
+                if cand_id == chunk_id {
+                    continue;
+                }
 
                 // 檢查是否已存在關係（任意方向）
                 let exists: bool = sqlx::query_scalar(
@@ -92,13 +107,18 @@ impl ChunkRelationEngine {
                 .await
                 .unwrap_or(0i64) > 0;
 
-                if exists { continue; }
+                if exists {
+                    continue;
+                }
 
                 // LLM 判斷關係
                 if let Some((relation, confidence)) =
                     self.classify_relation(&llm, content, &cand_content).await
                 {
-                    self.write_relation(chunk_id, chunk_type, &cand_id, &cand_type, &relation, confidence).await?;
+                    self.write_relation(
+                        chunk_id, chunk_type, &cand_id, &cand_type, &relation, confidence,
+                    )
+                    .await?;
                     linked += 1;
                 }
             }
@@ -111,11 +131,12 @@ impl ChunkRelationEngine {
     async fn find_chunk_by_vector_id(&self, vector_id: u64) -> Option<(String, String, String)> {
         // 查 captures
         if let Ok(row) = sqlx::query(
-            "SELECT id, clean_content FROM captures WHERE vector_id = ? AND status = 'processed'"
+            "SELECT id, clean_content FROM captures WHERE vector_id = ? AND status = 'processed'",
         )
         .bind(vector_id as i64)
         .fetch_optional(&self.pool)
-        .await {
+        .await
+        {
             if let Some(r) = row {
                 let id: String = r.try_get("id").ok()?;
                 let content: String = r.try_get("clean_content").unwrap_or_default();
@@ -125,11 +146,12 @@ impl ChunkRelationEngine {
 
         // 查 memory_chunks
         if let Ok(row) = sqlx::query(
-            "SELECT id, content FROM memory_chunks WHERE vector_id = ? AND pending_confirm = 0"
+            "SELECT id, content FROM memory_chunks WHERE vector_id = ? AND pending_confirm = 0",
         )
         .bind(vector_id as i64)
         .fetch_optional(&self.pool)
-        .await {
+        .await
+        {
             if let Some(r) = row {
                 let id: String = r.try_get("id").ok()?;
                 let content: String = r.try_get("content").unwrap_or_default();
@@ -168,7 +190,12 @@ impl ChunkRelationEngine {
             existing = &existing_content.chars().take(300).collect::<String>(),
         );
 
-        let opts = LLMOptions { temperature: 0.1, max_tokens: 20, stream: false, think_mode: None };
+        let opts = LLMOptions {
+            temperature: 0.1,
+            max_tokens: 20,
+            stream: false,
+            think_mode: None,
+        };
         let result = llm.complete(&prompt, opts).await.ok()?;
         let result = result.trim().to_string();
 
@@ -178,7 +205,9 @@ impl ChunkRelationEngine {
 
         // 解析 "relation:confidence"
         let parts: Vec<&str> = result.splitn(2, ':').collect();
-        if parts.len() != 2 { return None; }
+        if parts.len() != 2 {
+            return None;
+        }
 
         let relation = parts[0].trim().to_lowercase();
         if !["references", "extends", "contradicts"].contains(&relation.as_str()) {
@@ -186,7 +215,9 @@ impl ChunkRelationEngine {
         }
 
         let confidence: f32 = parts[1].trim().parse().unwrap_or(0.0);
-        if confidence < 0.6 { return None; }
+        if confidence < 0.6 {
+            return None;
+        }
 
         Some((relation, confidence))
     }
@@ -243,8 +274,12 @@ impl ChunkRelationEngine {
         );
 
         let mut q = sqlx::query(&sql);
-        for id in chunk_ids { q = q.bind(id); }
-        for id in chunk_ids { q = q.bind(id); }  // bind 兩次（兩個 IN 子句）
+        for id in chunk_ids {
+            q = q.bind(id);
+        }
+        for id in chunk_ids {
+            q = q.bind(id);
+        } // bind 兩次（兩個 IN 子句）
 
         let rows = q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?;
 
@@ -265,8 +300,15 @@ impl ChunkRelationEngine {
             };
 
             // 避免重複
-            if chunk_ids.contains(&linked_id) { continue; }
-            if results.iter().any(|c: &LinkedChunk| c.chunk_id == linked_id) { continue; }
+            if chunk_ids.contains(&linked_id) {
+                continue;
+            }
+            if results
+                .iter()
+                .any(|c: &LinkedChunk| c.chunk_id == linked_id)
+            {
+                continue;
+            }
 
             // 取內容
             if let Some(content) = self.get_chunk_content(&linked_id, &linked_type).await {
@@ -285,22 +327,20 @@ impl ChunkRelationEngine {
 
     async fn get_chunk_content(&self, chunk_id: &str, chunk_type: &str) -> Option<String> {
         match chunk_type {
-            "capture" => {
-                sqlx::query_scalar("SELECT clean_content FROM captures WHERE id = ?")
-                    .bind(chunk_id)
-                    .fetch_optional(&self.pool)
-                    .await
-                    .ok()
-                    .flatten()
-            }
-            "memory_chunk" => {
-                sqlx::query_scalar("SELECT content FROM memory_chunks WHERE id = ? AND pending_confirm = 0")
-                    .bind(chunk_id)
-                    .fetch_optional(&self.pool)
-                    .await
-                    .ok()
-                    .flatten()
-            }
+            "capture" => sqlx::query_scalar("SELECT clean_content FROM captures WHERE id = ?")
+                .bind(chunk_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten(),
+            "memory_chunk" => sqlx::query_scalar(
+                "SELECT content FROM memory_chunks WHERE id = ? AND pending_confirm = 0",
+            )
+            .bind(chunk_id)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten(),
             _ => None,
         }
     }

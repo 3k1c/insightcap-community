@@ -4,8 +4,8 @@
 //! 見 Phase3.1.md P3.1-11。
 
 use crate::error::AppError;
-use rtf_parser::RtfDocument;
 use regex::Regex;
+use rtf_parser::RtfDocument;
 
 pub struct RtfChunk {
     pub clean_content: String,
@@ -27,7 +27,7 @@ pub async fn extract_rtf(
     // 由於 Rust regex 不支援 lookahead，我們匹配 \par 後接一個非字母字元或字串結尾。
     let re_par = Regex::new(r"\\par([^a-zA-Z]|$)").unwrap();
     let re_line = Regex::new(r"\\line([^a-zA-Z]|$)").unwrap();
-    
+
     // 替換時保留後續字元 ($1)
     let preprocessed = re_par.replace_all(&content, "\\par [[PAR_BREAK]]$1");
     let preprocessed = re_line.replace_all(&preprocessed, "\\line [[PAR_BREAK]]$1");
@@ -77,7 +77,9 @@ And this is the third paragraph.\par
         let mut file = File::create(&path).unwrap();
         file.write_all(rtf_doc.as_bytes()).unwrap();
 
-        let chunks = extract_rtf("kb_path", path.to_str().unwrap(), "test").await.unwrap();
+        let chunks = extract_rtf("kb_path", path.to_str().unwrap(), "test")
+            .await
+            .unwrap();
 
         // 雖然 \pard 開頭也有 \par，但後接 'd' 所以不應該被替換
         // 預期會有 3 個段落

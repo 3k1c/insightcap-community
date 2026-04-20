@@ -1,4 +1,4 @@
-﻿use sqlx::Row;
+use sqlx::Row;
 use tauri::{Manager, State};
 
 use crate::background::reminder_scheduler::process_due_notifications;
@@ -63,7 +63,7 @@ pub async fn trigger_urgent_reminder_check(
 
     // 讀取當前對話摘要
     let summary: String = sqlx::query_scalar::<_, String>(
-        "SELECT COALESCE(summary, '') FROM conversations WHERE id = ?"
+        "SELECT COALESCE(summary, '') FROM conversations WHERE id = ?",
     )
     .bind(&conversation_id)
     .fetch_optional(pool)
@@ -74,7 +74,11 @@ pub async fn trigger_urgent_reminder_check(
     let engine = ReminderEngine::new(pool.clone());
     let now = chrono::Utc::now().to_rfc3339();
 
-    println!("[UrgentReminder] 啟動緊急檢查: {} (是否有摘要: {})", conversation_id, !summary.is_empty());
+    println!(
+        "[UrgentReminder] 啟動緊急檢查: {} (是否有摘要: {})",
+        conversation_id,
+        !summary.is_empty()
+    );
 
     let ids: Vec<String> = engine
         .extract_reminders(&conversation_id, &summary, &recent_messages, &now, None)
@@ -87,48 +91,57 @@ pub async fn trigger_urgent_reminder_check(
         println!("[UrgentReminder] 未能從近期對話中提取任何有效提醒。");
     }
 
-
     Ok(ids)
 }
 
 #[tauri::command]
-pub async fn trigger_test_reminder(
-    app: tauri::AppHandle,
-) -> Result<String, String> {
+pub async fn trigger_test_reminder(app: tauri::AppHandle) -> Result<String, String> {
     println!("[ReminderTest] 強制觸發測試通知...");
-    
+
     // 預檢設定
     let state = app.state::<crate::db::AppState>();
-    let settings = crate::settings::store::get_settings(&state.db).await.map_err(|e| e.to_string())?;
-    
+    let settings = crate::settings::store::get_settings(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let mut warning = String::new();
     if settings.telegram.enabled {
         if settings.telegram.bot_token.is_empty() {
-             warning = " (⚠️ 偵測到 Telegram 已啟用但未設定 Bot Token)".to_string();
+            warning = " (⚠️ 偵測到 Telegram 已啟用但未設定 Bot Token)".to_string();
         } else if settings.telegram.allowed_user_ids.is_empty() {
-             warning = " (⚠️ 偵測到 Telegram 已啟用但未設定授權 User ID)".to_string();
+            warning = " (⚠️ 偵測到 Telegram 已啟用但未設定授權 User ID)".to_string();
         }
     }
 
     let count = process_due_notifications(&app, true).await?;
     if count > 0 {
-        let telegram_info = if settings.telegram.enabled && !settings.telegram.bot_token.is_empty() {
-            format!("，並嘗試發送至 {} 位 Telegram 用戶", settings.telegram.allowed_user_ids.len())
+        let telegram_info = if settings.telegram.enabled && !settings.telegram.bot_token.is_empty()
+        {
+            format!(
+                "，並嘗試發送至 {} 位 Telegram 用戶",
+                settings.telegram.allowed_user_ids.len()
+            )
         } else {
             "".to_string()
         };
         Ok(format!("成功觸發 {} 筆通知{}。", count, telegram_info))
     } else {
         // 如果資料庫空的，我們就直接發送一條純測試訊息，讓使用者知道 Telegram 通道是通的！
-        if settings.telegram.enabled && !settings.telegram.bot_token.is_empty() && !settings.telegram.allowed_user_ids.is_empty() {
+        if settings.telegram.enabled
+            && !settings.telegram.bot_token.is_empty()
+            && !settings.telegram.allowed_user_ids.is_empty()
+        {
             for &user_id in &settings.telegram.allowed_user_ids {
                 let _ = crate::background::telegram_bot::send_message(
-                    &settings.telegram.bot_token, 
-                    user_id, 
+                    &settings.telegram.bot_token,
+                    user_id,
                     "🛠️ *InsightCAP 測試通知*\n\n您的 Telegram 提醒系統設定正確，目前連線正常！\n當您有設定開會、交付日等任務時，將會在此收到通知。"
                 ).await;
             }
-            Ok(format!("資料庫沒有到期項目，但我們已成功向 {} 位 Telegram 用戶發送測試信號！", settings.telegram.allowed_user_ids.len()))
+            Ok(format!(
+                "資料庫沒有到期項目，但我們已成功向 {} 位 Telegram 用戶發送測試信號！",
+                settings.telegram.allowed_user_ids.len()
+            ))
         } else {
             Ok(format!("目前資料庫中沒有到期的通知項目{}。", warning))
         }
@@ -137,35 +150,28 @@ pub async fn trigger_test_reminder(
 
 /// 清除所有待發送的通知（用於清除錯誤提取的測試項）
 #[tauri::command]
-pub async fn clear_pending_notifications(
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn clear_pending_notifications(state: State<'_, AppState>) -> Result<usize, String> {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let result = sqlx::query("UPDATE reminder_notifications SET sent_at = ? WHERE sent_at IS NULL")
         .bind(&now)
         .execute(&state.db)
         .await
         .map_err(|e| e.to_string())?;
-    
+
     Ok(result.rows_affected() as usize)
 }
 
 /// 自動獲取最近發訊息給 Bot 的 User ID（用於輔助設定）
 #[tauri::command]
-pub async fn telegram_get_allowed_user_ids(
-    bot_token: String,
-) -> Result<Vec<i64>, String> {
+pub async fn telegram_get_allowed_user_ids(bot_token: String) -> Result<Vec<i64>, String> {
     println!("[TelegramBot] 嘗試獲取最近對話者的 User ID...");
     let client = reqwest::Client::new();
     let url = format!("https://api.telegram.org/bot{}/getUpdates", bot_token);
-    
-    let resp = client.get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-        
+
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    
+
     let mut user_ids = std::collections::HashSet::new();
     if let Some(result) = json["result"].as_array() {
         for update in result {
@@ -184,7 +190,7 @@ pub async fn telegram_get_allowed_user_ids(
             }
         }
     }
-    
+
     let mut ids: Vec<i64> = user_ids.into_iter().collect();
     ids.sort();
     Ok(ids)
@@ -197,7 +203,8 @@ pub async fn test_telegram_notification(
     user_ids: Vec<i64>,
 ) -> Result<(), String> {
     println!("[TelegramTest] 發送測試通知至: {:?}", user_ids);
-    let msg = "✨ 這是一則來自 InsightCAP 的測試通知！如果您看到這條訊息，代表 Telegram Bot 已成功串接。";
+    let msg =
+        "✨ 這是一則來自 InsightCAP 的測試通知！如果您看到這條訊息，代表 Telegram Bot 已成功串接。";
     for chat_id in user_ids {
         crate::background::telegram_bot::send_message(&bot_token, chat_id, msg).await?;
     }
@@ -209,7 +216,7 @@ pub async fn get_system_time_info() -> Result<serde_json::Value, String> {
     let local_now = chrono::Local::now();
     let utc_now = chrono::Utc::now();
     let offset = local_now.offset().local_minus_utc();
-    
+
     Ok(serde_json::json!({
         "local": local_now.to_rfc3339(),
         "utc": utc_now.to_rfc3339(),
@@ -222,12 +229,12 @@ pub async fn get_system_time_info() -> Result<serde_json::Value, String> {
 /// 診斷用：列出資料庫中前 5 筆待發送的通知
 #[tauri::command]
 pub async fn debug_list_notifications(
-    state: tauri::State<'_, crate::db::AppState>
+    state: tauri::State<'_, crate::db::AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let rows = sqlx::query(
         "SELECT n.*, r.title FROM reminder_notifications n \
          JOIN reminders r ON n.reminder_id = r.id \
-         WHERE n.sent_at IS NULL ORDER BY n.scheduled_at ASC LIMIT 5"
+         WHERE n.sent_at IS NULL ORDER BY n.scheduled_at ASC LIMIT 5",
     )
     .fetch_all(&state.db)
     .await
@@ -249,11 +256,11 @@ pub async fn debug_list_notifications(
 /// 檢測項：時間格式不匹配 (診斷資料庫字串與程式生成字串是否對等)
 #[tauri::command]
 pub async fn verify_db_time_format(
-    state: tauri::State<'_, crate::db::AppState>
+    state: tauri::State<'_, crate::db::AppState>,
 ) -> Result<serde_json::Value, String> {
     // 1. 程式生成的標準字串 (Secs 分辨率, 帶 Z)
     let runtime_now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    
+
     // 2. 從資料庫取出最重要的一筆待發時間
     let row: Option<(String,)> = sqlx::query_as(
         "SELECT scheduled_at FROM reminder_notifications WHERE sent_at IS NULL ORDER BY created_at DESC LIMIT 1"
@@ -262,11 +269,13 @@ pub async fn verify_db_time_format(
     .await
     .map_err(|e| e.to_string())?;
 
-    let db_str = row.map(|(s,)| s).unwrap_or_else(|| "N/A (空資料庫)".to_string());
-    
+    let db_str = row
+        .map(|(s,)| s)
+        .unwrap_or_else(|| "N/A (空資料庫)".to_string());
+
     // 3. 全表掃描是否有「非標準格式」（帶毫秒）的記錄
     let ms_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM reminder_notifications WHERE scheduled_at LIKE '%.%'"
+        "SELECT COUNT(*) FROM reminder_notifications WHERE scheduled_at LIKE '%.%'",
     )
     .fetch_one(&state.db)
     .await
@@ -277,10 +286,10 @@ pub async fn verify_db_time_format(
         false
     } else {
         // 比對長度 (20 碼應為 YYYY-MM-DDTHH:MM:SSZ)
-        db_str.len() != runtime_now.len() ||
-        !db_str.ends_with('Z') ||
-        db_str.contains('.') != runtime_now.contains('.') ||
-        ms_count > 0
+        db_str.len() != runtime_now.len()
+            || !db_str.ends_with('Z')
+            || db_str.contains('.') != runtime_now.contains('.')
+            || ms_count > 0
     };
 
     Ok(serde_json::json!({
@@ -302,17 +311,18 @@ pub async fn verify_db_time_format(
             "✅ 格式一致且無毫秒污染。背景輪詢比對功能應運作正常。".to_string()
         }
     }))
-}/// 手動觸發某個對話的提醒提取 (診斷與強制更新用)
+}
+/// 手動觸發某個對話的提醒提取 (診斷與強制更新用)
 #[tauri::command]
 pub async fn manual_extract_reminders(
     state: tauri::State<'_, crate::db::AppState>,
     conversation_id: String,
 ) -> Result<String, String> {
     let pool = &state.db;
-    
+
     // 1. 取得對話訊息
     let msgs = sqlx::query(
-        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
     )
     .bind(&conversation_id)
     .fetch_all(pool)
@@ -327,42 +337,42 @@ pub async fn manual_extract_reminders(
     }
 
     // 2. 取得現有摘要 (若無則跳過或宣告失敗)
-    let summary: Option<String> = sqlx::query_scalar(
-        "SELECT summary FROM conversations WHERE id = ?"
-    )
-    .bind(&conversation_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let summary: Option<String> =
+        sqlx::query_scalar("SELECT summary FROM conversations WHERE id = ?")
+            .bind(&conversation_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let summary = summary.unwrap_or_else(|| "（無摘要）".to_string());
     let now = chrono::Utc::now().to_rfc3339();
-    
+
     // 3. 取得 project_id
-    let project_id: Option<String> = sqlx::query_scalar(
-        "SELECT project_id FROM conversations WHERE id = ?"
-    )
-    .bind(&conversation_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let project_id: Option<String> =
+        sqlx::query_scalar("SELECT project_id FROM conversations WHERE id = ?")
+            .bind(&conversation_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
     // 4. 執行提取
     let engine = ReminderEngine::new(pool.clone());
-    let created_ids = engine.extract_reminders(
-        &conversation_id,
-        &summary,
-        &dialogue,
-        &now,
-        project_id.as_deref()
-    ).await?;
+    let created_ids = engine
+        .extract_reminders(
+            &conversation_id,
+            &summary,
+            &dialogue,
+            &now,
+            project_id.as_deref(),
+        )
+        .await?;
 
     Ok(format!("成功提取 {} 筆提醒事項。", created_ids.len()))
 }
 
 #[tauri::command]
 pub async fn check_reminder_health(
-    state: tauri::State<'_, crate::db::AppState>
+    state: tauri::State<'_, crate::db::AppState>,
 ) -> Result<serde_json::Value, String> {
     let pool = &state.db;
     let now_str = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -372,7 +382,7 @@ pub async fn check_reminder_health(
         "SELECT n.id, r.title, r.status, r.pending_confirm FROM reminder_notifications n \
          JOIN reminders r ON n.reminder_id = r.id \
          WHERE n.sent_at IS NULL AND n.scheduled_at <= ? \
-         AND (r.status != 'active' OR r.pending_confirm = 1)"
+         AND (r.status != 'active' OR r.pending_confirm = 1)",
     )
     .bind(&now_str)
     .fetch_all(pool)
@@ -380,9 +390,10 @@ pub async fn check_reminder_health(
     .map_err(|e| e.to_string())?;
 
     // 2. 檢測過舊未發送 (Stale Notifications > 24h)
-    let yesterday = (chrono::Utc::now() - chrono::Duration::hours(24)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let yesterday = (chrono::Utc::now() - chrono::Duration::hours(24))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let stale_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM reminder_notifications WHERE sent_at IS NULL AND scheduled_at < ?"
+        "SELECT COUNT(*) FROM reminder_notifications WHERE sent_at IS NULL AND scheduled_at < ?",
     )
     .bind(&yesterday)
     .fetch_one(pool)
@@ -390,7 +401,9 @@ pub async fn check_reminder_health(
     .map_err(|e| e.to_string())?;
 
     // 3. 讀取死鎖計數器
-    let loop_count = state.reminder_loop_count.load(std::sync::atomic::Ordering::Relaxed);
+    let loop_count = state
+        .reminder_loop_count
+        .load(std::sync::atomic::Ordering::Relaxed);
 
     Ok(serde_json::json!({
         "timestamp": now_str,
@@ -418,7 +431,7 @@ pub async fn get_project_timeline(
 
     // 1. 獲取該項目的所有提醒事項
     let reminders = sqlx::query(
-        "SELECT * FROM reminders WHERE project_id = ? ORDER BY event_date ASC NULLS LAST"
+        "SELECT * FROM reminders WHERE project_id = ? ORDER BY event_date ASC NULLS LAST",
     )
     .bind(&project_id)
     .fetch_all(pool)
@@ -442,7 +455,7 @@ pub async fn get_project_timeline(
     let chunks = sqlx::query(
         "SELECT id, content, knowledge_type, created_at FROM memory_chunks \
          WHERE project_id = ? AND knowledge_type IN ('pattern', 'log') \
-         ORDER BY created_at DESC LIMIT 20"
+         ORDER BY created_at DESC LIMIT 20",
     )
     .bind(&project_id)
     .fetch_all(pool)

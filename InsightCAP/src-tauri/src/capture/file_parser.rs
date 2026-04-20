@@ -46,8 +46,8 @@ pub async fn parse_file(
     let chunks = match ext.as_str() {
         // Plain Text types
         "txt" | "log" => {
-            let content =
-                crate::capture::encoding::read_text_file(path).map_err(|e| format!("Failed to read text file: {}", e))?;
+            let content = crate::capture::encoding::read_text_file(path)
+                .map_err(|e| format!("Failed to read text file: {}", e))?;
             vec![FileChunk {
                 content,
                 chunk_type: "text".to_string(),
@@ -203,8 +203,8 @@ pub async fn parse_file(
         }
         // Images — 先嘗試系統 OCR，再用 Vision model 增強
         "png" | "jpg" | "jpeg" | "webp" | "gif" => {
-            let image_bytes = fs::read(path)
-                .map_err(|e| format!("Failed to read image file: {}", e))?;
+            let image_bytes =
+                fs::read(path).map_err(|e| format!("Failed to read image file: {}", e))?;
 
             let ocr_text = match crate::ocr::perform_ocr(&image_bytes).await {
                 Ok(raw) => {

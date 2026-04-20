@@ -52,11 +52,7 @@ impl MultiIndexManager {
     }
 
     /// 搜尋所有已載入的外部 KB 向量索引，回傳 (ekb_id, vector_id, score)
-    pub async fn search_all(
-        &self,
-        query: &[f32],
-        top_k: usize,
-    ) -> Vec<(String, u64, f32)> {
+    pub async fn search_all(&self, query: &[f32], top_k: usize) -> Vec<(String, u64, f32)> {
         let indices = self.indices.read().await;
         let mut all: Vec<(String, u64, f32)> = Vec::new();
 

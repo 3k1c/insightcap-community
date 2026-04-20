@@ -1,9 +1,9 @@
-use sqlx::{Row, SqlitePool};
 use chrono::Utc;
+use sqlx::{Row, SqlitePool};
 
+use crate::prompts::SPACE_WIKI_SYSTEM;
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
-use crate::prompts::SPACE_WIKI_SYSTEM;
 
 /// 每次更新最多取前 N 個 memory_chunks 作為輸入（避免 context 過大）
 const MAX_CHUNKS_PER_UPDATE: i64 = 30;
@@ -21,14 +21,13 @@ impl SpaceWikiEngine {
     /// 回傳更新後的 wiki（空字串代表內容不足，不更新）
     pub async fn update_wiki_for_space(&self, space_id: &str) -> Result<String, String> {
         // 1. 取 Space 基本資訊（name + 現有 wiki）
-        let space_row = sqlx::query(
-            "SELECT name, wiki_content FROM spaces WHERE id = ? AND is_archived = 0"
-        )
-        .bind(space_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Space {} not found", space_id))?;
+        let space_row =
+            sqlx::query("SELECT name, wiki_content FROM spaces WHERE id = ? AND is_archived = 0")
+                .bind(space_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Space {} not found", space_id))?;
 
         let space_name: String = space_row.try_get("name").unwrap_or_default();
         let existing_wiki: String = space_row.try_get("wiki_content").unwrap_or_default();
@@ -51,16 +50,26 @@ impl SpaceWikiEngine {
         }
 
         // 3. 組裝輸入給 LLM 的 context
-        let chunks_text: String = mc_rows.iter().map(|r| {
-            let kt: String = r.try_get("knowledge_type").unwrap_or_else(|_| "data".to_string());
-            let content: String = r.try_get("content").unwrap_or_default();
-            let label = match kt.as_str() {
-                "pattern" => "【Pattern】",
-                "log"     => "【Log】",
-                _         => "【Data】",
-            };
-            format!("{} {}", label, content.chars().take(200).collect::<String>())
-        }).collect::<Vec<_>>().join("\n\n");
+        let chunks_text: String = mc_rows
+            .iter()
+            .map(|r| {
+                let kt: String = r
+                    .try_get("knowledge_type")
+                    .unwrap_or_else(|_| "data".to_string());
+                let content: String = r.try_get("content").unwrap_or_default();
+                let label = match kt.as_str() {
+                    "pattern" => "【Pattern】",
+                    "log" => "【Log】",
+                    _ => "【Data】",
+                };
+                format!(
+                    "{} {}",
+                    label,
+                    content.chars().take(200).collect::<String>()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
         // 4. 組裝 prompt
         let mut user_prompt = format!(
@@ -86,12 +95,23 @@ impl SpaceWikiEngine {
             return Ok(String::new());
         }
 
-        let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model.clone(), cfg.provider.clone());
-        let opts = LLMOptions { temperature: 0.3, max_tokens: 1500, stream: false, think_mode: None };
+        let llm = OpenAiProvider::new(
+            api_key,
+            cfg.base_url.clone(),
+            cfg.model.clone(),
+            cfg.provider.clone(),
+        );
+        let opts = LLMOptions {
+            temperature: 0.3,
+            max_tokens: 1500,
+            stream: false,
+            think_mode: None,
+        };
 
         // 6. 呼叫 LLM（以 SPACE_WIKI_SYSTEM 為 system，user_prompt 為 user）
         let full_prompt = format!("{}\n\n{}", SPACE_WIKI_SYSTEM, user_prompt);
-        let result = llm.complete(&full_prompt, opts)
+        let result = llm
+            .complete(&full_prompt, opts)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -102,15 +122,13 @@ impl SpaceWikiEngine {
 
         // 7. 寫回 DB
         let now = Utc::now().to_rfc3339();
-        sqlx::query(
-            "UPDATE spaces SET wiki_content = ?, wiki_updated_at = ? WHERE id = ?"
-        )
-        .bind(&result)
-        .bind(&now)
-        .bind(space_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        sqlx::query("UPDATE spaces SET wiki_content = ?, wiki_updated_at = ? WHERE id = ?")
+            .bind(&result)
+            .bind(&now)
+            .bind(space_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
         Ok(result)
     }

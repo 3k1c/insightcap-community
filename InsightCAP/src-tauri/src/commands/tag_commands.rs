@@ -20,27 +20,32 @@ pub async fn get_all_tags(pool: State<'_, SqlitePool>) -> Result<Vec<Tag>, Strin
     .await
     .map_err(|e| e.to_string())?;
 
-    let tags = rows.into_iter().map(|r| Tag {
-        id: r.get("id"),
-        name: r.get("name"),
-        source: r.try_get("source").unwrap_or_else(|_| "ai".to_string()),
-        use_count: r.try_get("use_count").unwrap_or(0),
-        recent_count: r.try_get("recent_count").unwrap_or(0),
-    }).collect();
+    let tags = rows
+        .into_iter()
+        .map(|r| Tag {
+            id: r.get("id"),
+            name: r.get("name"),
+            source: r.try_get("source").unwrap_or_else(|_| "ai".to_string()),
+            use_count: r.try_get("use_count").unwrap_or(0),
+            recent_count: r.try_get("recent_count").unwrap_or(0),
+        })
+        .collect();
 
     Ok(tags)
 }
 
 #[tauri::command]
-pub async fn suggest_tags(pool: State<'_, SqlitePool>, query: String) -> Result<Vec<String>, String> {
+pub async fn suggest_tags(
+    pool: State<'_, SqlitePool>,
+    query: String,
+) -> Result<Vec<String>, String> {
     let pattern = format!("%{}%", query.trim());
-    let rows = sqlx::query(
-        "SELECT name FROM tags WHERE name LIKE ? ORDER BY recent_count DESC LIMIT 10"
-    )
-    .bind(pattern)
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    let rows =
+        sqlx::query("SELECT name FROM tags WHERE name LIKE ? ORDER BY recent_count DESC LIMIT 10")
+            .bind(pattern)
+            .fetch_all(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
     let suggestions = rows.into_iter().map(|r| r.get("name")).collect();
     Ok(suggestions)
@@ -61,6 +66,9 @@ pub async fn get_source_ids_by_tag(
     .await
     .map_err(|e| e.to_string())?;
 
-    let ids: Vec<String> = rows.into_iter().filter_map(|r| r.try_get("source_id").ok()).collect();
+    let ids: Vec<String> = rows
+        .into_iter()
+        .filter_map(|r| r.try_get("source_id").ok())
+        .collect();
     Ok(ids)
 }

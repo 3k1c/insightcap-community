@@ -169,7 +169,15 @@ async fn run_deep_synthesis(app: &AppHandle) {
     // 組裝 new_chunks 文字
     let new_chunks_text = candidates
         .iter()
-        .map(|c| format!("[{}] (type={}, space={})\n{}", c.id, c.knowledge_type, c.space_id.as_deref().unwrap_or("none"), c.content))
+        .map(|c| {
+            format!(
+                "[{}] (type={}, space={})\n{}",
+                c.id,
+                c.knowledge_type,
+                c.space_id.as_deref().unwrap_or("none"),
+                c.content
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n---\n");
 
@@ -237,7 +245,8 @@ async fn run_deep_synthesis(app: &AppHandle) {
 
     // ── 編譯後知識生成（Compiled Knowledge）──────────────────────────────
     // 收集所有 space_id（含 None = 全域），逐個生成精煉知識
-    let mut space_ids: Vec<Option<String>> = candidates.iter().map(|c| c.space_id.clone()).collect();
+    let mut space_ids: Vec<Option<String>> =
+        candidates.iter().map(|c| c.space_id.clone()).collect();
     space_ids.sort();
     space_ids.dedup();
     // 確保全域也有一份
@@ -295,8 +304,7 @@ async fn generate_compiled_knowledge(
         return Ok(());
     }
 
-    let prompt = prompts::COMPILED_KNOWLEDGE_PROMPT
-        .replace("{{chunks}}", &chunks_text);
+    let prompt = prompts::COMPILED_KNOWLEDGE_PROMPT.replace("{{chunks}}", &chunks_text);
 
     let opts = LLMOptions {
         temperature: 0.3,
@@ -362,10 +370,7 @@ struct CandidateChunk {
 // ─── 查詢函數 ─────────────────────────────────────────────────────────────
 
 /// 查詢候選 chunk：過去 24 小時更新的 pattern/log，且尚未被合成處理過
-async fn fetch_candidates(
-    pool: &SqlitePool,
-    limit: i64,
-) -> Result<Vec<CandidateChunk>, String> {
+async fn fetch_candidates(pool: &SqlitePool, limit: i64) -> Result<Vec<CandidateChunk>, String> {
     let rows = sqlx::query(
         "SELECT id, content, space_id, knowledge_type
          FROM memory_chunks
@@ -432,7 +437,10 @@ async fn process_entities(
             continue;
         }
 
-        if append_tag(pool, &e.chunk_id, &format!("entity:{}", e.entity)).await.is_ok() {
+        if append_tag(pool, &e.chunk_id, &format!("entity:{}", e.entity))
+            .await
+            .is_ok()
+        {
             count += 1;
         }
     }
@@ -454,7 +462,10 @@ async fn process_concepts(
             continue;
         }
 
-        if append_tag(pool, &c.chunk_id, &format!("concept:{}", c.concept)).await.is_ok() {
+        if append_tag(pool, &c.chunk_id, &format!("concept:{}", c.concept))
+            .await
+            .is_ok()
+        {
             count += 1;
         }
     }
@@ -474,16 +485,20 @@ async fn process_syntheses(
             continue;
         }
         // 驗證 source_ids 都在候選列表中
-        let all_valid = s.source_ids.iter().all(|sid| {
-            candidates.iter().any(|c| c.id == *sid)
-        });
+        let all_valid = s
+            .source_ids
+            .iter()
+            .all(|sid| candidates.iter().any(|c| c.id == *sid));
         if !all_valid || s.source_ids.is_empty() {
             continue;
         }
 
         // 取第一個 source 的 space_id 作為新 chunk 的 space
         let space_id = s.source_ids.first().and_then(|sid| {
-            candidates.iter().find(|c| c.id == *sid).and_then(|c| c.space_id.clone())
+            candidates
+                .iter()
+                .find(|c| c.id == *sid)
+                .and_then(|c| c.space_id.clone())
         });
 
         let now = Utc::now().to_rfc3339();
@@ -600,14 +615,12 @@ async fn process_contradictions(
 /// 安全地向 chunk 的 tags JSON 陣列附加一個 tag（不重複）
 async fn append_tag(pool: &SqlitePool, chunk_id: &str, new_tag: &str) -> Result<(), String> {
     // 讀取現有 tags
-    let existing: String = sqlx::query_scalar(
-        "SELECT tags FROM memory_chunks WHERE id = ?",
-    )
-    .bind(chunk_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .unwrap_or_else(|| "[]".to_string());
+    let existing: String = sqlx::query_scalar("SELECT tags FROM memory_chunks WHERE id = ?")
+        .bind(chunk_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "[]".to_string());
 
     let mut tags: Vec<String> = serde_json::from_str(&existing).unwrap_or_default();
 
@@ -664,13 +677,10 @@ async fn write_relation(
 async fn mark_synthesized(pool: &SqlitePool, chunk_ids: &[String]) {
     let now = Utc::now().to_rfc3339();
     for id in chunk_ids {
-        let _ = sqlx::query(
-            "UPDATE memory_chunks SET last_synthesized_at = ? WHERE id = ?",
-        )
-        .bind(&now)
-        .bind(id)
-        .execute(pool)
-        .await;
+        let _ = sqlx::query("UPDATE memory_chunks SET last_synthesized_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await;
     }
 }
-

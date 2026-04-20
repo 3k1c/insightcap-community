@@ -1,5 +1,7 @@
-use crate::knowledge_source::{KnowledgeSource, KnowledgeSourceType, QueryScope, ScoredChunk, KnowledgeError};
-use sqlx::{SqlitePool, Row};
+use crate::knowledge_source::{
+    KnowledgeError, KnowledgeSource, KnowledgeSourceType, QueryScope, ScoredChunk,
+};
+use sqlx::{Row, SqlitePool};
 
 pub struct PersonalKnowledgeSource {
     pool: SqlitePool,
@@ -23,7 +25,7 @@ impl KnowledgeSource for PersonalKnowledgeSource {
         limit: usize,
     ) -> Result<Vec<ScoredChunk>, KnowledgeError> {
         let rows = sqlx::query(
-            "SELECT id, clean_content, tags FROM captures ORDER BY created_at DESC LIMIT ?"
+            "SELECT id, clean_content, tags FROM captures ORDER BY created_at DESC LIMIT ?",
         )
         .bind(limit as i64)
         .fetch_all(&self.pool)

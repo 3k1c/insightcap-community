@@ -73,9 +73,7 @@ pub async fn create_decision(
 
 /// 取得已到期且未回報的決策（供前端 Toast 顯示）
 #[tauri::command]
-pub async fn get_due_decisions(
-    pool: State<'_, SqlitePool>,
-) -> Result<Vec<Decision>, String> {
+pub async fn get_due_decisions(pool: State<'_, SqlitePool>) -> Result<Vec<Decision>, String> {
     let now = Utc::now().to_rfc3339();
     let rows = sqlx::query(
         "SELECT id, project_id, conversation_id, variable_desc, options, chosen_option, \
@@ -144,14 +142,12 @@ pub async fn dismiss_decision(
     decision_id: String,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
-    sqlx::query(
-        "UPDATE decisions SET status = 'dismissed', updated_at = ? WHERE id = ?"
-    )
-    .bind(&now)
-    .bind(&decision_id)
-    .execute(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE decisions SET status = 'dismissed', updated_at = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&decision_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -170,7 +166,9 @@ fn row_to_decision(r: &sqlx::sqlite::SqliteRow) -> Decision {
         outcome_source: r.try_get("outcome_source").ok(),
         outcome_rating: r.try_get("outcome_rating").ok(),
         outcome_note: r.try_get("outcome_note").ok(),
-        status: r.try_get("status").unwrap_or_else(|_| "pending".to_string()),
+        status: r
+            .try_get("status")
+            .unwrap_or_else(|_| "pending".to_string()),
         trigger_at: r.try_get("trigger_at").unwrap_or_default(),
         created_at: r.get("created_at"),
         updated_at: r.get("updated_at"),

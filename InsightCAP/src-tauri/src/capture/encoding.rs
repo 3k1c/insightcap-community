@@ -8,8 +8,7 @@ use std::path::Path;
 
 /// 讀取文字檔案，自動處理非 UTF-8 編碼（Big5、GBK、Shift-JIS 等）。
 pub fn read_text_file(path: impl AsRef<Path>) -> Result<String, String> {
-    let bytes = fs::read(path.as_ref())
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let bytes = fs::read(path.as_ref()).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // 快速路徑：UTF-8 合法就直接回傳
     if let Ok(s) = std::str::from_utf8(&bytes) {
