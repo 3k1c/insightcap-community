@@ -245,12 +245,12 @@ CREATE TABLE chunk_relations (
 
 ## ⭐⭐⭐ 高難度
 
-### 12. Space Wiki 層（知識可用性視圖進階版）
-**目標：** 每個 Space 有一份 AI 持續維護的結構化知識文件，讓用戶看到「我在這個領域知道什麼」。
+### 12. Space 知識指南層（知識可用性視圖進階版）
+**目標：** 每個 Space 有一份 AI 持續維護的結構化知識指南，讓用戶看到「我在這個領域知道什麼」。
 
 **設計：**
 ```
-「活動策劃」Wiki（AI 自動維護，用戶可編輯）
+「活動策劃」知識指南（AI 自動維護，用戶可編輯）
 
 ## 核心框架
   標準流程：選場地 → 找嘉賓 → 老闆講話 → 遊戲 → 吃飯 → 抽獎
@@ -268,25 +268,25 @@ CREATE TABLE chunk_relations (
 ```
 
 **技術實作：**
-- `spaces` 表新增 `wiki_content` 欄位（Markdown）
-- 新增 `SpaceWikiEngine` 服務：每次新 memory_chunk 寫入 Space 時觸發更新
-- LLM 重新生成 wiki（非全量，增量更新）
-- 前端 Space 頁面新增 Wiki 分頁（Tiptap 渲染，支援用戶手動編輯）
+- `spaces` 表新增 `knowledge_guide_content` 欄位（Markdown）
+- 新增 `SpaceKnowledgeGuideEngine` 服務：每次新 memory_chunk 寫入 Space 時觸發更新
+- LLM 重新生成知識指南（非全量，增量更新）
+- 前端 Space 頁面新增知識指南分頁（Tiptap 渲染，支援用戶手動編輯）
 
-**影響檔案：** `spaces` 表 migration、新增 `SpaceWikiEngine`、`SpacePage.tsx` 大改
+**影響檔案：** `spaces` 表 migration、新增 `SpaceKnowledgeGuideEngine`、`SpacePage.tsx` 大改
 
 ---
 
-### 13. 手機版擷取（Phase 6）
-**目標：** 手機端能將資料擷取到桌面端知識庫。
+### 13. Telegram 手機端入口（取代原生手機版）
+**目標：** 透過 Telegram Bot 作為手機端入口，讓手機端能投餵資料、提問、查閱對話，而不維護獨立 React Native 專案。
 
 **技術實作：**
-- HTTP API Server（Axum，127.0.0.1:3030）骨架已完成
-- React Native 應用（或 PWA）
-- 擷取寫入 inbox → 桌面端 CaptureProcessor 處理
-- 需要 WiFi 同網段，或透過雲端同步
+- Telegram Bot polling，無需對外開放 port
+- 文字 / URL / 圖片 / 文件寫入 inbox → 桌面端 CaptureProcessor 處理
+- 白名單 `chat_id` 控制權限
+- 長回答依 Telegram 訊息限制分段或串流回覆
 
-**影響檔案：** `src-tauri/src/services/http_api.rs`（擴充）、全新 React Native 專案
+**影響檔案：** `src-tauri/src/background/telegram_bot.rs`、Telegram settings、capture/RAG 相關流程
 
 ---
 
@@ -338,10 +338,10 @@ CREATE TABLE chunk_relations (
 中期（有真實用戶後）：
   #3 ContextHintBanner 強化
   #11 反向鏈接
-  #12 Space Wiki 層
+  #12 Space 知識指南層
 
 長期（商業化後）：
-  #13 手機版
+  #13 Telegram 手機端入口
   #14 Knowledge Builder
   #15 雲端同步
 ```

@@ -1,4 +1,4 @@
-# InsightCAP — 架構文件
+# AetherCore — 架構文件
 
 > 本文件是開發的唯一架構依據。
 
@@ -6,7 +6,7 @@
 
 ## 核心定義
 
-InsightCAP 是**經驗調用系統**。
+AetherCore 是**經驗調用系統**。
 
 知識管理系統讓你找到資料；經驗調用系統在你需要的時候，主動把正確的過去經驗帶進當前工作。
 
@@ -30,13 +30,13 @@ InsightCAP 是**經驗調用系統**。
 
 ## 產品形態
 
-### InsightCAP Personal（個人版）
+### AetherCore Personal（個人版）
 - 單用戶，本地優先
 - 知識源：sources + captures + memory_chunks
 - 向量索引：通用 MultilingualE5Small（384 維）
 - 登入：本地密碼 + Argon2id + Keychain
 
-### InsightCAP Enterprise（商業版）
+### AetherCore Enterprise（商業版）
 - 單用戶，本地優先（每人各自安裝，知識庫完全私有）
 - 知識源：sources + captures + memory_chunks + Knowledge Builder 產出的外部 KB
 - 向量索引：個人部分同個人版；外部 KB 使用專業模型（可為 768 維）
@@ -67,9 +67,9 @@ InsightCAP 是**經驗調用系統**。
 | 文本編輯器 | Tiptap（ProseMirror） | 內建文件編輯器 |
 | 本地 LLM | Ollama HTTP API | 可選本地模型 |
 | 雲端 AI | OpenAI / Gemini / OpenAI-compatible | 可選雲端模型 |
-| 手機框架 | React Native 0.76 (Android) | Phase 6 手機端 |
-| 手機推理 | LiteRT-LM（`com.google.mediapipe:tasks-genai`）| On-device Gemma 4 推理 |
-| 手機 HTTP | Axum `0.0.0.0:3030` | 桌面本地 API，供手機連入 |
+| 手機端入口 | Telegram Bot polling | 取代原生 React Native 手機版 |
+| 手機端推理 | 桌面端代理 / 雲端 LLM | 手機只負責輸入與接收回覆 |
+| 本地 HTTP | Axum `0.0.0.0:3030` | 保留為內部 API / 後續擴充，不再作為手機 app 主路徑 |
 
 ---
 
@@ -101,10 +101,13 @@ InsightCAP 是**經驗調用系統**。
 │  │    └─ get_chat_llm_supports_thinking（推理能力偵測）                │  │
 │  │  space_commands（get_all_spaces / get_space_insight               │  │
 │  │                  / trigger_space_recluster                         │  │
-│  │                  / get_space_wiki / save_space_wiki                │  │
-│  │                  / regenerate_space_wiki）                         │  │
+│  │                  / get_space_knowledge_guide / save_space_knowledge_guide                │  │
+│  │                  / regenerate_space_knowledge_guide）                         │  │
 │  │  decision_commands（create / get_due / report_outcome / dismiss）  │  │
 │  │  chunk_relation_commands（get_chunk_relations）                    │  │
+│  │  reminder_commands（get_active / get_pending / confirm              │  │
+│  │                     / update_status / snooze                        │  │
+│  │                     / trigger_urgent_reminder_check）               │  │
 │  │  seed_commands（開發用種子資料）                                    │  │
 │  │  auth_commands  bilibili_auth（B 站 SESSDATA 登入）                │  │
 │  │  window commands（set_zoom）                                       │  │
@@ -112,7 +115,9 @@ InsightCAP 是**經驗調用系統**。
 │  │  Core Services                                       │  │
 │  │  CaptureEngine  ConversationEngine  MemoryEngine     │  │
 │  │  RAGEngine      PatternEngine       SpaceEngine      │  │
-│  │  TagEngine      AuthService  LanguageNormalizer       │  │
+│  │  TagEngine      AuthService  LanguageNormalizer     │  │
+│  │  ChunkRelationEngine  ReminderEngine                 │  │
+│  │  SpaceKnowledgeGuideEngine                           │  │
 │  │                         │                            │  │
 │  │  Abstraction Layer                                   │  │
 │  │  KnowledgeSource  LLMProvider  Embedder              │  │
@@ -128,8 +133,10 @@ InsightCAP 是**經驗調用系統**。
 │  │  CaptureProcessor  ConversationScheduler（完整實作）  │  │
 │  │  PatternPromotion（完整實作）  SpaceRecluster（完整實作） │  │
 │  │  DeepSynthesisEngine（深度合成 + 編譯知識生成）       │  │
-│  │  OCRWorker（Vision API）  CloudSyncWatcher            │  │
-│  │  HTTPAPIServer（Axum, 0.0.0.0:3030，Phase 6 已完整實作） │  │
+│  │  ReminderScheduler（智慧提醒排程，60秒輪詢）          │  │
+│  │  TelegramBot（Telegram 機器人）  OCRWorker（Vision API） │  │
+│  │  CloudSyncWatcher                                    │  │
+│  │  HTTPAPIServer（Axum, 0.0.0.0:3030，內部 API / 後續擴充） │  │
 │  └──────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -161,9 +168,10 @@ ConversationScheduler（每 30 秒輪詢）
     ↓
 MemoryEngine.process_conversation_summary
     → Tagger 深度推斷 knowledge_type
-    信心度 >= 0.75 → 直接寫入 memory_chunks
-    信心度 < 0.75  → 寫入 memory_chunks（pending_confirm = 1）
+    信心度 >= 0.75 且 content 非空 → 直接寫入 memory_chunks
+    信心度 < 0.75 且 content 非空  → 寫入 memory_chunks（pending_confirm = 1）
                      推送用戶確認 toast（非阻塞）
+    content 為空（如摘要生成失敗或降級中） → 靜默丟棄（避免前端顯示「內容尚未生成」）
                      確認 → 更新 knowledge_type
                      忽略 → 保持 data
     ↓ （非阻塞 spawn，以下三步平行/串行背景執行）
@@ -173,8 +181,8 @@ MemoryEngine.process_conversation_summary
     ChunkRelationEngine.analyze_for_chunk
         → 分析此 chunk 與既有 chunk 的語意關聯
         → 寫入 chunk_relations（references / contradicts / extends）
-    SpaceWikiEngine.update_wiki
-        → 根據 space 內最新 chunk 自動更新 spaces.wiki_content
+    SpaceKnowledgeGuideEngine.update_knowledge_guide_for_space
+        → 根據 space 內最新 chunk 自動更新 spaces.knowledge_guide_content
 ```
 
 ### 記憶產生——路徑 B（跨對話積累識別）
@@ -200,7 +208,7 @@ PatternPromotion 掃描：
 - **用戶段（可選）**：風格/語氣偏好，從 `settings` 表中的 `chat_prompt_instruction` 鍵讀取（後端 `store.rs` 負責 persistence），留空時不插入
 
 ```
-你是 InsightCAP，一個本地優先的 AI 助理。
+你是 AetherCore，一個本地優先的 AI 助理。
 
 {% if compiled_knowledge %}
 ## 已編譯核心知識（最高優先）
@@ -250,7 +258,7 @@ PatternPromotion 掃描：
 6. 即時網路搜尋結果（Web Search）
 
 **Prompt 管理原則：**
-- 所有系統段常數集中在 `src-tauri/src/prompts.rs`，不散落在各 service
+- 所有系統段常數集中在 `src-tauri/src/prompts.rs`，不散落在各 service（✅ 完整落地：含 Tagger、SpaceEngine、ChunkRelationEngine 所有 prompt 均已搬遷）
 - OCR / Pattern 升格 prompt 純系統邏輯，不開放用戶修改
 - 用戶段只允許影響風格/語氣，不影響輸出格式解析
 
@@ -268,8 +276,9 @@ PatternPromotion 掃描：
 **Quick Capture 視窗特性：**
 - 獨立 webview（label = `quick-capture`），共用同一份前端 bundle
 - `decorations: false`、`transparent: true`、`alwaysOnTop: true`、`skipTaskbar: true`
-- 主題跟隨主視窗（共用 localStorage `ic-theme`，`index.html` inline script 初始化）
-- 成功送出後 800ms 後隱藏視窗（hide，非關閉），不顯示額外確認回饋
+- **主題與語言跟隨主視窗**：同步監聽 `localStorage` 變更事件（`storage` event），實現跨視窗即時更新。
+- **UI 規範**：為了避免小尺寸視窗下陰影被截斷，採用**不透明背景（Opaque）**並**不顯示陰影（No Shadow）**，支援各主題模式。
+- 成功送出後隱藏視窗（hide，非關閉），不顯示額外確認回饋。
 
 **Ctrl+Alt+F 流程細節：**
 ```
@@ -572,6 +581,17 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm） |
 | `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單） |
 | `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |
+| `telegram` | `botToken`（加密存儲）/ `allowedChatIds: Vec<i64>` / `enabled: bool` / `streaming: "partial" \| "off"` / `promptInstructionOverride` | Telegram Bot 配置；`promptInstructionOverride` 優先度高於全域偏好 |
+| `editor` | `promptInstructionOverride` | 編輯器專用 AI 偏好覆寫 |
+
+---
+
+## Settings UI 佈局原則
+
+- **高頻配置頂置**：各專屬分頁（如「編輯器設定」、「網絡設定」）的 AI 偏好覆寫（Override）輸入框採用獨立 `SectionCard` 並置於該分頁最頂部。
+- **功能收納**：「智慧提醒（Smart Reminders）」設置已併入「一般設定」，移除獨立側邊欄分頁，減少介面層級。
+- **圖示規範**：「編輯器設定」統一使用 `PenLine` 圖示。
+- **視覺一致性**：所有 AI 偏好輸入框（全域/覆寫）背景色統一使用 `bg-surface-base`。
 
 ---
 
@@ -905,11 +925,11 @@ CREATE TABLE chunk_relations (
 );
 ```
 
-**spaces 表新增欄位**（Space Wiki 層）
+**spaces 表新增欄位**（Space 知識指南層）
 
 ```sql
-ALTER TABLE spaces ADD COLUMN wiki_content      TEXT NOT NULL DEFAULT '';
-ALTER TABLE spaces ADD COLUMN wiki_updated_at   TEXT NOT NULL DEFAULT '';
+ALTER TABLE spaces ADD COLUMN knowledge_guide_content      TEXT NOT NULL DEFAULT '';
+ALTER TABLE spaces ADD COLUMN knowledge_guide_updated_at   TEXT NOT NULL DEFAULT '';
 ```
 
 **compiled_knowledge 表**（編譯後知識，由 DeepSynthesisEngine 背景生成）
@@ -926,6 +946,57 @@ CREATE TABLE compiled_knowledge (
 -- 每個 space 最多一份，全域（space_id=NULL）也保留一份
 CREATE UNIQUE INDEX idx_compiled_knowledge_space
   ON compiled_knowledge(COALESCE(space_id, '__global__'));
+```
+
+**reminders 表**（智慧提醒，從對話自動提取或手動建立）
+
+```sql
+CREATE TABLE reminders (
+  id               TEXT PRIMARY KEY,
+  conversation_id  TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+  memory_chunk_id  TEXT REFERENCES memory_chunks(id) ON DELETE SET NULL,
+  space_id         TEXT REFERENCES spaces(id) ON DELETE SET NULL,
+  project_id       TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  title            TEXT NOT NULL,
+  description      TEXT DEFAULT '',
+  event_type       TEXT NOT NULL DEFAULT 'event',
+  -- meeting | deliverable | event | appointment
+  date_status      TEXT NOT NULL DEFAULT 'confirmed',
+  -- confirmed | time_inferred | range | month_only
+  event_date       TEXT,         -- YYYY-MM-DD
+  event_date_end   TEXT,         -- range 類型的結束日期
+  event_time       TEXT,         -- HH:MM（本地時間）
+  confidence       REAL DEFAULT 1.0,
+  status           TEXT NOT NULL DEFAULT 'active',
+  -- active | completed | dismissed | expired
+  pending_confirm  INTEGER DEFAULT 0,
+  -- confidence < 0.75 或 date_status != confirmed 時為 1
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE INDEX idx_reminders_status ON reminders(status);
+CREATE INDEX idx_reminders_event_date ON reminders(event_date);
+CREATE INDEX idx_reminders_conversation ON reminders(conversation_id);
+```
+
+**reminder_notifications 表**（意圖式通知排程）
+
+```sql
+CREATE TABLE reminder_notifications (
+  id               TEXT PRIMARY KEY,
+  reminder_id      TEXT NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+  intent           TEXT NOT NULL,
+  -- prepare | imminent | now | start | midcheck | urgent | final | confirm_date
+  scheduled_at     TEXT NOT NULL,  -- UTC ISO-8601
+  sent_at          TEXT,           -- 已發送時間，NULL = 未發送
+  channel          TEXT DEFAULT 'desktop',
+  user_action      TEXT,           -- completed | snoozed | dismissed
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX idx_reminder_notif_scheduled
+  ON reminder_notifications(scheduled_at) WHERE sent_at IS NULL;
+CREATE INDEX idx_reminder_notif_reminder
+  ON reminder_notifications(reminder_id);
 ```
 
 ### 資料流向
@@ -968,6 +1039,18 @@ CREATE UNIQUE INDEX idx_compiled_knowledge_space
   → 解析 JSON → 寫入 entity/concept tags、新 synthesis chunk、矛盾關係
   → 呼叫 COMPILED_KNOWLEDGE_PROMPT → 精煉知識 UPSERT 到 compiled_knowledge 表
   → 結果於下次 RAG 查詢時直接讀取（零額外延遲）
+
+智慧提醒（雙路徑）
+  路徑 A — 常規（ConversationScheduler 非同步 spawn）：
+    對話摘要完成後 → ReminderEngine.extract_reminders()
+    → LLM 提取事件 → 去重 → 排程生成 → 寫入 reminders + notifications
+  路徑 B — Hot Path（即時偵測，繞過 Scheduler 延遲）：
+    用戶訊息含時間關鍵字（前端 Regex 偵測）
+    → AI 回應完成 → invoke trigger_urgent_reminder_check
+    → 同一 ReminderEngine.extract_reminders() 立即執行
+    → generate_imminent_fallback() 補近未來通知（事件 -5 分鐘或立即 +30 秒）
+  投遞：
+    ReminderScheduler 每 60 秒輪詢 → emit "reminder-notification" event → 前端 ReminderToast
 ```
 
 **inbox 表（擷取佇列）**
@@ -1061,22 +1144,23 @@ pub trait LLMProvider: Send + Sync {
         options: LLMOptions,
     ) -> Result<String, LLMError>;
 
-    // Streaming：每個 token 透過 on_token callback 推送，最終回傳完整文字
+    // Streaming：每個 token 透過 on_token callback 推送，最終回傳完整結果
+    // StreamToken = enum Content(String) | Reasoning(String)（推理模型的 thinking block）
     async fn complete_stream(
         &self,
         system_prompt: &str,
         history: &[(String, String)],
         user_query: &str,
         options: LLMOptions,
-        on_token: impl Fn(String) + Send + 'static,
-    ) -> Result<String, LLMError>;
+        on_token: impl Fn(StreamToken) + Send + 'static,
+    ) -> Result<StreamResult, LLMError>;
 }
 
 pub struct LLMOptions {
     pub temperature: f32,
     pub max_tokens: usize,
     pub stream: bool,
-    pub think_mode: Option<String>, // 思考模式指令（None = 不啟用）
+    pub think_mode: Option<bool>, // true = 啟用推理模式，None/false = 不啟用
 }
 ```
 
@@ -1196,7 +1280,8 @@ rag_commands 傳給 RAGEngine：
 | TagEngine | per-source 標籤生成 + per-capture 標籤生成、CRUD、頻率統計、推薦；`process_source()` 輸入整份文件產出 3-5 代表標籤，跳過已有標籤以提升效率 |
 | VisionEngine | Vision model 可選增強層，對圖片與掃描頁 OCR 結果進一步理解；`probe_vision_support()` 探測模型能力（4×4 紅色測試圖，結果快取整個 App 生命週期），`try_vision_enhance()` 非阻塞調用 vision model 增強辨識 |
 | ChunkRelationEngine | 分析 chunk 之間的語意關聯（references / contradicts / extends），寫入 `chunk_relations` 表 |
-| SpaceWikiEngine | 根據 space 內最新 chunk 自動生成/更新 `spaces.wiki_content` |
+| ReminderEngine | 智慧提醒：LLM 提取對話中的日期/事件 → 去重（Layer 1: 對話內同日同分；Layer 2: 跨對話「同標題+同日+同分」）→ 意圖式排程生成（meeting/deliverable/appointment/event × confirmed/time_inferred/range/month_only）→ 寫入 reminders + reminder_notifications；支援確認/延後/完成/關閉操作。時區處理使用 `chrono::Local` 本地時間轉 UTC |
+| SpaceKnowledgeGuideEngine | 根據 space 內最新 chunk 自動生成/更新 `spaces.knowledge_guide_content` |
 | DeepSynthesisEngine | 背景深度合成引擎：多目標合成（entity/concept/synthesis/contradiction）+ 編譯後知識生成；強制使用 `content_processor_llm`，僅在無活躍對話時執行 |
 | WebSearch | 聯網搜尋，呼叫外部搜尋 API，供對話時「聯網搜尋」功能使用 |
 | AuthService | 認證、加密、健康檢查 |
@@ -1207,13 +1292,15 @@ rag_commands 傳給 RAGEngine：
 | 服務 | 職責 | 觸發方式 |
 |------|------|---------|
 | CaptureProcessor | inbox → sources + captures；重用既有 source（URL 完全匹配、剪貼簿 30 分鐘內同標題）；image 寫入後標記 `pending_ocr`；源層級標籤延後由 TagEngine.process_source() 統一處理 | inbox 有新項目，每 5 秒輪詢 |
-| ConversationScheduler | 處理 `conversation_summary_queue`，生成摘要→memory_chunks，非同步為 memory_chunk 分配 space，分析反向鏈接，更新 Space Wiki | 每 30 秒輪詢佇列 |
+| ConversationScheduler | 處理 `conversation_summary_queue`，生成摘要→memory_chunks，非同步為 memory_chunk 分配 space，分析反向鏈接，更新 Space 知識指南，非同步提取智慧提醒（ReminderEngine） | 每 30 秒輪詢佇列 |
 | PatternPromotion | 掃描新 memory_chunk，判斷升格（每 5 分鐘輪詢） | 背景定時 |
 | SpaceRecluster | 定期重新計算所有 chunk embedding，重新聚類、合併相似 space、更新 chunk_count、自動歸檔空 space | 每 30 分鐘，或接收 `space-created` event 後 3 秒延遲 |
 | DeepSynthesisEngine | 深度合成：掃描近 24h 更新的 pattern/log chunks，多目標合成（entity/concept/synthesis/contradiction）+ 編譯後知識生成。智慧跳過（有活躍對話時不執行）、強制 content_processor_llm、additive-only 寫入、last_synthesized_at 防重複 | 每 N 分鐘（預設 30，settings 可調），啟動後延遲 5 分鐘 |
+| ReminderScheduler | 輪詢 `reminder_notifications`，檢查 quiet hours（跨午夜 + 週末靜默），發送到期通知至前端（`reminder-notification` event），標記過期提醒（event_date < 昨天 → expired） | 每 60 秒輪詢 |
 | OCRWorker | 掃描 `pending_ocr` captures，先用原生 OS OCR（WinRT/Vision），後可選用 `vision_model` 增強辨識（試圖探測模型能力，若支援則用 vision 結果取代 OCR），完成後更新 `clean_content` 並觸發 TagEngine/SpaceEngine/ChunkRelationEngine | 每 30 秒輪詢，每次最多 5 筆 |
 | CloudSyncWatcher | 偵測 SQLite 檔案 modified time 異動（例如 Dropbox 覆蓋）| 30 秒輪詢（TODO：異動時觸發重載） |
-| HTTPAPIServer | 本地 REST API（Axum，`0.0.0.0:3030`），Phase 6 完整實作。端點：`GET /api/health`、`POST /api/capture`（Bearer token 驗證，寫入 inbox）、`POST /api/rag`（查詢知識庫回傳 context）、`POST /api/chat`（SSE streaming 代理推理）、`GET /`（手機 PWA 擷取頁）。Token 自動生成存 `settings.mobile_api_token` | 啟動時常駐 |
+| HTTPAPIServer | 本地 REST API（Axum，`0.0.0.0:3030`），保留為內部 API / 後續擴充。端點：`GET /api/health`、`POST /api/capture`（Bearer token 驗證，寫入 inbox）、`POST /api/rag`（查詢知識庫回傳 context）、`POST /api/chat`（SSE streaming 代理推理）。原手機 PWA / React Native 路徑已停用，手機端改走 Telegram Bot。Token 自動生成存 `settings.mobile_api_token` | 啟動時常駐 |
+| TelegramBot | Telegram Bot polling 手機端入口；全文件類型支援（與桌面端一致）。訊息處理：①純文字 → RAG 問答；②含 URL（含 YouTube/Bilibili）→ URL 擷取入庫（自動抓字幕）；③照片（壓縮）→ OCR 入庫；④文件（document）→ 根據類型自動分類：圖片（image/*） → OCR 入庫；PDF/DOCX/XLSX/PPTX/TXT/MD/EPUB/HTML/RTF/程式碼 → 解析文字後 inbox 入庫。通用機制：`sendMessageDraft` 原生串流回覆（Bot API 9.5+）；白名單 chat_id 靜默拒絕；即時緊急提醒通知會包含「事項清單（標題）」以利確認。`/new` `/list` `/rename` `/project` `/newproject` 對話/項目管理（Inline Keyboard）；檔案大小 Telegram API 上限 20MB；`streaming: "partial" \| "off"` 可設定 | `settings.telegram.enabled = true` 時啟動時常駐（polling 模式） |
 
 ---
 
@@ -1279,6 +1366,16 @@ Knowledge: --knowledge-data  --knowledge-data-bg  --knowledge-data-text
 
 Semantic:  --color-success  --color-warning  --color-danger（含 -bg / -hover 變體）
 ```
+
+### 全域提示 (Toaster) 規範
+
+- **位置**：固定為 `top-right`（右上角），避免遮擋底部聊天輸入框。
+- **樣式**：
+    - 背景：`var(--surface-base)`，**禁止透明**（Opacity 1.0），確保在複雜背景上文字清晰。
+    - 文字：`var(--text-primary)`。
+    - 邊框：`var(--stroke-divider)`。
+    - 陰影：`var(--shadow-flyout)`。
+- **互動**：新通知建立成功後需同步觸發桌面端 Toast 提示，讓用戶得知後台自動化動作（如自動建立提醒事項）。
 
 ### 三層記憶視覺語言（全系統統一）
 
@@ -1358,10 +1455,11 @@ src/
 │   └── uiStore.ts
 ├── pages/
 │   ├── ChatPage.tsx
-│   ├── KnowledgePage.tsx
+│   ├── RepositoryPage.tsx
 │   ├── SettingsPage.tsx
 │   ├── LoginPage.tsx
 │   ├── SetupPage.tsx
+│   ├── MigratePage.tsx
 │   └── QuickCapturePage.tsx
 └── lib/
     ├── tauri.ts
@@ -1428,14 +1526,21 @@ src-tauri/src/
 │   ├── space_recluster.rs
 │   ├── deep_synthesis_engine.rs  # 深度合成引擎（多目標合成 + 編譯後知識生成）
 │   ├── ocr_worker.rs
-│   └── cloud_sync_watcher.rs  # 函數式（start_cloud_sync_watcher），無 struct
+│   ├── cloud_sync_watcher.rs  # 函數式（start_cloud_sync_watcher），無 struct
+│   └── telegram_bot.rs       # Telegram Bot polling（手機端入口，enabled 時常駐）
 ├── db/
 │   ├── connection.rs       # DB 連接、健康檢查、原子寫入、AppState 定義
 │   └── migrations/
-├── http_server.rs          # Axum HTTP API（0.0.0.0:3030，Phase 6 完整實作）
-│                           # 端點：health / capture / rag / chat(SSE) / PWA
+├── http_server.rs          # Axum HTTP API（0.0.0.0:3030，內部 API / 後續擴充）
+│                           # 端點：health / capture / rag / chat(SSE)
 │                           # Bearer token 認證，token 存 settings.mobile_api_token
-├── prompts.rs              # 所有系統 prompt 常數集中管理（含 DEEP_SYNTHESIS_PROMPT / COMPILED_KNOWLEDGE_PROMPT / RAG_CONTEXT_COMPILED）
+├── prompts.rs              # 所有系統 prompt 常數集中管理（✅ 完整落地，所有 service 不再有散落 prompt）
+│                           # RAG: RAG_SYSTEM_BASE / RAG_CONTEXT_PATTERN / _LOG / _DATA / _EXTERNAL / _WEB_SEARCH / _COMPILED
+│                           # 記憶推斷: TAG_CAPTURE_PROMPT / TAG_EXTRACT_PROMPT / DEEP_INFER_KNOWLEDGE_TYPE_PROMPT
+│                           # Space 分配: SPACE_ASSIGN_NEW_PROMPT / _EXISTING_PREFIX / _SUFFIX
+│                           # 關係分析: CHUNK_RELATION_CLASSIFY_PROMPT
+│                           # 合成引擎: DEEP_SYNTHESIS_PROMPT / COMPILED_KNOWLEDGE_PROMPT / PATTERN_ANALYSIS
+│                           # 其他: AUTO_TITLE_SYSTEM / THINK_MODE_PREFIX / SPACE_KNOWLEDGE_GUIDE_SYSTEM
 ├── auth/
 ├── vector_store/
 └── utils/
@@ -1479,20 +1584,24 @@ src-tauri/src/
 22. 外部 KB 加載（✅ 已完成，Settings → Enterprise 頁籤）
 23. Knowledge Builder（獨立應用）
 
-**Phase 6：手機版**
-24. 本地 HTTP API（Axum，✅ 已完成）
+**Phase 6：Telegram 手機端入口**
+24. Telegram Bot（✅ 取代原生手機版）
+    - 手機端透過 Telegram 投餵文字、URL、圖片與文件
+    - 內容寫入 inbox → 桌面端 CaptureProcessor 處理
+    - RAG 問答與提醒通知由桌面端負責，Telegram 只作為入口與通知通道
+    - 白名單 `chat_id` 控制權限，無需維護 React Native / Android 專案
+25. 本地 HTTP API（Axum，保留）
     - `GET /api/health` — 連線確認
     - `POST /api/capture` — 擷取 → inbox（Bearer token）
     - `POST /api/rag` — 查詢桌面知識庫，回傳 context_text + chunks
     - `POST /api/chat` — 桌面代理推理，SSE streaming
-    - `GET /` — 手機 PWA 快速擷取頁
-25. React Native 應用（✅ 已完成 `mobile/`）
-    - 三模式推理：local（LiteRT-LM Gemma 4）/ cloud（直連 API）/ desktop relay
-    - QR Code 配對流程（桌面 `get_mobile_access_info` → 手機掃描）
+    - 不再作為手機 app 主路徑，後續僅作內部 API / 擴充用途
 
 ---
 
-## Phase 6 Mobile 架構
+## Phase 6 Telegram Mobile 架構
+
+> 原 React Native / Android 手機版已移除；現階段手機端入口統一改用 Telegram Bot。以下舊版 React Native 設計僅保留作歷史參考，不再是當前實作目標。
 
 ### 推理三模式
 
@@ -1549,7 +1658,7 @@ src-tauri/src/
 手機 ChatScreen（即時顯示）
 ```
 
-### 手機端目錄結構
+### 舊版 React Native 目錄結構（已移除）
 
 ```
 mobile/
@@ -1571,11 +1680,11 @@ mobile/
 └── App.tsx                      # Drawer Navigator 核心配置
 ```
 
-### Android 系統整合 (Native Integration)
+### 舊版 Android 系統整合（已移除）
 
 1. **Share Target**: 
    - 透過 `AndroidManifest.xml` 註冊 `SEND` Intent。
-   - 用戶在手機瀏覽器或其他 App 選取「分享到 InsightCAP」時，會自動調出 `CaptureScreen`。
+   - 用戶在手機瀏覽器或其他 App 選取「分享到 AetherCore」時，會自動調出 `CaptureScreen`。
 2. **Native Bridge**:
    - `ShareIntentModule` 負責在 React Native 啟動或 Resume 時抓取 Intent 內容（文字或連結），並在傳遞後自動清除防止重啟重複讀取。
 
@@ -1620,7 +1729,7 @@ mobile/
   // Vision 模型配置：用於增強圖片和 PDF 掃描頁的 OCR 結果
   // 工作流：probe_vision_support（4×4 紅色測試圖探測，快取結果） → try_vision_enhance（若支援則調用）
   // 可選：若不配置或模型不支援 vision，系統將使用原生 OS OCR 結果
-  "embedding_model":       { "provider": "local",  "model": "MultilingualE5Small" }
+  "embedding_model":       { "provider": "local",  "model": "multilingual-e5-small" }
 }
 ```
 
@@ -1763,26 +1872,26 @@ Embedding → usearch
   - `prompts.rs` 新增 `AUTO_TITLE_SYSTEM` 常數（標題生成規則）
   - 前端 `chatStore.autoTitleConversation()`：rag-stream-done 後若訊息數 ≤ 4 條則觸發
   - 已在 `lib.rs` `generate_handler!` 註冊
-- SpaceInsightPanel 設計精簡（commit 34d1d98）：移除知識分佈視圖，保留 Wiki 分頁
-  - v2.15 記載的「Insight / Wiki 分頁切換」已調整為純 Wiki 顯示
+- SpaceInsightPanel 設計精簡（commit 34d1d98）：移除知識分佈視圖，保留知識指南分頁
+  - v2.15 記載的「Insight / 知識指南分頁切換」已調整為純知識指南顯示
 - RAG commands 新增 `thinking_mode` 參數（normal/think），已實作 Think Mode 系統 prompt 前綴注入
 - RAG commands 新增 `_web_enabled` 參數 stub（佔位，尚未實作 Web 搜尋功能）
 
 *版本：v2.15 | 日期：2026-04-06*
 本次更新：
-- 新增 Space Wiki 層：每個 Space 有一份 AI 持續維護的結構化知識文件
-- `spaces` 表新增 `wiki_content TEXT DEFAULT ''` + `wiki_updated_at TEXT DEFAULT ''`（010_space_wiki.sql）
-- 新增 `SpaceWikiEngine` 服務（`services/space_wiki_engine.rs`）
-  - `update_wiki_for_space(space_id)`：取最多 30 個 memory_chunks（pattern/log 優先）→ LLM 增量更新 wiki（temperature=0.3, max_tokens=1500）
-  - Wiki 結構：`## 核心框架` / `## 已掌握方法` / `## 已知風險` / `## 知識空白`
+- 新增 Space 知識指南層：每個 Space 有一份 AI 持續維護的結構化知識指南
+- `spaces` 表新增 `knowledge_guide_content TEXT DEFAULT ''` + `knowledge_guide_updated_at TEXT DEFAULT ''`（010_space_knowledge_guide.sql）
+- 新增 `SpaceKnowledgeGuideEngine` 服務（`services/space_knowledge_guide_engine.rs`）
+  - `update_knowledge_guide_for_space(space_id)`：取最多 30 個 memory_chunks（pattern/log 優先）→ LLM 增量更新知識指南（temperature=0.3, max_tokens=1500）
+  - 知識指南結構：`## 核心框架` / `## 已掌握方法` / `## 已知風險` / `## 知識空白`
   - LLM 輸出 `INSUFFICIENT` 時跳過寫入
-- 新增三個 commands：`get_space_wiki` / `save_space_wiki` / `regenerate_space_wiki`，已在 `lib.rs` 註冊
-- 觸發點：`conversation_scheduler.rs` `Ok(chunk_id)` 後，非同步查 `memory_chunks.space_id` → spawn `update_wiki_for_space`
-- `SpaceInsightPanel.tsx` 新增 Insight / Wiki 分頁切換
-  - Wiki 分頁：`<pre>` 渲染 Markdown、行內編輯（textarea）、「重新生成」按鈕
+- 新增三個 commands：`get_space_knowledge_guide` / `save_space_knowledge_guide` / `regenerate_space_knowledge_guide`，已在 `lib.rs` 註冊
+- 觸發點：`conversation_scheduler.rs` `Ok(chunk_id)` 後，非同步查 `memory_chunks.space_id` → spawn `update_knowledge_guide_for_space`
+- `SpaceInsightPanel.tsx` 新增 Insight / 知識指南分頁切換
+  - 知識指南分頁：`<pre>` 渲染 Markdown、行內編輯（textarea）、「重新生成」按鈕
   - 更新時間標示 `updated_at`
 - `prompts.rs` 新增 `SPACE_WIKI_SYSTEM` 常數
-- i18n 新增 `space_wiki` 鍵群（9 個 key）：zh-TW / zh-CN / en + `types.ts`
+- i18n 新增 `space_knowledge_guide` 鍵群（9 個 key）：zh-TW / zh-CN / en + `types.ts`
 
 *版本：v2.14 | 日期：2026-04-06*
 本次更新：
@@ -1960,6 +2069,9 @@ kb_path/
 | 編輯器筆記（`editor_doc`）| 無 | `notes/draft_<ts>.md` ✅ KB 內 | 空（由磁碟讀取）| ✅ 安全（notes/ 隨 zip 打包） |
 | 對話臨時附件（`temp_attachment`）| 外部路徑 | 無 | ✅ 完整內嵌 | ✅ 安全（臨時用途，7天自動清除）|
 | URL / 網頁 | 無（URL 存 `sources.url`）| 無 | ✅ 爬取結果內嵌 | ✅ 安全 |
+| Telegram Bot（文本/URL）| 無 | 無 | ✅ 完整內嵌 | ✅ 安全（白名單 chat_id 認證，content 寫 inbox 後 capture_processor 處理）|
+| Telegram Bot（照片）| 無 | 無 | ✅ OCR 後內嵌；image_data BLOB 在 DB | ✅ 安全（同上）|
+| Telegram Bot（文件：PDF/DOCX/PPTX…）| 無 | 無 | ✅ 提取文字後內嵌 | ✅ 安全（同上，暫存檔寫入 parse_file 後自動清除）|
 
 ### export_kb 行為（實作版，2026-04-03 更新）
 
@@ -2035,7 +2147,7 @@ kb_path/
 
 ### 推理模式檢測與適配
 
-InsightCAP 支援多種 LLM 原生推理能力，由 `model_caps::detect(model, provider)` 在執行時自動偵測：
+AetherCore 支援多種 LLM 原生推理能力，由 `model_caps::detect(model, provider)` 在執行時自動偵測：
 
 | 推理模式 | 模型 | Provider | 激活方式 | 輸出格式 |
 |---------|------|----------|---------|---------|
