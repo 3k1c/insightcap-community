@@ -381,3 +381,83 @@ pub async fn enqueue_summary(
     let trigger = trigger_type.as_deref().unwrap_or("switch");
     enqueue_conversation(pool.inner(), &conversation_id, trigger).await
 }
+
+/// Decide whether we should append a reminder-confirmation sentence.
+/// Returns Some(message) when append is needed, otherwise None.
+#[tauri::command]
+pub async fn decide_reminder_ack(
+    pool: State<'_, SqlitePool>,
+    user_message: String,
+    recent_assistant_context: String,
+    current_answer: String,
+) -> Result<Option<String>, String> {
+    let settings = crate::settings::store::get_settings(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+    let cfg = settings.ai_models.chat_llm;
+    let api_key = cfg.api_key.clone().unwrap_or_default();
+    let is_ollama = cfg.provider == "ollama";
+
+    if api_key.is_empty() && !is_ollama {
+        return Ok(None);
+    }
+
+    let provider = OpenAiProvider::new(
+        api_key,
+        cfg.base_url.clone(),
+        cfg.model.clone(),
+        cfg.provider.clone(),
+    );
+
+    let prompt = format!(
+        "You are a dialogue policy checker.\n\
+Decide whether the assistant should append ONE extra sentence confirming reminder setup.\n\
+Return exactly one line:\n\
+- NOAPPEND\n\
+- or APPEND::<sentence>\n\n\
+Rules:\n\
+1) Append only if user message means 'no further help needed / thanks'.\n\
+2) Append only if recent assistant context indicates reminder/schedule was already created.\n\
+3) If current answer already confirms reminder setup, return NOAPPEND.\n\
+4) If APPEND is chosen, sentence must be short, natural, and in the same language as user message.\n\
+5) Keep factual: confirm reminder is set, do not add new details.\n\n\
+User message:\n{user}\n\n\
+Recent assistant context:\n{ctx}\n\n\
+Current answer:\n{ans}\n",
+        user = user_message,
+        ctx = recent_assistant_context,
+        ans = current_answer
+    );
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        provider.complete(
+            &prompt,
+            LLMOptions {
+                temperature: 0.0,
+                max_tokens: 60,
+                stream: false,
+                think_mode: Some(false),
+            },
+        ),
+    )
+    .await;
+
+    let text = match result {
+        Ok(Ok(s)) => s.trim().to_string(),
+        _ => return Ok(None),
+    };
+
+    if text.eq_ignore_ascii_case("NOAPPEND") {
+        return Ok(None);
+    }
+    if let Some(rest) = text.strip_prefix("APPEND::") {
+        let msg = rest.trim().trim_matches('"').trim_matches('\'').trim().to_string();
+        if msg.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(msg));
+    }
+
+    Ok(None)
+}

@@ -399,6 +399,7 @@ pub fn run() {
             commands::conversation_commands::enqueue_summary,
             commands::conversation_commands::rename_conversation,
             commands::conversation_commands::auto_title_conversation,
+            commands::conversation_commands::decide_reminder_ack,
             commands::conversation_commands::delete_conversation,
             commands::conversation_commands::update_conversation,
             // Project

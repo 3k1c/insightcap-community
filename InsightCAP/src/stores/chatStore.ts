@@ -3,6 +3,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 
+function recentAssistantContext(messages: Message[]): string {
+    return messages
+        .filter(m => m.role === 'assistant')
+        .slice(-3)
+        .map(m => m.content)
+        .join('\n');
+}
+
 export interface Conversation {
     id: string;
     title: string;
@@ -57,6 +65,8 @@ interface ChatState {
     expandedProjectIds: Set<string>;
     // 對話級附件 ID：附加文件在整個對話中持續有效
     conversationTempChunkIds: string[];
+    // 若本對話剛建立提醒，下一輪可視情況補一句「已設定提醒」
+    pendingReminderAckByConversation: Record<string, boolean>;
 
     loadConversations: () => Promise<void>;
     loadProjects: () => Promise<void>;
@@ -95,6 +105,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     expandedProjectIds: new Set(),
     contextStats: { dataCount: 0, patternCount: 0, logCount: 0, patternHints: [], logHints: [] },
     conversationTempChunkIds: [],
+    pendingReminderAckByConversation: {},
 
     loadProjects: async () => {
         try {
@@ -340,6 +351,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 recentMessages,
             });
             if (ids && ids.length > 0) {
+                set(state => ({
+                    pendingReminderAckByConversation: {
+                        ...state.pendingReminderAckByConversation,
+                        [conversationId]: true,
+                    },
+                }));
                 toast.success(`已從對話中自動建立 ${ids.length} 個提醒事項`);
             }
         } catch (e) {
@@ -359,6 +376,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }) => {
         const { activeConversationId, activeProjectId, messages } = get();
         if (!activeConversationId) return;
+
+        const maybeAppendReminderAck = async (answer: string): Promise<string> => {
+            const pending = get().pendingReminderAckByConversation[activeConversationId];
+            if (!pending) return answer;
+            try {
+                const ack = await invoke<string | null>('decide_reminder_ack', {
+                    userMessage: content,
+                    recentAssistantContext: recentAssistantContext(messages),
+                    currentAnswer: answer,
+                });
+                const shouldAppend = !!(ack && ack.trim());
+                set(state => ({
+                    pendingReminderAckByConversation: {
+                        ...state.pendingReminderAckByConversation,
+                        [activeConversationId]: false,
+                    },
+                }));
+                if (shouldAppend) return `${answer.trimEnd()}\n${ack!.trim()}`;
+            } catch (e) {
+                console.warn('[ReminderAck] decide_reminder_ack failed:', e);
+            }
+            return answer;
+        };
 
         set({ isGenerating: true, streamingContent: '' });
         try {
@@ -456,12 +496,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             const unlistenDone = await listen<{ conversationId: string; fullAnswer: string; reasoning?: string | null; citationSources?: string[]; contextHints?: { patternCount?: number; logCount?: number; dataCount?: number; patternHints?: string[]; logHints?: string[] } }>(
                 'rag-stream-done',
-                (event) => {
+                async (event) => {
                     if (event.payload.conversationId !== activeConversationId) return;
-                    const finalAnswer = event.payload.fullAnswer || accumulated;
+                    let finalAnswer = event.payload.fullAnswer || accumulated;
                     const finalReasoning = event.payload.reasoning || accumulatedReasoning || undefined;
                     const citationSources = Array.isArray(event.payload.citationSources) ? event.payload.citationSources : [];
                     const hints = event.payload.contextHints;
+                    finalAnswer = await maybeAppendReminderAck(finalAnswer);
 
                     // 7. 先更新 UI，再非同步存 DB
                     set(state => ({
@@ -543,7 +584,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         tempChunkIds: allTempChunkIds.length > 0 ? allTempChunkIds : null,
                         thinkingMode: opts?.thinkingMode ?? 'normal',
                     });
-                    const fallbackAnswer = ragResponse.answer || '（無回應）';
+                    let fallbackAnswer = ragResponse.answer || '（無回應）';
+                    fallbackAnswer = await maybeAppendReminderAck(fallbackAnswer);
                     const fallbackCitations = Array.isArray(ragResponse.citationSources) ? ragResponse.citationSources : [];
                     const fbHints = ragResponse.contextHints;
                     await invoke('add_message', {
