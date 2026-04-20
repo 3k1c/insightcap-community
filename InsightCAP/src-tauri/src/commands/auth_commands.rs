@@ -615,6 +615,61 @@ pub async fn generate_recovery_phrase() -> Result<String, String> {
     Ok(generate_mnemonic())
 }
 
+/// 驗證密碼是否正確（用於敏感操作前的二次確認）
+#[tauri::command]
+pub async fn verify_password(
+    pool: tauri::State<'_, SqlitePool>,
+    payload: LoginPayload,
+) -> Result<bool, String> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    // 1. 取得 salt 並衍生 candidate_key
+    let auth = load_auth_json(&payload.kb_path)
+        .ok_or_else(|| "AUTH_NOT_SETUP".to_string())?;
+    let salt_bytes = hex::decode(&auth.salt).map_err(|e| e.to_string())?;
+    if salt_bytes.len() != 32 {
+        return Err("Invalid salt in auth.json".to_string());
+    }
+    let mut salt = [0u8; 32];
+    salt.copy_from_slice(&salt_bytes);
+    
+    let mut candidate_key = derive_db_key(&payload.password, &salt).map_err(|e| e.to_string())?;
+    let key_hex = hex::encode(&candidate_key);
+
+    // 2. 嘗試用此 key 開啟一個臨時連線並執行查詢來驗證
+    let db_path = PathBuf::from(&payload.kb_path).join(".insightcap").join("insightcap.db");
+    if !db_path.exists() {
+        candidate_key.zeroize();
+        return Err("Database file not found".to_string());
+    }
+
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
+    let options = SqliteConnectOptions::from_str(&db_url)
+        .map_err(|e| e.to_string())?
+        .pragma("key", format!("\"x'{}'\"", key_hex))
+        .create_if_missing(false);
+
+    let temp_pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await;
+
+    candidate_key.zeroize();
+
+    match temp_pool {
+        Ok(p) => {
+            // 執行一個輕量查詢確保能解密
+            let res = sqlx::query("SELECT 1 FROM sqlite_master LIMIT 1")
+                .fetch_optional(&p)
+                .await;
+            p.close().await;
+            Ok(res.is_ok())
+        }
+        Err(_) => Ok(false),
+    }
+}
+
 /// 重啟應用（setup 完成後呼叫，讓 init_db 用新 key 建加密 DB）
 #[tauri::command]
 pub async fn restart_app(app: tauri::AppHandle) -> Result<(), String> {

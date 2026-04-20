@@ -346,6 +346,7 @@ pub fn run() {
             commands::auth_commands::get_pending_recovery,
             commands::auth_commands::reset_recovery_phrase,
             commands::auth_commands::generate_recovery_phrase,
+            commands::auth_commands::verify_password,
             commands::auth_commands::restart_app,
             // Settings
             commands::settings_commands::get_settings,

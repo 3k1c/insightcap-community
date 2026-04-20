@@ -472,6 +472,14 @@ export const SettingsPage: React.FC = () => {
     const [personalLoading, setPersonalLoading] = useState(false);
     const [newRecoveryModal, setNewRecoveryModal] = useState<{ open: boolean; mnemonic: string; confirmed: boolean }>({ open: false, mnemonic: '', confirmed: false });
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+    const [verifyModal, setVerifyModal] = useState<{
+        open: boolean;
+        password: string;
+        onVerified: () => void;
+        loading: boolean;
+        error: string;
+        title: string;
+    }>({ open: false, password: '', onVerified: () => { }, loading: false, error: '', title: '' });
 
     // ── Load settings ────────────────────────────────────
 
@@ -1274,18 +1282,27 @@ export const SettingsPage: React.FC = () => {
                             }
                         </button>
                         <button
-                            onClick={async () => {
-                                try {
-                                    const dest = await save({
-                                        defaultPath: 'insightcap-kb-export.zip',
-                                        filters: [{ name: 'InsightCAP KB', extensions: ['zip'] }],
-                                    });
-                                    if (!dest) return;
-                                    const mnemonic: string = await invoke('generate_recovery_phrase');
-                                    setExportModal({ open: true, step: 'mnemonic', mnemonic, confirmed: false, destPath: dest, loading: false });
-                                } catch (e) {
-                                    console.error('Export dialog failed', e);
-                                }
+                            onClick={() => {
+                                setVerifyModal({
+                                    open: true,
+                                    password: '',
+                                    title: t('settings.export_kb'),
+                                    loading: false,
+                                    error: '',
+                                    onVerified: async () => {
+                                        try {
+                                            const dest = await save({
+                                                defaultPath: 'insightcap-kb-export.zip',
+                                                filters: [{ name: 'InsightCAP KB', extensions: ['zip'] }],
+                                            });
+                                            if (!dest) return;
+                                            const mnemonic: string = await invoke('generate_recovery_phrase');
+                                            setExportModal({ open: true, step: 'mnemonic', mnemonic, confirmed: false, destPath: dest, loading: false });
+                                        } catch (e) {
+                                            console.error('Export dialog failed', e);
+                                        }
+                                    }
+                                });
                             }}
                             className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors"
                         >
@@ -1293,17 +1310,26 @@ export const SettingsPage: React.FC = () => {
                             {t('settings.export_kb')}
                         </button>
                         <button
-                            onClick={async () => {
-                                try {
-                                    const selected = await open({
-                                        multiple: false,
-                                        filters: [{ name: 'InsightCAP KB', extensions: ['zip'] }],
-                                    });
-                                    if (!selected || typeof selected !== 'string') return;
-                                    setImportModal({ open: true, step: 'input', srcPath: selected, mnemonic: '', newPassword: '', newMnemonic: '', confirmed: false, loading: false, error: '' });
-                                } catch (e) {
-                                    console.error('Import dialog failed', e);
-                                }
+                            onClick={() => {
+                                setVerifyModal({
+                                    open: true,
+                                    password: '',
+                                    title: t('settings.import_kb'),
+                                    loading: false,
+                                    error: '',
+                                    onVerified: async () => {
+                                        try {
+                                            const selected = await open({
+                                                multiple: false,
+                                                filters: [{ name: 'InsightCAP KB', extensions: ['zip'] }],
+                                            });
+                                            if (!selected || typeof selected !== 'string') return;
+                                            setImportModal({ open: true, step: 'input', srcPath: selected, mnemonic: '', newPassword: '', newMnemonic: '', confirmed: false, loading: false, error: '' });
+                                        } catch (e) {
+                                            console.error('Import dialog failed', e);
+                                        }
+                                    }
+                                });
                             }}
                             className="flex items-center gap-2 bg-surface-base border border-stroke-divider rounded-lg px-4 py-3 text-sm text-text-primary hover:bg-surface-subtle transition-colors"
                         >
@@ -1311,15 +1337,24 @@ export const SettingsPage: React.FC = () => {
                             {t('settings.import_kb')}
                         </button>
                         <button
-                            onClick={async () => {
-                                if (!window.confirm(t('common.warning_irreversible'))) return;
-                                const tid = toast.loading(t('common.loading'));
-                                try {
-                                    await invoke('delete_kb');
-                                    toast.success(t('common.success'), { id: tid });
-                                } catch (e: any) {
-                                    toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
-                                }
+                            onClick={() => {
+                                setVerifyModal({
+                                    open: true,
+                                    password: '',
+                                    title: t('settings.delete_kb'),
+                                    loading: false,
+                                    error: '',
+                                    onVerified: async () => {
+                                        if (!window.confirm(t('common.warning_irreversible'))) return;
+                                        const tid = toast.loading(t('common.loading'));
+                                        try {
+                                            await invoke('delete_kb');
+                                            toast.success(t('common.success'), { id: tid });
+                                        } catch (e: any) {
+                                            toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
+                                        }
+                                    }
+                                });
                             }}
                             className="flex items-center gap-2 bg-surface-base border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-500 hover:bg-red-500/5 transition-colors"
                         >
@@ -1818,6 +1853,151 @@ export const SettingsPage: React.FC = () => {
                 </div>
             )}
 
+            {/* ── 密碼驗證 Modal ── */}
+            {verifyModal.open && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-surface-base border border-stroke-divider rounded-2xl p-8 w-[400px] max-w-full shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-accent-default/10 rounded-full">
+                                <KeyRound className="w-6 h-6 text-accent-default" />
+                            </div>
+                            <h3 className="text-fs-xl font-bold text-text-primary">{verifyModal.title}</h3>
+                        </div>
+
+                        <p className="text-fs-sm text-text-secondary mb-6 leading-relaxed">
+                            {t('settings.verify_password_desc')}
+                        </p>
+
+                        <div className="space-y-4 mb-8">
+                            <div className="space-y-1.5">
+                                <label className="text-fs-xs text-text-secondary font-medium">{t('auth.login.password_label')}</label>
+                                <div className="relative">
+                                    <input
+                                        autoFocus
+                                        type={showPasswords.verify ? "text" : "password"}
+                                        value={verifyModal.password}
+                                        onChange={e => setVerifyModal(s => ({ ...s, password: e.target.value, error: '' }))}
+                                        onKeyDown={e => e.key === 'Enter' && !verifyModal.loading && (e.currentTarget.parentElement?.parentElement?.parentElement?.nextElementSibling?.children[1] as HTMLButtonElement)?.click()}
+                                        className="w-full bg-surface-layer border border-stroke-divider rounded-xl px-4 py-2.5 text-fs-sm focus:outline-none focus:ring-2 focus:ring-accent-default/20 focus:border-accent-default transition-all"
+                                        placeholder={t('auth.login.password_placeholder')}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPasswords(p => ({ ...p, verify: !p.verify }))}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
+                                    >
+                                        {showPasswords.verify ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+                            {verifyModal.error && (
+                                <p className="text-fs-xs text-red-500 animate-in slide-in-from-top-1">{verifyModal.error}</p>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setVerifyModal(s => ({ ...s, open: false }))}
+                                className="px-5 py-2.5 text-fs-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-subtle rounded-xl transition-all"
+                            >
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                disabled={verifyModal.loading || !verifyModal.password}
+                                onClick={async () => {
+                                    setVerifyModal(s => ({ ...s, loading: true, error: '' }));
+                                    try {
+                                        const ok = await invoke<boolean>('verify_password', {
+                                            payload: {
+                                                password: verifyModal.password,
+                                                kbPath: settings?.knowledge.kbPath
+                                            }
+                                        });
+
+                                        if (ok) {
+                                            const originalCallback = verifyModal.onVerified;
+                                            setVerifyModal(s => ({ ...s, open: false }));
+                                            originalCallback();
+                                        } else {
+                                            setVerifyModal(s => ({ ...s, loading: false, error: t('auth.login.invalid_credentials') }));
+                                        }
+                                    } catch (e: any) {
+                                        setVerifyModal(s => ({ ...s, loading: false, error: e.toString() }));
+                                    }
+                                }}
+                                className="px-8 py-2.5 bg-accent-default text-white rounded-xl font-semibold hover:bg-accent-light1 transition-all shadow-lg shadow-accent-default/20 disabled:opacity-50 active:scale-95 flex items-center gap-2"
+                            >
+                                {verifyModal.loading ? (
+                                    <>
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                        {t('common.verifying')}
+                                    </>
+                                ) : (
+                                    t('common.confirm')
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── 匯出備份恢復碼 Modal ── */}
+            {exportModal.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-surface-base border border-stroke-divider rounded-xl p-6 w-[480px] max-w-full shadow-xl">
+                        <h3 className="text-fs-xl font-semibold text-text-primary mb-2">{t('settings.export_title')}</h3>
+                        <p className="text-fs-sm text-text-secondary mb-4" dangerouslySetInnerHTML={{ __html: t('settings.export_desc') }} />
+                        <div className="bg-surface-base border border-stroke-divider rounded-lg p-4 mb-4 font-mono text-fs-sm text-text-primary leading-relaxed break-words">
+                            {exportModal.mnemonic}
+                        </div>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(exportModal.mnemonic);
+                                toast.success(t('common.copied'));
+                            }}
+                            className="text-fs-xs text-accent-default hover:underline mb-4 block"
+                        >
+                            {t('settings.copy_mnemonic')}
+                        </button>
+                        <label className="flex items-start gap-2 text-fs-sm text-text-secondary cursor-pointer mb-5">
+                            <input
+                                type="checkbox"
+                                checked={exportModal.confirmed}
+                                onChange={e => setExportModal(s => ({ ...s, confirmed: e.target.checked }))}
+                                className="mt-0.5 shrink-0"
+                            />
+                            {t('settings.save_mnemonic_confirm')}
+                        </label>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setExportModal(s => ({ ...s, open: false }))}
+                                className="px-4 py-2 text-fs-sm text-text-secondary hover:text-text-primary border border-stroke-divider rounded-lg transition-colors"
+                            >
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                disabled={!exportModal.confirmed || exportModal.loading}
+                                onClick={async () => {
+                                    setExportModal(s => ({ ...s, loading: true }));
+                                    const tid = toast.loading(t('settings.exporting'));
+                                    try {
+                                        await invoke('export_kb', { destPath: exportModal.destPath, mnemonic: exportModal.mnemonic });
+                                        toast.success(t('settings.export_success'), { id: tid });
+                                        setExportModal(s => ({ ...s, open: false }));
+                                    } catch (e: any) {
+                                        toast.error(`${t('settings.export_failed')}: ${e.toString()}`, { id: tid });
+                                        setExportModal(s => ({ ...s, loading: false }));
+                                    }
+                                }}
+                                className="px-4 py-2 text-fs-sm bg-accent-default text-white rounded-lg hover:bg-accent-light1 transition-colors disabled:opacity-50"
+                            >
+                                {exportModal.loading ? t('settings.exporting') : t('settings.confirm_export')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── 新恢復碼 Modal ── */}
             {newRecoveryModal.open && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
@@ -1880,7 +2060,6 @@ export const SettingsPage: React.FC = () => {
                     </div>
                 </div>
             )}
-
         </div>
     );
 };
