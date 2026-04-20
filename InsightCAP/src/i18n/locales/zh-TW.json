@@ -139,7 +139,8 @@
             "wrong_password": "密碼錯誤",
             "locked": "登入已暫時鎖定，請 {{seconds}} 秒後再試",
             "permanently_locked": "登入嘗試次數過多，請使用恢復碼重設密碼",
-            "forgot_password": "忘記密碼？使用恢復碼"
+            "forgot_password": "忘記密碼？使用恢復碼",
+            "invalid_credentials": "密碼錯誤，請重新輸入。"
         },
         "recovery": {
             "title": "使用恢復碼重設密碼",
@@ -473,7 +474,9 @@
         "type_pattern": "規律",
         "type_log": "紀錄",
         "close": "關閉",
-        "no_content": "（內容尚未生成）"
+        "no_content": "（內容尚未生成）",
+        "tab_memory": "記憶",
+        "tab_pattern": "模式"
     },
     "space_knowledge_guide": {
         "tab_insight": "知識概覽",

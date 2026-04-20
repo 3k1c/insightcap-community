@@ -1921,8 +1921,8 @@ export const SettingsPage: React.FC = () => {
                                         } else {
                                             setVerifyModal(s => ({ ...s, loading: false, error: t('auth.login.invalid_credentials') }));
                                         }
-                                    } catch (e: any) {
-                                        setVerifyModal(s => ({ ...s, loading: false, error: e.toString() }));
+                                    } catch {
+                                        setVerifyModal(s => ({ ...s, loading: false, error: t('auth.login.invalid_credentials') }));
                                     }
                                 }}
                                 className="px-8 py-2.5 bg-accent-default text-white rounded-xl font-semibold hover:bg-accent-light1 transition-all shadow-lg shadow-accent-default/20 disabled:opacity-50 active:scale-95 flex items-center gap-2"

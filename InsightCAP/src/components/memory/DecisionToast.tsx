@@ -89,7 +89,7 @@ export function DecisionReviewToast() {
     );
 
     return (
-        <div className="fixed bottom-4 right-4 z-50 w-80 rounded-xl border border-stroke-divider bg-surface-base shadow-flyout animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed top-[8.5rem] right-4 z-50 w-80 rounded-xl border border-stroke-divider bg-surface-base shadow-flyout animate-in slide-in-from-right-5 duration-300">
             {/* Header */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
                 <span className="text-fs-sm font-semibold text-text-primary">

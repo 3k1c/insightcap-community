@@ -7,7 +7,6 @@ import { MigratePage } from './pages/MigratePage';
 import { MainLayout } from './components/layout/MainLayout';
 import { QuickCapturePage } from './pages/QuickCapturePage';
 import { DecisionReviewToast } from './components/memory/DecisionToast';
-import { PatternPromotionToast } from './components/memory/PatternPromotionToast';
 import { ReminderToast } from './components/memory/ReminderToast';
 
 // 偵測當前視窗 label
@@ -157,7 +156,6 @@ export default function App() {
             <>
                 <MainLayout />
                 <DecisionReviewToast />
-                <PatternPromotionToast />
                 <ReminderToast />
                 <Toaster
                     position="top-right"

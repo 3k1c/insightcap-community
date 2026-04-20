@@ -138,7 +138,8 @@
             "wrong_password": "Incorrect password",
             "locked": "Login locked. Try again in {{seconds}} seconds",
             "permanently_locked": "Too many failed attempts. Use your recovery phrase to reset your password.",
-            "forgot_password": "Forgot password? Use recovery phrase"
+            "forgot_password": "Forgot password? Use recovery phrase",
+            "invalid_credentials": "Incorrect password. Please try again."
         },
         "recovery": {
             "title": "Reset Password with Recovery Phrase",
@@ -467,6 +468,8 @@
         "accept_selected": "Keep Selected ({{count}})",
         "reject_selected": "Remove Selected ({{count}})",
         "confidence": "Confidence {{value}}%",
+        "tab_memory": "Memory",
+        "tab_pattern": "Pattern",
         "type_data": "Data",
         "type_pattern": "Pattern",
         "type_log": "Log",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import { X, Check, Clock, BellOff } from 'lucide-react';
 import { useT } from '../../hooks/useT';
 
@@ -49,10 +50,11 @@ export function ReminderToast() {
         setProcessing(true);
         try {
             await invoke('update_reminder_status', { reminderId: notification.reminderId, status: 'completed' });
+            setNotification(null);
         } catch (e) {
             console.error('Failed to complete reminder:', e);
+            toast.error('標記提醒為已完成失敗');
         }
-        setNotification(null);
         setProcessing(false);
     }
 
@@ -61,10 +63,11 @@ export function ReminderToast() {
         setProcessing(true);
         try {
             await invoke('snooze_reminder', { reminderId: notification.reminderId, snoozeMinutes: minutes });
+            setNotification(null);
         } catch (e) {
             console.error('Failed to snooze reminder:', e);
+            toast.error('延後提醒失敗');
         }
-        setNotification(null);
         setProcessing(false);
     }
 
@@ -73,15 +76,16 @@ export function ReminderToast() {
         setProcessing(true);
         try {
             await invoke('update_reminder_status', { reminderId: notification.reminderId, status: 'dismissed' });
+            setNotification(null);
         } catch (e) {
             console.error('Failed to dismiss reminder:', e);
+            toast.error('關閉提醒失敗');
         }
-        setNotification(null);
         setProcessing(false);
     }
 
     return (
-        <div className="fixed bottom-20 right-4 z-[100] w-[360px] animate-in slide-in-from-right-5">
+        <div className="fixed top-4 right-4 z-[100] w-[360px] animate-in slide-in-from-right-5">
             <div className={`rounded-xl border shadow-lg p-4 ${isUrgent ? 'bg-red-500/5 border-red-500/20' : 'bg-surface-base border-stroke-divider'}`}>
                 {/* Header */}
                 <div className="flex items-start justify-between mb-2">

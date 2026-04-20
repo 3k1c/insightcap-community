@@ -101,6 +101,7 @@ export interface TranslationKeys {
             password_placeholder: string;
             submit: string;
             wrong_password: string;
+            invalid_credentials: string;
             locked: string;
             permanently_locked: string;
             forgot_password: string;
@@ -204,6 +205,8 @@ export interface TranslationKeys {
         accept_selected: string;
         reject_selected: string;
         confidence: string;
+        tab_memory: string;
+        tab_pattern: string;
         type_data: string;
         type_pattern: string;
         type_log: string;
