@@ -18,6 +18,9 @@ impl SpaceKnowledgeGuideEngine {
     }
 
     pub async fn generate_guide(&self, space_id: &str) -> Result<String, String> {
+        let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let output_language = output_language_label(&settings.general.language);
+
         let space_row = sqlx::query(
             "SELECT name, knowledge_guide_content FROM spaces WHERE id = ? AND is_archived = 0",
         )
@@ -56,9 +59,9 @@ impl SpaceKnowledgeGuideEngine {
                     .unwrap_or_else(|_| "data".to_string());
                 let content: String = row.try_get("content").unwrap_or_default();
                 let label = match knowledge_type.as_str() {
-                    "pattern" => "【Pattern】",
-                    "log" => "【Log】",
-                    _ => "【Data】",
+                    "pattern" => "[Pattern]",
+                    "log" => "[Log]",
+                    _ => "[Data]",
                 };
 
                 format!(
@@ -71,18 +74,17 @@ impl SpaceKnowledgeGuideEngine {
             .join("\n\n");
 
         let mut user_prompt = format!(
-            "{}\n\nSpace 名稱：{}\n\n記憶 chunks：\n{}\n",
-            SPACE_KNOWLEDGE_GUIDE_PROMPT, space_name, chunks_text
+            "{}\n\nOutput language: {}\n\nSpace name: {}\n\nMemory chunks:\n{}\n",
+            SPACE_KNOWLEDGE_GUIDE_PROMPT, output_language, space_name, chunks_text
         );
 
         if !existing_guide.trim().is_empty() {
             user_prompt.push_str(&format!(
-                "\n現有 Knowledge Guide（請在此基礎上增量更新）：\n{}\n",
+                "\nExisting Knowledge Guide. Update it incrementally based on the new chunks:\n{}\n",
                 existing_guide
             ));
         }
 
-        let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
         let cfg = settings.ai_models.content_processor_llm;
         let api_key = cfg.api_key.clone().unwrap_or_default();
         let is_ollama = cfg.provider == "ollama";
@@ -127,5 +129,13 @@ impl SpaceKnowledgeGuideEngine {
         .map_err(|e| e.to_string())?;
 
         Ok(result)
+    }
+}
+
+fn output_language_label(language: &str) -> &'static str {
+    match language {
+        "zh-CN" => "Simplified Chinese",
+        "en" => "English",
+        _ => "Traditional Chinese",
     }
 }

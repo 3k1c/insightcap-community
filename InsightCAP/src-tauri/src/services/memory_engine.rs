@@ -41,6 +41,7 @@ impl MemoryEngine {
         content: &str,
     ) -> Result<Vec<String>, String> {
         let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let output_language = output_language_label(&settings.general.language);
         let cfg = settings.ai_models.content_processor_llm;
         let api_key = cfg.api_key.clone().unwrap_or_default();
 
@@ -53,6 +54,7 @@ impl MemoryEngine {
         let prompt = format!(
             "Analyze the following text and perform two tasks:\n\
              1. Extract 1 to 5 relevant tags (short keywords).\n\
+             - Tags must be in {output_language}. Preserve dominant technical terms exactly as written.\n\
              2. Classify the knowledge type into one of: 'data', 'pattern', 'log'.\n\
              Output ONLY a valid JSON object with keys \"tags\" and \"knowledge_type\".\n\
              Example: {{\"tags\": [\"rust\", \"memory\"], \"knowledge_type\": \"data\"}}\n\
@@ -103,6 +105,7 @@ impl MemoryEngine {
         project_id: Option<&str>,
     ) -> Result<String, String> {
         let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let output_language = output_language_label(&settings.general.language);
         let cfg = settings.ai_models.content_processor_llm;
         let api_key = cfg.api_key.clone().unwrap_or_default();
 
@@ -120,6 +123,7 @@ impl MemoryEngine {
                     &api_key,
                     cfg.base_url.unwrap_or_default(),
                     cfg.model,
+                    output_language,
                 )
                 .await
             };
@@ -258,11 +262,13 @@ impl MemoryEngine {
         api_key: &str,
         base_url: String,
         model: String,
+        output_language: &'static str,
     ) -> (String, Vec<String>, String, f32) {
         let prompt = format!(
             "Analyze the following conversation summary and return a strict JSON object.\n\n\
              Tasks:\n\
              1. Extract 1 to 5 relevant short tags.\n\
+             - Tags must be in {output_language}. Preserve dominant technical terms exactly as written.\n\
              2. Classify knowledge_type using strict rules:\n\
              - \"pattern\": confirmed reusable method/workflow/SOP/decision framework.\n\
              - \"log\": concrete failure, error, wrong direction, pitfall, or lesson learned.\n\
@@ -338,6 +344,14 @@ impl MemoryEngine {
     }
 }
 
+
+fn output_language_label(language: &str) -> &'static str {
+    match language {
+        "zh-CN" => "Simplified Chinese",
+        "en" => "English",
+        _ => "Traditional Chinese",
+    }
+}
 
 fn parse_tags_from_json(json: &serde_json::Value) -> Vec<String> {
     let raw = json["tags"].as_array();

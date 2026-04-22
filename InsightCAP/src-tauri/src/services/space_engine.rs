@@ -31,6 +31,7 @@ impl SpaceEngine {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
+        let output_language = output_language_label(&settings.general.language);
         let cfg = settings.ai_models.content_processor_llm;
 
         let mut opt_provider: Option<crate::providers::llm::openai::OpenAiProvider> = None;
@@ -62,18 +63,16 @@ impl SpaceEngine {
 
             let prompt = if existing_names.is_empty() {
                 format!(
-                    "Categorize the following text into one short category/space name (e.g.     ,     ,     ). \
-                     Return ONLY the category name in Traditional Chinese. NO punctuation.\n\nText:\n{}",
+                    "Categorize the following text into one short category or Space name. \
+                     Return ONLY the category name in {output_language}. No punctuation.\n\nText:\n{}",
                     sample
                 )
             } else {
                 format!(
-                    "          \n\
-                        Space    {}\n\n\
-                                   Space \
-                        1)                              \
-                     2)                                4     \
-                                     \n\nText:\n{}",
+                    "Existing Space names:\n{}\n\n\
+                     Categorize the following text into the best existing Space if appropriate. \
+                     If none fits, create one short new Space name in {output_language}. \
+                     Return ONLY the Space name. No punctuation.\n\nText:\n{}",
                     existing_names.join(" "),
                     sample
                 )
@@ -577,6 +576,14 @@ impl SpaceEngine {
         .await;
 
         Ok(())
+    }
+}
+
+fn output_language_label(language: &str) -> &'static str {
+    match language {
+        "zh-CN" => "Simplified Chinese",
+        "en" => "English",
+        _ => "Traditional Chinese",
     }
 }
 

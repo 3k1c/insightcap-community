@@ -17,6 +17,7 @@ impl TagEngine {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
+        let output_language = output_language_label(&settings.general.language);
         let cfg = settings.ai_models.content_processor_llm;
 
         let mut opt_provider: Option<crate::providers::llm::openai::OpenAiProvider> = None;
@@ -37,7 +38,11 @@ impl TagEngine {
             let byte_limit = content.len().min(2000);
             let safe_limit = content.floor_char_boundary(byte_limit);
             let sample = &content[..safe_limit];
-            let prompt = format!("Extract 3-5 tags from the following text to represent its core concepts. Return ONLY a comma-separated list of short tags in Traditional Chinese. NO other text.\n\nText:\n{}", sample);
+            let prompt = format!(
+                "Extract 3-5 tags from the following text to represent its core concepts. \
+                Return ONLY a comma-separated list of short tags in {output_language}. \
+                Preserve dominant technical terms exactly as written. NO other text.\n\nText:\n{sample}"
+            );
             match llm
                 .complete(&prompt, crate::providers::llm::LLMOptions::default())
                 .await
@@ -106,6 +111,7 @@ impl TagEngine {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
+        let output_language = output_language_label(&settings.general.language);
         let cfg = settings.ai_models.content_processor_llm;
 
         let mut opt_provider: Option<crate::providers::llm::openai::OpenAiProvider> = None;
@@ -128,7 +134,8 @@ impl TagEngine {
         let generated_tags = if let Some(llm) = opt_provider {
             let prompt = format!(
                 "Extract 3-5 tags from the following text to represent its core concepts. \
-                Return ONLY a comma-separated list of short tags in Traditional Chinese. NO other text.\n\nText:\n{}",
+                Return ONLY a comma-separated list of short tags in {output_language}. \
+                Preserve dominant technical terms exactly as written. NO other text.\n\nText:\n{}",
                 sample
             );
             match llm
@@ -196,6 +203,14 @@ impl TagEngine {
             .map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+}
+
+fn output_language_label(language: &str) -> &'static str {
+    match language {
+        "zh-CN" => "Simplified Chinese",
+        "en" => "English",
+        _ => "Traditional Chinese",
     }
 }
 
