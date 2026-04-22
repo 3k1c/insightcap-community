@@ -26,7 +26,6 @@ export function SetupPage({ onComplete }: SetupPageProps) {
     const [error, setError] = useState('');
     const [copied, setCopied] = useState(false);
 
-    // 步驟指示器
     const steps: Step[] = ['workspace', 'password', 'recovery'];
     const stepIndex = steps.indexOf(step);
 
@@ -43,7 +42,6 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                 setWorkspacePath(selected as string);
             }
         } catch {
-            // 使用者取消選擇
         }
     }
 
@@ -51,7 +49,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
         setError('');
 
         if (!workspacePath.trim()) {
-            setError('請輸入工作區路徑');
+            setError(t('auth.setup.workspace_required'));
             return;
         }
         if (password.length < 8) {
@@ -103,10 +101,9 @@ export function SetupPage({ onComplete }: SetupPageProps) {
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
             <div className="w-full max-w-md rounded-2xl border border-stroke-divider p-8 bg-surface-card shadow-flyout">
-                {/* Logo / Header */}
                 <div className="mb-6 text-center">
                     <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3 bg-accent-light2">
-                        <span className="text-fs-2xl font-bold text-accent-default">⚡</span>
+                        <span className="text-fs-2xl font-bold text-accent-default">IC</span>
                     </div>
                     <h1 className="text-fs-xl font-bold text-text-primary">
                         {t('auth.setup.title')}
@@ -116,7 +113,6 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                     </p>
                 </div>
 
-                {/* Progress Indicator */}
                 <div className="flex items-center gap-2 mb-6">
                     {steps.map((s, i) => (
                         <React.Fragment key={s}>
@@ -142,7 +138,6 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                     {stepTitles[step]}
                 </h2>
 
-                {/* Step 1: Workspace */}
                 {step === 'workspace' && (
                     <div className="space-y-4">
                         <div>
@@ -168,14 +163,13 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                         {error && <p className="text-fs-xs text-color-danger">{error}</p>}
                         <Button
                             className="w-full"
-                            onClick={() => { setError(''); if (workspacePath.trim()) setStep('password'); else setError('請輸入工作區路徑'); }}
+                            onClick={() => { setError(''); if (workspacePath.trim()) setStep('password'); else setError(t('auth.setup.workspace_required')); }}
                         >
                             {t('common.next')} <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
                 )}
 
-                {/* Step 2: Password */}
                 {step === 'password' && (
                     <div className="space-y-4">
                         <Input
@@ -222,7 +216,6 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                     </div>
                 )}
 
-                {/* Step 3: Recovery Phrase */}
                 {step === 'recovery' && (
                     <div className="space-y-4">
                         <p className="text-fs-sm text-text-secondary">

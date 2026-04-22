@@ -60,12 +60,10 @@ interface ChatState {
     activeProjectId: string | null;
     messages: Message[];
     isGenerating: boolean;
-    streamingContent: string;         // 當前 streaming 中的 assistant 回覆
+    streamingContent: string; // Current assistant response in streaming mode
     contextStats: ContextStats;
     expandedProjectIds: Set<string>;
-    // 對話級附件 ID：附加文件在整個對話中持續有效
     conversationTempChunkIds: string[];
-    // 若本對話剛建立提醒，下一輪可視情況補一句「已設定提醒」
     pendingReminderAckByConversation: Record<string, boolean>;
 
     loadConversations: () => Promise<void>;
@@ -122,7 +120,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     loadConversations: async () => {
         try {
             const conversations = await invoke<any[]>('get_conversations');
-            // Map camelCase from backend to our interface
             const mapped = conversations.map(c => ({
                 id: c.id,
                 title: c.title,
@@ -171,9 +168,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     autoTitleConversation: async (conversationId: string) => {
         try {
             const conv = get().conversations.find(c => c.id === conversationId);
-            if (!conv || conv.title !== '新對話') return; // 已改名，跳過
+            if (!conv || conv.title !== '\u65b0\u5c0d\u8a71') return; // Already renamed; skip auto-title.
             const title = await invoke<string>('auto_title_conversation', { conversationId });
-            if (title && title !== '新對話') {
+            if (title && title !== '\u65b0\u5c0d\u8a71') {
                 set(state => ({
                     conversations: state.conversations.map(c =>
                         c.id === conversationId ? { ...c, title } : c
@@ -254,7 +251,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     },
 
     reorderProjects: async (orderedIds: string[]) => {
-        // 樂觀更新：先在前端重排
         set(state => {
             const map = new Map(state.projects.map(p => [p.id, p]));
             const reordered = orderedIds
@@ -262,7 +258,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 .filter(Boolean) as typeof state.projects;
             return { projects: reordered };
         });
-        // 逐一更新後端
         try {
             await Promise.all(
                 orderedIds.map((id, i) =>
@@ -294,7 +289,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 invoke('enqueue_summary', { conversationId: currentId, triggerType: 'switch' }).catch(e => console.warn('Summary enqueue failed:', e));
             }
             const conv = get().conversations.find(c => c.id === conversationId);
-            // 切換對話時先清空，稍後從 metadata 恢復
             set({ activeConversationId: conversationId, activeProjectId: conv?.projectId ?? null, conversationTempChunkIds: [], streamingContent: '', contextStats: { dataCount: 0, patternCount: 0, logCount: 0, patternHints: [], logHints: [] } });
             const raw = await invoke<(Message & { metadata?: string })[]>('get_messages', { conversationId });
             let restoredTempChunkIds: string[] = [];
@@ -309,7 +303,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     if (Array.isArray(meta.citationSources)) citationSources = meta.citationSources;
                     if (Array.isArray(meta.mentionedSources)) mentionedSources = meta.mentionedSources;
                     if (typeof meta.reasoningContent === 'string') reasoningContent = meta.reasoningContent;
-                    // 從最後一則含 tempChunkIds 的 user 訊息恢復（累積式，取最新即可）
                     if (m.role === 'user' && Array.isArray(meta.tempChunkIds)) {
                         restoredTempChunkIds = meta.tempChunkIds;
                     }
@@ -322,29 +315,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
     },
 
-    // ── 即時提醒偵測 ─────────────────────────────────────────────────────────
     triggerUrgentReminderCheck: async (conversationId: string, userMsg: string, aiMsg: string) => {
         const URGENT_PATTERNS = [
-            /\d+\s*分鐘[後后].{0,6}(開|会|會|見|提醒|deadline)/,
-            /\d+\s*小時[後后].{0,6}(開|会|會|見|提醒|deadline)/,
-            /[今明][天晚早].{0,10}(開會|會議|面試|見面|約|提醒|截止|deadline)/,
-            /後天.{0,10}(開會|會議|面試|見面|約|提醒|截止)/,
-            /待[會会].{0,6}(開會|會議|面試)/,
-            /[午早晚]\s*\d+\s*[點点].{0,10}(開會|會議|提醒)/,
-            /\d+\s*[點点].{0,10}(開會|會議|提醒)/,
-            /[今明後][天]截止/,
-            /截止[日期時間].{0,6}(是|為|在)/,
+            /\d+\s*\u5206\u9418[\u5f8c\u540e].{0,6}(\u958b|\u4f1a|\u6703|\u898b|\u63d0\u9192|deadline)/,
+            /\d+\s*\u5c0f\u6642[\u5f8c\u540e].{0,6}(\u958b|\u4f1a|\u6703|\u898b|\u63d0\u9192|deadline)/,
+            /[\u4eca\u660e][\u5929\u665a\u65e9].{0,10}(\u958b\u6703|\u6703\u8b70|\u9762\u8a66|\u898b\u9762|\u7d04|\u63d0\u9192|\u622a\u6b62|deadline)/,
+            /\u5f8c\u5929.{0,10}(\u958b\u6703|\u6703\u8b70|\u9762\u8a66|\u898b\u9762|\u7d04|\u63d0\u9192|\u622a\u6b62)/,
+            /\u5f85[\u6703\u4f1a].{0,6}(\u958b\u6703|\u6703\u8b70|\u9762\u8a66)/,
+            /[\u5348\u65e9\u665a]\s*\d+\s*[\u9ede\u70b9].{0,10}(\u958b\u6703|\u6703\u8b70|\u63d0\u9192)/,
+            /\d+\s*[\u9ede\u70b9].{0,10}(\u958b\u6703|\u6703\u8b70|\u63d0\u9192)/,
+            /[\u4eca\u660e\u5f8c][\u5929]\u622a\u6b62/,
+            /\u622a\u6b62[\u65e5\u671f\u6642\u9593].{0,6}(\u662f|\u70ba|\u5728)/,
             /(meeting|call|interview)\s+(in|at)\s+\d/i,
             /remind\s+me\s+(in|at)\s+\d/i,
             /due\s+(today|tomorrow|on)\b/i,
             /deadline\s+(today|tomorrow|on|is)\b/i,
         ];
-        const isUrgent = URGENT_PATTERNS.some(p => p.test(userMsg)) || userMsg.includes("提醒");
-        console.log('[UrgentReminder] 檢查測試:', { userMsg, isUrgent });
+        const isUrgent = URGENT_PATTERNS.some(p => p.test(userMsg)) || userMsg.includes('\u63d0\u9192');
+        console.log('[UrgentReminder] Detection check:', { userMsg, isUrgent });
 
         if (!isUrgent) return;
 
-        const recentMessages = `用戶：${userMsg}\n助手：${aiMsg}`;
+        const recentMessages = `User: ${userMsg}\nAssistant: ${aiMsg}`;
         try {
             const ids = await invoke<string[]>('trigger_urgent_reminder_check', {
                 conversationId,
@@ -357,7 +349,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         [conversationId]: true,
                     },
                 }));
-                toast.success(`已從對話中自動建立 ${ids.length} 個提醒事項`);
+                toast.success(`Created ${ids.length} reminder item(s) from this conversation.`);
             }
         } catch (e) {
             console.error('[UrgentReminder] Failed:', e);
@@ -376,6 +368,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }) => {
         const { activeConversationId, activeProjectId, messages } = get();
         if (!activeConversationId) return;
+
+        const maybeShowReminderToastByAnswer = (answer: string) => {
+            const REMINDER_ACK_PATTERNS = [
+                /\u63d0\u9192\u5df2\u6210\u529f\u65b0\u589e\u81f3\u60a8\u7684\u884c\u7a0b/,
+                /\u5df2\u70ba\u60a8\u8a2d\u5b9a\u63d0\u9192/,
+                /\u5df2\u8a18\u9304\u60a8\u7684\u63d0\u9192/,
+                /\u5df2\u7eb3\u5165\u6d3b\u52a8\u63d0\u9192/,
+                /\u5df2\u7d0d\u5165\u6d3b\u52d5\u63d0\u9192/,
+                /\u8a2d\u5b9a\u4e86\u63d0\u9192/,
+                /\u8a2d\u5b9a\u6703\u8b70\u63d0\u9192/,
+            ];
+            if (REMINDER_ACK_PATTERNS.some((p) => p.test(answer))) {
+                toast.success('Reminder has been added to your schedule.');
+            }
+        };
 
         const maybeAppendReminderAck = async (answer: string): Promise<string> => {
             const pending = get().pendingReminderAckByConversation[activeConversationId];
@@ -402,14 +409,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         set({ isGenerating: true, streamingContent: '' });
         try {
-            // 1. 累積對話級 tempChunkIds（本輪新增的附件合併到對話級）
             const newChunkIds = opts?.tempChunkIds ?? [];
             const allTempChunkIds = [...get().conversationTempChunkIds, ...newChunkIds];
             if (newChunkIds.length > 0) {
                 set({ conversationTempChunkIds: allTempChunkIds });
             }
 
-            // 2. Optimistically append user message
             const userMsg: Message = {
                 id: 'optimistic-user-' + Date.now(),
                 role: 'user',
@@ -420,7 +425,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             };
             set(state => ({ messages: [...state.messages, userMsg] }));
 
-            // 3. Save user message to DB（含 tempChunkIds 以供重整後恢復）
             const metaObj: Record<string, unknown> = {};
             if (opts?.attachedFiles?.length) {
                 metaObj.attachedFiles = opts.attachedFiles.map(f => ({ name: f.name, filePath: f.filePath, fileType: f.fileType, previewUrl: f.previewUrl }));
@@ -439,21 +443,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 metadata,
             });
 
-            // 4. 組裝歷史：只傳最近 6 輪（12 條）原文
-            //    超出部分已由 conversation.summary 代表，注入為 system context
             const history: [string, string][] = messages
                 .filter(m => m.role === 'user' || m.role === 'assistant')
                 .slice(-12)
                 .map(m => [m.role, m.content]);
 
-            // 取得當前對話的 summary（代表 12 條之前的所有歷史）
             const activeConv = get().conversations.find(c => c.id === activeConversationId);
             const conversationSummary = activeConv?.summary?.trim() || null;
 
             const ragEnabled = opts?.ragEnabled ?? true;
             const placeholderMsgId = 'streaming-assistant-' + Date.now();
 
-            // 5. 加入空白 assistant 佔位，準備 streaming 填入
             set(state => ({
                 messages: [...state.messages, {
                     id: placeholderMsgId,
@@ -463,7 +463,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 }]
             }));
 
-            // 6. 訂閱 streaming events
             let accumulated = '';
             let accumulatedReasoning = '';
 
@@ -503,8 +502,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     const citationSources = Array.isArray(event.payload.citationSources) ? event.payload.citationSources : [];
                     const hints = event.payload.contextHints;
                     finalAnswer = await maybeAppendReminderAck(finalAnswer);
+                    maybeShowReminderToastByAnswer(finalAnswer);
 
-                    // 7. 先更新 UI，再非同步存 DB
                     set(state => ({
                         isGenerating: false,
                         streamingContent: '',
@@ -529,14 +528,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         content: finalAnswer,
                         metadata: JSON.stringify(metaObj),
                     }).then(() => {
-                        // 首 2 輪對話完成後，自動生成標題（messages 含本輪 user+assistant ≤ 4 條）
                         const msgCount = get().messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
                         if (msgCount <= 4) {
                             get().autoTitleConversation(activeConversationId!);
                         }
                     }).catch(e => console.error('Failed to save assistant message:', e));
 
-                    // 即時緊急提醒偵測：非同步，不影響 UI
                     get().triggerUrgentReminderCheck(activeConversationId!, content, finalAnswer);
 
                     unlistenToken();
@@ -545,7 +542,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 }
             );
 
-            // 8. 呼叫 streaming command，加 120s timeout 保護
             const timeoutPromise = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('LLM response timeout')), 120_000)
             );
@@ -570,7 +566,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 unlistenReasoning();
                 unlistenDone();
 
-                // fallback：用 non-streaming
                 try {
                     const ragResponse = await invoke<any>('rag_query', {
                         query: content,
@@ -584,8 +579,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         tempChunkIds: allTempChunkIds.length > 0 ? allTempChunkIds : null,
                         thinkingMode: opts?.thinkingMode ?? 'normal',
                     });
-                    let fallbackAnswer = ragResponse.answer || '（無回應）';
+                    let fallbackAnswer = ragResponse.answer || '(No response)';
                     fallbackAnswer = await maybeAppendReminderAck(fallbackAnswer);
+                    maybeShowReminderToastByAnswer(fallbackAnswer);
                     const fallbackCitations = Array.isArray(ragResponse.citationSources) ? ragResponse.citationSources : [];
                     const fbHints = ragResponse.contextHints;
                     await invoke('add_message', {
@@ -609,7 +605,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         ),
                     }));
                 } catch (fallbackErr) {
-                    const errMsg = `（回應失敗：${fallbackErr}）`;
+                    const errMsg = `(Response failed: ${fallbackErr})`;
                     set(state => ({
                         isGenerating: false,
                         streamingContent: '',

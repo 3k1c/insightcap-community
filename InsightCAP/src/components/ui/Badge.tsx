@@ -11,9 +11,9 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 const memorySymbols: Record<MemoryType, string> = {
-    data: '●',
-    pattern: '◆',
-    log: '▲',
+    data: 'D',
+    pattern: 'P',
+    log: 'L',
 };
 
 export function Badge({ children, variant = 'default', className, ...props }: BadgeProps) {

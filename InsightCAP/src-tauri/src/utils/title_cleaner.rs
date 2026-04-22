@@ -9,20 +9,19 @@ pub fn clean_window_title(title: &str) -> String {
     let mut cleaned = title.to_string();
 
     lazy_static! {
-        static ref MODIFIED_RE: Regex = Regex::new(r"(?i)\s*[-—]\s*(modified)\s*$").unwrap();
+        static ref MODIFIED_RE: Regex = Regex::new(r"(?i)\s*[-\u2014]\s*(modified)\s*$").unwrap();
         static ref PREFIX_RE: Regex = Regex::new(r"^[-\*\s]+").unwrap();
 
-        static ref APPS_RE: Regex = Regex::new(r"(?i)\s*[-—]\s*(visual studio code|vscode|insightcap|adobe acrobat.*|waterfox|google chrome|chrome|microsoft.?edge|edge|safari|firefox|brave|opera|vivaldi)\s*$").unwrap();
+        static ref APPS_RE: Regex = Regex::new(r"(?i)\s*[-\u2014]\s*(visual studio code|vscode|insightcap|adobe acrobat.*|waterfox|google chrome|chrome|microsoft.?edge|edge|safari|firefox|brave|opera|vivaldi)\s*$").unwrap();
 
-        static ref DOMAIN_RE: Regex = Regex::new(r"(?i)\s*[-—|]\s*[^-\s|]+\.(com|net|tw|hk|org|io)\s*$").unwrap();
+        static ref DOMAIN_RE: Regex = Regex::new(r"(?i)\s*[-\u2014|]\s*[^-\s|]+\.(com|net|tw|hk|org|io)\s*$").unwrap();
 
-        static ref EXTENSION_RE: Regex = Regex::new(r"(?i)(.+?\.(?:pdf|docx|xlsx|doc|txt|png|jpg|mp4))(?:\s*[-—].*)?$").unwrap();
+        static ref EXTENSION_RE: Regex = Regex::new(r"(?i)(.+?\.(?:pdf|docx|xlsx|doc|txt|png|jpg|mp4))(?:\s*[-\u2014].*)?$").unwrap();
     }
 
     cleaned = MODIFIED_RE.replace(&cleaned, "").to_string();
     cleaned = PREFIX_RE.replace(&cleaned, "").to_string();
 
-    // Iterate app replacements backwards to catch nested suffixes like " - Chrome - Waterfox"
     let mut last_len = cleaned.len();
     loop {
         cleaned = APPS_RE.replace(&cleaned, "").to_string();

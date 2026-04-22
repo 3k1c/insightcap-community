@@ -11,6 +11,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const CodeBlock = ({ language, value }: { language: string; value: string }) => {
     const [copied, setCopied] = useState(false);
+    const { t } = useTranslation();
 
     const handleCopy = () => {
         navigator.clipboard.writeText(value);
@@ -27,7 +28,7 @@ const CodeBlock = ({ language, value }: { language: string; value: string }) => 
                     className="flex items-center gap-1.5 text-text-tertiary hover:text-white transition-colors"
                 >
                     {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span className="text-[10px] font-medium">{copied ? '已複製' : '加密'}</span>
+                    <span className="text-[10px] font-medium">{copied ? t('common.copied') : t('common.copy')}</span>
                 </button>
             </div>
             <SyntaxHighlighter
@@ -51,7 +52,6 @@ const ThinkingBlock = ({ content, isStreaming }: { content: string; isStreaming?
     const [isExpanded, setIsExpanded] = useState(false);
     const prevStreamingRef = useRef(isStreaming);
 
-    // streaming 開始時自動展開，結束時自動收合
     useEffect(() => {
         if (isStreaming && !prevStreamingRef.current) {
             setIsExpanded(true);
@@ -87,6 +87,14 @@ const ThinkingBlock = ({ content, isStreaming }: { content: string; isStreaming?
 };
 
 const getDisplayName = (source: string): string => {
+    const openable = extractOpenableUrl(source);
+    if (openable) {
+        try {
+            const hostname = new URL(openable).hostname;
+            return hostname.replace(/^www\./, '');
+        } catch {
+        }
+    }
     try {
         const hostname = new URL(source).hostname;
         return hostname.replace(/^www\./, '');
@@ -99,12 +107,31 @@ const isUrl = (s: string): boolean => {
     try { return ['http:', 'https:'].includes(new URL(s).protocol); } catch { return false; }
 };
 
+const extractOpenableUrl = (source: string): string | null => {
+    if (isUrl(source)) return source;
+
+    const directHttp = source.match(/https?:\/\/[^\s)>\]}]+/i)?.[0];
+    if (directHttp) return directHttp;
+
+    const ytId = source.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=)([A-Za-z0-9_-]{6,})/i)?.[1];
+    if (ytId) return `https://www.youtube.com/watch?v=${ytId}`;
+
+    const bvId = source.match(/\b(BV[0-9A-Za-z]{10})\b/)?.[1];
+    if (bvId) return `https://www.bilibili.com/video/${bvId}`;
+
+    const domainUrl = source.match(/\b(?:www\.)?(?:youtube\.com\/watch\?v=[A-Za-z0-9_-]+|youtu\.be\/[A-Za-z0-9_-]+|bilibili\.com\/video\/[A-Za-z0-9_-]+|b23\.tv\/[A-Za-z0-9_-]+)\b/i)?.[0];
+    if (domainUrl) return domainUrl.startsWith('http') ? domainUrl : `https://${domainUrl}`;
+
+    return null;
+};
+
 const CitationBadge = ({ source }: { source: string }) => {
+    const { t } = useTranslation();
     const [preview, setPreview] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    const sourceIsUrl = isUrl(source);
+    const sourceOpenUrl = extractOpenableUrl(source);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -121,8 +148,8 @@ const CitationBadge = ({ source }: { source: string }) => {
     }, [isOpen]);
 
     const handleClick = async () => {
-        if (sourceIsUrl) {
-            openUrl(source).catch(console.error);
+        if (sourceOpenUrl) {
+            openUrl(sourceOpenUrl).catch(console.error);
             return;
         }
 
@@ -136,7 +163,7 @@ const CitationBadge = ({ source }: { source: string }) => {
             setPreview(res);
         } catch (e) {
             console.error('Failed to get source preview', e);
-            setPreview('無法載入預覽');
+            setPreview(t('chat.source_preview_error'));
         } finally {
             setLoading(false);
         }
@@ -154,14 +181,14 @@ const CitationBadge = ({ source }: { source: string }) => {
             >
                 {getDisplayName(source)}
             </button>
-            {!sourceIsUrl && isOpen && (
+            {!sourceOpenUrl && isOpen && (
                 <div className="absolute bottom-[calc(100%+8px)] left-0 w-full min-w-[300px] max-h-[200px] flex flex-col p-3 bg-surface-flyout border border-stroke-divider rounded-xl shadow-2xl z-[100] origin-bottom-left shadow-black/20">
                     <div className="flex justify-between items-center mb-2 pb-2 border-b border-stroke-divider/40 shrink-0">
-                        <div className="text-fs-xs font-semibold text-text-secondary tracking-wide">來源預覽</div>
-                        <button onClick={() => setIsOpen(false)} className="text-text-tertiary hover:text-text-primary text-[10px] uppercase font-medium tracking-wide">關閉</button>
+                        <div className="text-fs-xs font-semibold text-text-secondary tracking-wide">{t('chat.source_preview_title')}</div>
+                        <button onClick={() => setIsOpen(false)} className="text-text-tertiary hover:text-text-primary text-[10px] uppercase font-medium tracking-wide">{t('common.close')}</button>
                     </div>
                     <div className="overflow-y-auto text-text-primary text-[13px] leading-relaxed select-text pr-1">
-                        {loading ? <div className="py-4 text-center text-text-tertiary">載入中...</div> : (preview || '查無預覽內容')}
+                        {loading ? <div className="py-4 text-center text-text-tertiary">{t('common.loading')}</div> : (preview || t('chat.source_preview_empty'))}
                     </div>
                 </div>
             )}
@@ -178,28 +205,28 @@ export const MessageList: React.FC<MessageListProps> = ({
     messages,
     isGenerating
 }) => {
+    const { t } = useTranslation();
     const bottomRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const prevMessagesLengthRef = useRef(messages.length);
     const userScrolledRef = useRef(false);
     const msgDragInfo = useRef({ isMouseDown: false, isDragging: false, startX: 0, startY: 0, content: '', mouseDownAt: 0 });
 
-    // ── Scroll: 追蹤使用者是否手動 scroll ──────────────────────────────────────
+
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
         const handleScroll = () => {
             const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-            // 距底部超過 80px，視為使用者主動向上捲
             userScrolledRef.current = distFromBottom > 80;
+
         };
 
         container.addEventListener('scroll', handleScroll, { passive: true });
         return () => container.removeEventListener('scroll', handleScroll);
     }, []);
 
-    // ── Message drag to editor ────────────────────────────────────────────────
     useEffect(() => {
         const handleMouseMove = (e: globalThis.MouseEvent) => {
             if (!msgDragInfo.current.isMouseDown) return;
@@ -248,10 +275,8 @@ export const MessageList: React.FC<MessageListProps> = ({
             window.removeEventListener('mouseup', handleMouseUp);
         };
     }, []);
-    // ─────────────────────────────────────────────────────────────────────────
 
-    // 訊息新增或 streaming 更新時 scroll 到底部
-    // 新訊息加入時強制 scroll；streaming 中若使用者未手動 scroll 則跟隨
+
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
@@ -260,11 +285,11 @@ export const MessageList: React.FC<MessageListProps> = ({
         prevMessagesLengthRef.current = messages.length;
 
         if (messageAdded) {
-            // 新訊息：重置手動 scroll 狀態，強制跟隨
+
             userScrolledRef.current = false;
             container.scrollTop = container.scrollHeight;
         } else if (isGenerating && !userScrolledRef.current) {
-            // streaming 更新：未手動 scroll 才跟隨（直接設 scrollTop 避免抖動）
+
             container.scrollTop = container.scrollHeight;
         }
     }, [messages, isGenerating]);
@@ -274,27 +299,21 @@ export const MessageList: React.FC<MessageListProps> = ({
             {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-text-tertiary opacity-70">
                     <div className="w-16 h-16 rounded-full bg-surface-subtle flex items-center justify-center mb-4">
-                        <span className="text-fs-2xl">✨</span>
+                        <span className="text-fs-2xl">{t('chat.assistant_badge')}</span>
                     </div>
-                    <p>新對話已建立</p>
-                    <p className="text-fs-sm mt-1">您可以詢問關於收藏的資料，或者直接進行對話。</p>
+                    <p>{t('chat.empty_title')}</p>
+                    <p className="text-fs-sm mt-1">{t('chat.empty_hint')}</p>
                 </div>
             ) : (
                 messages.map((msg) => {
                     const isUser = msg.role === 'user';
-                    const isReminder = !isUser && (
-                        msg.content.includes('已為您設定提醒') ||
-                        msg.content.includes('已收到您的更新') ||
-                        msg.content.includes('已納入活動提醒') ||
-                        msg.content.includes('已更新為') ||
-                        msg.content.includes('已成功提取') ||
-                        msg.content.includes('已排程') ||
-                        msg.content.includes('提醒事項') ||
-                        msg.content.includes('記錄為行程資訊') ||
-                        msg.content.includes('設定了提醒') ||
-                        msg.content.includes('設定會議提醒') ||
-                        msg.content.includes('行程資訊')
-                    );
+                    const isReminder = !isUser && [
+                        '\\u63d0\\u9192',
+                        '\\u5df2\\u8a18\\u9304',
+                        '\\u884c\\u7a0b',
+                        '\\u6642\\u9593',
+                        'reminder',
+                    ].some((keyword) => msg.content.toLowerCase().includes(keyword.toLowerCase()));
 
                     return (
                         <div
@@ -307,7 +326,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     const sel = window.getSelection();
                                     const selectedText = sel?.toString().trim() ?? '';
                                     if (!selectedText || !sel || sel.rangeCount === 0) return;
-                                    // 判斷滑鼠是否落在 selection 高亮範圍內
+
                                     const range = sel.getRangeAt(0);
                                     const rects = range.getClientRects();
                                     let insideSelection = false;
@@ -319,8 +338,8 @@ export const MessageList: React.FC<MessageListProps> = ({
                                         }
                                     }
                                     if (!insideSelection) return;
-                                    // 滑鼠在 selection 範圍內，準備可能的 DnD
-                                    e.preventDefault(); // 阻止瀏覽器清除 selection
+
+                                    e.preventDefault();
                                     msgDragInfo.current = { isMouseDown: true, isDragging: false, startX: e.clientX, startY: e.clientY, content: selectedText, mouseDownAt: Date.now() };
                                 }}
                                 onDragStart={(e) => e.preventDefault()}
@@ -347,7 +366,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                                                 <div key={i} className="relative rounded-xl overflow-hidden w-20 h-20 shrink-0 border border-white/20">
                                                     <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
                                                     <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5">
-                                                        <span className="text-[9px] text-white font-medium block truncate">OCR</span>
+                                                        <span className="text-[9px] text-white font-medium block truncate">{t('chat.ocr')}</span>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -428,7 +447,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
                                 {msg.role === 'assistant' && msg.citationSources && msg.citationSources.length > 0 && (
                                     <div className="mt-2">
-                                        <div className="text-[10px] uppercase tracking-wide opacity-60 mb-1">引用來源</div>
+                                        <div className="text-[10px] uppercase tracking-wide opacity-60 mb-1">{t('chat.citations')}</div>
                                         <div className="relative w-full flex flex-wrap gap-1.5">
                                             {msg.citationSources.map((source, idx) => (
                                                 <CitationBadge key={`${msg.id}-src-${idx}`} source={source} />

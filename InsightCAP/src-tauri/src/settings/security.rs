@@ -20,13 +20,10 @@ pub fn decrypt(data: &str) -> Result<String, String> {
     }
     get_mc()
         .decrypt_base64_to_string(data)
-        .map_err(|e| format!("解密失敗: {}", e))
+        .map_err(|e| format!("Decryption failed: {}", e))
 }
 
-/// 檢查字串是否為加密過的（簡單啟發式判斷）
 pub fn is_encrypted(data: &str) -> bool {
-    // 如果可以成功解密，則認為是加密過的
-    // 這裡使用 base64 格式判斷作為初步過濾
     if data.is_empty() {
         return false;
     }

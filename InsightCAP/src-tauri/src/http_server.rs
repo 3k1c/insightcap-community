@@ -1,11 +1,3 @@
-/// Phase 6 — 本地 HTTP API Server（Axum）
-///
-/// 端點：
-///   GET  /api/health   — 連線確認
-///   POST /api/capture  — 擷取文字/URL 到 inbox
-///   POST /api/rag      — 查詢桌面知識庫，回傳 chunks + context_text
-///   POST /api/chat     — 桌面代理推理（SSE streaming）
-///   GET  /             — 手機 PWA 快速擷取頁
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -35,7 +27,6 @@ use crate::{
     settings,
 };
 
-// ─── Shared State ──────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct ApiState {
@@ -44,7 +35,6 @@ struct ApiState {
     app: AppHandle,
 }
 
-// ─── Request / Response Types ──────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct CaptureRequest {
@@ -56,14 +46,12 @@ struct CaptureRequest {
 #[derive(Deserialize)]
 struct RagRequest {
     query: String,
-    /// 限制回傳數量，預設 5，最多 10
     limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
 struct ChatRequest {
     message: String,
-    /// [[role, content], ...] — role: "user" | "assistant"
     history: Option<Vec<[String; 2]>>,
 }
 
@@ -104,7 +92,6 @@ struct HealthResponse {
     version: &'static str,
 }
 
-// ─── Auth Helper ───────────────────────────────────────────────────────────
 
 fn bearer_ok(headers: &HeaderMap, expected: &str) -> bool {
     headers
@@ -115,7 +102,6 @@ fn bearer_ok(headers: &HeaderMap, expected: &str) -> bool {
         .unwrap_or(false)
 }
 
-// ─── Handlers ──────────────────────────────────────────────────────────────
 
 async fn handle_health() -> Json<HealthResponse> {
     Json(HealthResponse {
@@ -155,7 +141,7 @@ async fn handle_capture(
     match sqlx::query(
         "INSERT INTO inbox \
          (id, content, content_type, source_exe, source_url, window_title, session_id, status, captured_at) \
-         VALUES (?, ?, ?, 'MobileCapture', ?, '手機擷取', '', 'pending', ?)",
+         VALUES (?, ?, ?, 'MobileCapture', ?, 'Mobile Capture', '', 'pending', ?)",
     )
     .bind(&id)
     .bind(&content)
@@ -203,7 +189,6 @@ async fn handle_rag(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // 在原始 context 基礎上，附加 context_text 供手機端直接注入 prompt
     let _limit = req.limit.unwrap_or(5).min(10);
     let context_text = rag_to_text(&context);
 
@@ -229,7 +214,6 @@ async fn handle_chat(
 
     let app_state = s.app.state::<AppState>();
 
-    // 取桌面端 LLM 設定
     let settings = settings::store::get_settings(&app_state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -242,7 +226,6 @@ async fn handle_chat(
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
 
-    // RAG：查詢桌面知識庫取得 context
     let rag_context = {
         let engine = RagEngine::new(
             app_state.db.clone(),
@@ -256,17 +239,15 @@ async fn handle_chat(
     };
     let context_text = rag_to_text(&rag_context);
 
-    // 組裝 system prompt
     let system_prompt = if context_text.is_empty() {
-        "你是 InsightCAP 知識助理。根據對話回答用戶問題。".to_string()
+        "You are InsightCAP assistant. Provide concise and actionable answers.".to_string()
     } else {
         format!(
-            "你是 InsightCAP 知識助理。以下是來自用戶知識庫的相關資料，請優先參考：\n\n{}\n\n根據上述知識回答用戶的問題。",
+            "You are InsightCAP assistant. Use the following retrieved context when relevant.\n\n{}\n\nIf context is insufficient, state assumptions clearly.",
             context_text
         )
     };
 
-    // 組裝 history
     let history_vec: Vec<(String, String)> = req
         .history
         .unwrap_or_default()
@@ -281,7 +262,6 @@ async fn handle_chat(
         cfg.provider.clone(),
     );
 
-    // mpsc channel：bridge callback → SSE stream
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
     tokio::spawn(async move {
@@ -301,7 +281,6 @@ async fn handle_chat(
                 }
             })
             .await;
-        // tx 在此 drop，rx.recv() 將回傳 None，stream 結束
     });
 
     let sse_stream = stream::unfold(rx, |mut rx| async move {
@@ -317,24 +296,21 @@ async fn handle_pwa() -> Html<&'static str> {
     Html(PWA_HTML)
 }
 
-// ─── RAG Context → Plain Text ──────────────────────────────────────────────
 
 fn rag_to_text(ctx: &serde_json::Value) -> String {
     let mut parts: Vec<String> = Vec::new();
 
-    // captures
     if let Some(arr) = ctx["captures"].as_array() {
         for item in arr {
             if let Some(content) = item["content"].as_str() {
                 if !content.is_empty() {
-                    let title = item["title"].as_str().unwrap_or("擷取內容");
+                    let title = item["title"].as_str().unwrap_or("Untitled Capture");
                     parts.push(format!("[{}]\n{}", title, content));
                 }
             }
         }
     }
 
-    // memory chunks（patterns / logs / data）
     for key in &["patterns", "logs", "data"] {
         if let Some(arr) = ctx["memory"][key].as_array() {
             for item in arr {
@@ -342,8 +318,8 @@ fn rag_to_text(ctx: &serde_json::Value) -> String {
                     if !content.is_empty() {
                         let kind = match *key {
                             "patterns" => "Pattern",
-                            "logs" => "經驗記錄",
-                            _ => "知識",
+                            "logs" => "Log",
+                            _ => "Data",
                         };
                         parts.push(format!("[{}]\n{}", kind, content));
                     }
@@ -355,7 +331,6 @@ fn rag_to_text(ctx: &serde_json::Value) -> String {
     parts.join("\n\n---\n\n")
 }
 
-// ─── Token Management ──────────────────────────────────────────────────────
 
 async fn load_or_create_token(pool: &SqlitePool) -> String {
     if let Ok(Some(token)) =
@@ -366,7 +341,6 @@ async fn load_or_create_token(pool: &SqlitePool) -> String {
         return token;
     }
 
-    // 用兩個 UUID v7 simple 格式拼成 32 位 hex token
     let token = format!("{}{}", Uuid::now_v7().simple(), Uuid::now_v7().simple());
     let now = Utc::now().to_rfc3339();
 
@@ -379,13 +353,11 @@ async fn load_or_create_token(pool: &SqlitePool) -> String {
     .execute(pool)
     .await;
 
-    println!("[HTTP] Generated mobile API token: {}…", &token[..8]);
+    println!("[HTTP] Generated mobile API token: {} ", &token[..8]);
     token
 }
 
-// ─── Entry Point ───────────────────────────────────────────────────────────
 
-/// Phase 6: 啟動本地 HTTP API Server（0.0.0.0:3030）
 pub async fn start_api_server(app: AppHandle) {
     let pool = app.state::<SqlitePool>().inner().clone();
     let token = load_or_create_token(&pool).await;
@@ -410,17 +382,15 @@ pub async fn start_api_server(app: AppHandle) {
         .route("/api/sources", get(handle_list_sources))
         .with_state(state);
 
-    // 監聽所有介面，讓同 WiFi 的手機能連入
     match TcpListener::bind("0.0.0.0:3030").await {
         Ok(listener) => {
             println!("[HTTP] Mobile API listening on 0.0.0.0:3030");
             let _ = axum::serve(listener, router).await;
         }
-        Err(e) => eprintln!("[HTTP] Failed to bind 0.0.0.0:3030 — {}", e),
+        Err(e) => eprintln!("[HTTP] Failed to bind 0.0.0.0:3030   {}", e),
     }
 }
 
-// ─── Conversations ─────────────────────────────────────────────────────────
 
 async fn handle_list_conversations(
     State(s): State<ApiState>,
@@ -445,7 +415,7 @@ async fn handle_list_conversations(
         .into_iter()
         .map(|(id, title, summary, updated_at)| ConversationItem {
             id,
-            title: title.unwrap_or_else(|| "新對話".to_string()),
+            title: title.unwrap_or_else(|| "Untitled Conversation".to_string()),
             summary,
             updated_at,
         })
@@ -464,7 +434,9 @@ async fn handle_create_conversation(
     }
 
     let id = uuid::Uuid::now_v7().to_string();
-    let title = req.title.unwrap_or_else(|| "新對話".to_string());
+    let title = req
+        .title
+        .unwrap_or_else(|| "Untitled Conversation".to_string());
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
@@ -518,7 +490,6 @@ async fn handle_get_messages(
     Ok(Json(items))
 }
 
-// ─── Sources ────────────────────────────────────────────────────────────────
 
 async fn handle_list_sources(
     State(s): State<ApiState>,
@@ -556,10 +527,9 @@ async fn handle_list_sources(
     Ok(Json(items))
 }
 
-// ─── PWA HTML（手機快速擷取頁）──────────────────────────────────────────────
 
 const PWA_HTML: &str = r#"<!DOCTYPE html>
-<html lang="zh-TW">
+  <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -611,23 +581,23 @@ const PWA_HTML: &str = r#"<!DOCTYPE html>
 </head>
 <body>
   <h1>InsightCAP</h1>
-  <p class="sub">擷取內容到桌面端知識庫</p>
+  <p class="sub">Mobile capture endpoint for InsightCAP</p>
 
   <div class="card" id="auth-card">
     <label>API Token</label>
     <div class="row">
-      <input type="password" id="tok" placeholder="貼上 Token（只需輸入一次）" autocomplete="off">
-      <button class="x-btn" onclick="clearTok()">✕</button>
+      <input type="password" id="tok" placeholder="Paste API token" autocomplete="off">
+      <button class="x-btn" onclick="clearTok()">x</button>
     </div>
-    <div class="saved" id="saved">已記住 Token ✓</div>
+    <div class="saved" id="saved">Token saved</div>
   </div>
 
   <div class="card">
-    <label>擷取內容</label>
-    <textarea id="content" placeholder="貼上文字、網址、想法…"></textarea>
+    <label>Content</label>
+    <textarea id="content" placeholder="Type text or paste a URL..."></textarea>
   </div>
 
-  <button class="btn" id="btn" onclick="send()">擷取到知識庫</button>
+  <button class="btn" id="btn" onclick="send()">Send Capture</button>
   <div class="toast" id="toast"></div>
 
   <script>
@@ -644,15 +614,15 @@ const PWA_HTML: &str = r#"<!DOCTYPE html>
       localStorage.removeItem(KEY);
       document.getElementById('tok').value='';
       document.getElementById('saved').style.display='none';
-      toast('已清除 Token','err');
+      toast('Token cleared','err');
     }
     async function send(){
       const tok=document.getElementById('tok').value.trim();
       const txt=document.getElementById('content').value.trim();
       const btn=document.getElementById('btn');
-      if(!tok){toast('請先輸入 API Token','err');return;}
-      if(!txt){toast('請輸入要擷取的內容','err');return;}
-      btn.disabled=true;btn.textContent='擷取中…';
+      if(!tok){toast('Please enter API token','err');return;}
+      if(!txt){toast('Please enter content','err');return;}
+      btn.disabled=true;btn.textContent='Sending...';
       try{
         const r=await fetch('/api/capture',{
           method:'POST',
@@ -662,16 +632,16 @@ const PWA_HTML: &str = r#"<!DOCTYPE html>
         if(r.status===201){
           localStorage.setItem(KEY,tok);showSaved();
           document.getElementById('content').value='';
-          toast('已擷取 ✓','ok');
+          toast('Captured successfully','ok');
         }else if(r.status===401){
-          toast('Token 無效，請重新輸入','err');
+          toast('Token invalid or expired','err');
         }else{
-          toast('擷取失敗（'+r.status+'）','err');
+          toast('Request failed: '+r.status,'err');
         }
       }catch{
-        toast('連線失敗，請確認在同一 WiFi','err');
+        toast('Network error. Check Wi-Fi connection.','err');
       }finally{
-        btn.disabled=false;btn.textContent='擷取到知識庫';
+        btn.disabled=false;btn.textContent='Send Capture';
       }
     }
     function toast(msg,type){

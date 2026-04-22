@@ -17,8 +17,6 @@ impl ReminderEngine {
         Self { pool }
     }
 
-    /// 從對話摘要中提取提醒事項，並建立 reminders + notifications 資料。
-    /// 回傳建立的 reminder IDs。
     pub async fn extract_reminders(
         &self,
         conversation_id: &str,
@@ -31,7 +29,6 @@ impl ReminderEngine {
         let primary_cfg = settings.ai_models.content_processor_llm.clone();
         let fallback_cfg = settings.ai_models.chat_llm.clone();
 
-        // 嘗試使用內容處理模型提取
         let result = self
             .attempt_extraction(&primary_cfg, conversation_timestamp, summary, dialogue)
             .await;
@@ -40,14 +37,17 @@ impl ReminderEngine {
             Ok(json) => json,
             Err(e) => {
                 println!(
-                    "[ReminderEngine] 主要模型提取失敗 ({})，嘗試切換至聊天模型...",
+                    "[ReminderEngine] Primary extraction failed ({}), trying fallback model...",
                     e
                 );
                 self.attempt_extraction(&fallback_cfg, conversation_timestamp, summary, dialogue)
                     .await
-                    .map_err(|e2| format!("所有模型提取皆失敗: {}, 且 {}", e, e2))
+                    .map_err(|e2| format!("All reminder extraction attempts failed: {}; {}", e, e2))
                     .unwrap_or_else(|e2| {
-                        eprintln!("[ReminderEngine] 緊急恢復提取失敗: {}", e2);
+                        eprintln!(
+                            "[ReminderEngine] Emergency reminder extraction fallback failed: {}",
+                            e2
+                        );
                         serde_json::Value::Null
                     })
             }
@@ -95,14 +95,13 @@ impl ReminderEngine {
                 normalize_event_time_with_status(event_time_raw);
             if event_time_parse_failed {
                 eprintln!(
-                    "[ReminderEngine] event_time 解析失敗，略過 imminent fallback：raw='{}', title='{}', conversation_id={}",
+                    "[ReminderEngine] Failed to parse event_time; skipping imminent fallback: raw='{}', title='{}', conversation_id={}",
                     event_time_raw,
                     title,
                     conversation_id
                 );
             }
 
-            // 修正：如果日期為空但時間不為空，預設為「今天」(Local Now)
             let event_date = if event_date_raw.is_empty() && event_time.is_some() {
                 chrono::Local::now().format("%Y-%m-%d").to_string()
             } else {
@@ -121,7 +120,6 @@ impl ReminderEngine {
 
             let status_req = item["status"].as_str().unwrap_or("active");
 
-            // --- 處理取消或完成機制 ---
             if status_req == "cancelled" || status_req == "completed" {
                 let db_status = if status_req == "cancelled" {
                     "dismissed"
@@ -129,7 +127,6 @@ impl ReminderEngine {
                     "completed"
                 };
 
-                // 尋找匹配的活動中提醒
                 let rows_affected = sqlx::query(
                     "UPDATE reminders SET status = ?, updated_at = ? \
                      WHERE (conversation_id = ? OR title = ?) \
@@ -152,19 +149,22 @@ impl ReminderEngine {
 
                 if rows_affected > 0 {
                     println!(
-                        "[ReminderEngine] 已根據對話更新提醒狀態為 {}: {}",
+                        "[ReminderEngine] Updated reminder status to {}: {}",
                         db_status, title
                     );
                     if settings.telegram.enabled {
                         let op_text = if status_req == "cancelled" {
-                            "已取消"
+                            "cancelled"
                         } else {
-                            "已完成"
+                            "completed"
                         };
                         let _ = crate::background::telegram_bot::send_message(
                             &settings.telegram.bot_token,
                             settings.telegram.allowed_user_ids[0],
-                            &format!("提醒狀態更新\n\n項目：{}\n狀態：{}", title, op_text),
+                            &format!(
+                                "Reminder status updated\n\nTitle: {}\nStatus: {}",
+                                title, op_text
+                            ),
                         )
                         .await;
                     }
@@ -172,7 +172,6 @@ impl ReminderEngine {
                 continue;
             }
 
-            // 重複檢查 (僅針對 active)
             if self
                 .is_duplicate(
                     conversation_id,
@@ -225,7 +224,6 @@ impl ReminderEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-            // 建立通知排程
             if !event_date.is_empty() {
                 let mut schedule = generate_notification_schedule(
                     event_type,
@@ -234,7 +232,6 @@ impl ReminderEngine {
                     event_time.as_deref(),
                     daily_time,
                 );
-                // 如果是今天且未來排程已空，觸發 imminent fallback
                 if schedule.is_empty() && !event_time_parse_failed {
                     if let Some(fallback) =
                         generate_imminent_fallback(&event_date, event_time.as_deref())
@@ -260,11 +257,10 @@ impl ReminderEngine {
             }
 
             println!(
-                "[ReminderEngine] 建立提醒: {} (type={}, status={}, confidence={:.2}, pending={})",
+                "[ReminderEngine] Created reminder: {} (type={}, status={}, confidence={:.2}, pending={})",
                 title, event_type, date_status, confidence, pending_confirm
             );
 
-            // --- 新增：向 Telegram 發送設定成功訊息 ---
             if settings.telegram.enabled
                 && !settings.telegram.bot_token.is_empty()
                 && !settings.telegram.allowed_user_ids.is_empty()
@@ -272,9 +268,12 @@ impl ReminderEngine {
                 let time_display = match (&event_date, &event_time) {
                     (d, Some(t)) if !d.is_empty() => format!("{} {}", d, t),
                     (d, None) if !d.is_empty() => d.to_string(),
-                    _ => "待定".to_string(),
+                    _ => "not set".to_string(),
                 };
-                let confirm_msg = format!("已成功設定提醒\n\n標題：{}\n時間：{}\n類型：{}\n\n系統將準時在上述時間通知您。", title, time_display, event_type);
+                let confirm_msg = format!(
+                    "Reminder created\n\nTitle: {}\nTime: {}\nType: {}\n\nPlease review or edit it in the app.",
+                    title, time_display, event_type
+                );
 
                 let bot_token = settings.telegram.bot_token.clone();
                 for &user_id in &settings.telegram.allowed_user_ids {
@@ -302,10 +301,13 @@ impl ReminderEngine {
     ) -> Result<serde_json::Value, String> {
         let api_key = cfg.api_key.clone().unwrap_or_default();
         if api_key.is_empty() && cfg.provider != "ollama" {
-            return Err("缺少 API Key".to_string());
+            return Err("Missing API key".to_string());
         }
 
-        let input = format!("對話摘要：\n{}\n\n對話內容：\n{}", summary, dialogue);
+        let input = format!(
+            "Conversation summary:\n{}\n\nConversation content:\n{}",
+            summary, dialogue
+        );
         let prompt = format!(
             "{}{}\n\n{}",
             prompts::REMINDER_EXTRACT_PROMPT,
@@ -336,11 +338,10 @@ impl ReminderEngine {
             Ok(Err(e)) => {
                 let err_text = e.to_string();
                 if let Some(v) = try_parse_reminder_json_from_error(&err_text) {
-                    println!("[ReminderEngine] JSON 解析錯誤但已從 Raw 內容恢復 reminders。");
+                    println!("[ReminderEngine] Parsed reminders from JSON error text.");
                     return Ok(v);
                 }
 
-                // 第二層容錯：改用純文字回覆再做寬鬆解析，避免單次 Parse 失敗整批中斷
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(45),
                     provider.complete(&prompt, opts),
@@ -349,10 +350,10 @@ impl ReminderEngine {
                 {
                     Ok(Ok(text)) => {
                         if let Some(v) = try_parse_reminder_json(&text) {
-                            println!("[ReminderEngine] 透過文字回覆寬鬆解析成功恢復 reminders。");
+                            println!("[ReminderEngine] Parsed reminders from text fallback.");
                             Ok(v)
                         } else if text.trim().is_empty() || is_empty_raw_parse_error(&err_text) {
-                            println!("[ReminderEngine] 模型回傳空內容，已安全降級為空 reminders。");
+                            println!("[ReminderEngine] Empty reminder extraction result, using empty reminders.");
                             Ok(serde_json::json!({ "reminders": [] }))
                         } else {
                             Err(format!(
@@ -364,7 +365,7 @@ impl ReminderEngine {
                     }
                     Ok(Err(e2)) => {
                         if is_empty_raw_parse_error(&err_text) {
-                            println!("[ReminderEngine] JSON 模式回空內容，文字 fallback 也失敗；已降級為空 reminders。");
+                            println!("[ReminderEngine] JSON parse returned empty and text fallback failed; using empty reminders.");
                             Ok(serde_json::json!({ "reminders": [] }))
                         } else {
                             Err(format!("{}; text fallback error: {}", err_text, e2))
@@ -372,7 +373,7 @@ impl ReminderEngine {
                     }
                     Err(_) => {
                         if is_empty_raw_parse_error(&err_text) {
-                            println!("[ReminderEngine] JSON 模式回空內容，文字 fallback 超時；已降級為空 reminders。");
+                            println!("[ReminderEngine] JSON parse returned empty and text fallback timed out; using empty reminders.");
                             Ok(serde_json::json!({ "reminders": [] }))
                         } else {
                             Err(err_text)
@@ -380,13 +381,10 @@ impl ReminderEngine {
                     }
                 }
             }
-            Err(_) => Err("提取超時".to_string()),
+            Err(_) => Err("Reminder extraction timed out".to_string()),
         }
     }
 
-    /// 重複性檢查：分為兩層
-    /// 1. 同一對話 + 同一日期 + 同一時間（通常是防重發）
-    /// 2. 標題 + 日期 + 時間（跨對話重複）
     async fn is_duplicate(
         &self,
         conversation_id: &str,
@@ -394,7 +392,6 @@ impl ReminderEngine {
         event_date: Option<&str>,
         event_time: Option<&str>,
     ) -> Result<bool, String> {
-        // Layer 1: same conversation + same date + same time
         if let Some(date) = event_date {
             let count: i64 = if let Some(time) = event_time {
                 sqlx::query_scalar(
@@ -423,7 +420,6 @@ impl ReminderEngine {
             }
         }
 
-        // Layer 2: exact title + date + time (cross-conversation)
         let count: i64 = match (event_date, event_time) {
             (Some(date), Some(time)) => {
                 sqlx::query_scalar(
@@ -469,7 +465,6 @@ impl ReminderEngine {
         Ok(count > 0)
     }
 
-    /// 核心操作：確認/否認 pending reminder
     pub async fn confirm_reminder(&self, reminder_id: &str, accept: bool) -> Result<(), String> {
         let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         if accept {
@@ -490,7 +485,6 @@ impl ReminderEngine {
         Ok(())
     }
 
-    /// 更新提醒狀態
     pub async fn update_reminder_status(
         &self,
         reminder_id: &str,
@@ -510,13 +504,11 @@ impl ReminderEngine {
         Ok(())
     }
 
-    /// 撱嗅???嚗????潮? notifications 撱嗅?????
     pub async fn snooze_reminder(&self, reminder_id: &str, minutes: i64) -> Result<(), String> {
         let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         let snooze_until = (Utc::now() + Duration::minutes(minutes))
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
-        // 優先延後最早一筆未發送通知；若不存在則補建一筆新的通知，避免前端按了 snooze 卻無效果。
         let pending_notif_id: Option<String> = sqlx::query_scalar(
             "SELECT id FROM reminder_notifications \
              WHERE reminder_id = ? AND sent_at IS NULL \
@@ -549,7 +541,6 @@ impl ReminderEngine {
             .map_err(|e| e.to_string())?;
         }
 
-        // 更新 reminder 的 updated_at
         let updated = sqlx::query("UPDATE reminders SET updated_at = ? WHERE id = ?")
             .bind(&now)
             .bind(reminder_id)
@@ -562,7 +553,6 @@ impl ReminderEngine {
         Ok(())
     }
 
-    /// 獲取所有活動中的提醒（用於列表顯示）
     pub async fn get_active_reminders(&self) -> Result<Vec<Value>, String> {
         let rows = sqlx::query(
              "SELECT r.*, \
@@ -601,7 +591,6 @@ impl ReminderEngine {
         Ok(results)
     }
 
-    /// 獲取待確認的提醒
     pub async fn get_pending_reminders(&self) -> Result<Vec<Value>, String> {
         let rows = sqlx::query(
             "SELECT * FROM reminders WHERE pending_confirm = 1 AND status = 'active' ORDER BY created_at DESC"
@@ -630,10 +619,7 @@ impl ReminderEngine {
     }
 }
 
-// ─── 輔助函式：通知排程邏輯 ────────────────────────────────────────────────────────────
 
-/// 根據 event_type + date_status 產生對應的通知時點。
-/// 回傳 Vec<(intent, scheduled_at_iso8601)>。
 fn generate_notification_schedule(
     event_type: &str,
     date_status: &str,
@@ -649,11 +635,9 @@ fn generate_notification_schedule(
     let daily_time = NaiveTime::parse_from_str(daily_reminder_time, "%H:%M")
         .unwrap_or_else(|_| NaiveTime::from_hms_opt(9, 0, 0).unwrap());
 
-    // 使用本地時間計算（避免 UTC 跨日問題）
     let today = Local::now().date_naive();
     let mut schedule: Vec<(String, String)> = Vec::new();
 
-    // range / month_only 類型提示用戶 confirm_date
     if matches!(date_status, "range" | "month_only") {
         let confirm_at = if date > today + Duration::days(7) {
             date - Duration::days(7)
@@ -669,7 +653,6 @@ fn generate_notification_schedule(
         return filter_future(schedule);
     }
 
-    // event_time 是否明確存在
     let has_time = event_time.is_some();
     let time = event_time
         .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok())
@@ -753,7 +736,6 @@ fn generate_notification_schedule(
     filter_future(schedule)
 }
 
-/// 過濾掉已經過去的時間點
 fn filter_future(schedule: Vec<(String, String)>) -> Vec<(String, String)> {
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     schedule
@@ -762,14 +744,11 @@ fn filter_future(schedule: Vec<(String, String)>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// 將本地 NaiveDateTime 轉換為 UTC ISO-8601 字串
 fn naive_local_to_utc_str(naive_local: NaiveDateTime) -> String {
-    // 使用時區資料做轉換，避免固定 offset 在 DST/時區邊界產生誤差
     let local_dt = match Local.from_local_datetime(&naive_local) {
         LocalResult::Single(dt) => dt,
         LocalResult::Ambiguous(early, _) => early,
         LocalResult::None => {
-            // DST 跳時造成該本地時間不存在時，往後推一小時取可解析時間
             let shifted = naive_local + Duration::hours(1);
             match Local.from_local_datetime(&shifted) {
                 LocalResult::Single(dt) => dt,
@@ -787,9 +766,6 @@ fn naive_local_to_utc_str(naive_local: NaiveDateTime) -> String {
         .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
-/// 當緊急提取時：若該事件在今天且未過時，
-/// 但正式 schedule 已過（因 filter_future 過濾），則
-/// 產生一個 "imminent" 通知放在 event_time - 5 分鐘（或是即刻 +30 秒）。
 pub fn generate_imminent_fallback(
     event_date: &str,
     event_time: Option<&str>,
@@ -806,14 +782,12 @@ pub fn generate_imminent_fallback(
     if let Some(t) = event_naive_time {
         let event_local = date.and_time(t);
 
-        // 如果事件已經過期超過 10 分鐘，不再發送通知
         if event_local + Duration::minutes(10) <= local_now.naive_local() {
             return None;
         }
 
         let remind_local = event_local - Duration::minutes(5);
         if remind_local <= local_now.naive_local() {
-            // 已離當前太近或已過 5 分鐘內，立即發送
             let utc_at = Utc::now() - Duration::seconds(1);
             Some((
                 "imminent".to_string(),
@@ -823,7 +797,6 @@ pub fn generate_imminent_fallback(
             Some(("imminent".to_string(), naive_local_to_utc_str(remind_local)))
         }
     } else {
-        // 未指定時間，預設為即刻發送
         let utc_at = Utc::now() - Duration::seconds(1);
         Some((
             "imminent".to_string(),
@@ -848,23 +821,21 @@ fn normalize_event_time(raw: &str) -> Option<String> {
 }
 
 fn normalize_event_time_with_status(raw: &str) -> (Option<String>, bool) {
-    let text = raw.trim().replace('：', ":");
+    let text = raw.trim().replace('\u{ff1a}', ":");
     if text.is_empty() {
         return (None, false);
     }
 
-    // 常見格式：24 小時制與 AM/PM
     for fmt in ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p"] {
         if let Ok(t) = NaiveTime::parse_from_str(&text, fmt) {
             return (Some(t.format("%H:%M").to_string()), false);
         }
     }
 
-    // 兜底：從雜訊字串擷取 HH:MM（例如「10:55（香港時間）」）
     if let Some((hour, minute)) = extract_hhmm_fragment(&text) {
         let lower = text.to_lowercase();
-        let has_pm = lower.contains("pm") || text.contains("下午");
-        let has_am = lower.contains("am") || text.contains("上午");
+        let has_pm = lower.contains("pm");
+        let has_am = lower.contains("am");
         let mut h = hour;
         if has_pm && h < 12 {
             h += 12;
@@ -886,7 +857,6 @@ fn extract_hhmm_fragment(text: &str) -> Option<(u32, u32)> {
             continue;
         }
 
-        // 1 or 2 digits hour
         let mut j = i;
         while j < bytes.len() && bytes[j].is_ascii_digit() && j - i < 2 {
             j += 1;
@@ -973,7 +943,6 @@ fn try_parse_reminder_json(raw: &str) -> Option<serde_json::Value> {
         }
     }
 
-    // 容忍 `\"reminders\": [...]` 這種缺外層大括號格式
     if let Some(key_pos) = text.find("\"reminders\"") {
         if let Some(bracket_start_rel) = text[key_pos..].find('[') {
             let bracket_start = key_pos + bracket_start_rel;
@@ -1051,18 +1020,18 @@ mod tests {
     #[test]
     fn test_normalize_event_time_handles_noisy_text() {
         assert_eq!(
-            normalize_event_time("10：55（香港時間）"),
+            normalize_event_time("10:55 from noisy text"),
             Some("10:55".to_string())
         );
         assert_eq!(
-            normalize_event_time("會議時間 7:30"),
+            normalize_event_time("meeting at 7:30"),
             Some("07:30".to_string())
         );
     }
 
     #[test]
     fn test_normalize_event_time_with_status_marks_failed_parse() {
-        let (parsed, failed) = normalize_event_time_with_status("今晚十點半");
+        let (parsed, failed) = normalize_event_time_with_status("evening time");
         assert_eq!(parsed, None);
         assert!(failed);
 

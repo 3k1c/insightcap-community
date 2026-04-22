@@ -4,12 +4,40 @@ use chrono::Utc;
 use sqlx::SqlitePool;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use tauri::State;
 use uuid::Uuid;
 
 #[tauri::command]
 pub async fn open_document(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn open_file_in_system(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", "", &path]);
+        c
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = Command::new("open");
+        c.arg(&path);
+        c
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = Command::new("xdg-open");
+        c.arg(&path);
+        c
+    };
+
+    cmd.spawn().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -92,7 +120,6 @@ pub async fn copy_image_to_assets(
     let dest_path = assets_dir.join(&unique_name);
     fs::copy(&image_abs_path, &dest_path).map_err(|e| e.to_string())?;
 
-    // Return relative path like ./assets/filename.png
     Ok(format!("./assets/{}", unique_name))
 }
 
@@ -112,7 +139,6 @@ pub async fn save_editor_to_knowledge(
     let content_hash = format!("{:x}", hasher.finalize());
     let now = Utc::now().to_rfc3339();
 
-    // Check if source with same title and type editor already exists
     let existing_source_id: Option<String> =
         sqlx::query_scalar("SELECT id FROM sources WHERE title = ? AND type = 'editor'")
             .bind(&title)
@@ -121,14 +147,12 @@ pub async fn save_editor_to_knowledge(
             .map_err(|e| e.to_string())?;
 
     let source_id = if let Some(id) = existing_source_id {
-        // Source exists, clear old captures
         sqlx::query("DELETE FROM captures WHERE source_id = ?")
             .bind(&id)
             .execute(pool.inner())
             .await
             .map_err(|e| e.to_string())?;
 
-        // Update source hash and time
         sqlx::query(
             "UPDATE sources SET content_hash = ?, updated_at = ?, clean_content = ? WHERE id = ?",
         )
@@ -141,7 +165,6 @@ pub async fn save_editor_to_knowledge(
         .map_err(|e| e.to_string())?;
         id
     } else {
-        // Create new source
         let new_id = Uuid::now_v7().to_string();
         sqlx::query(
             "INSERT INTO sources (id, type, title, clean_content, content_hash, captured_at, updated_at) VALUES (?, 'editor', ?, ?, ?, ?, ?)"
@@ -158,7 +181,6 @@ pub async fn save_editor_to_knowledge(
         new_id
     };
 
-    // 將快照保存至 documents 資料夾
     let doc_dir = state.kb_path.join(".insightcap").join("documents");
     fs::create_dir_all(&doc_dir).map_err(|e| e.to_string())?;
     let safe_name = title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
@@ -166,7 +188,6 @@ pub async fn save_editor_to_knowledge(
     let doc_path = doc_dir.join(&file_name);
     fs::write(&doc_path, &clean_content).map_err(|e| e.to_string())?;
 
-    // 更新 local_doc_path
     let local_path_str = doc_path.to_string_lossy().to_string();
     sqlx::query("UPDATE sources SET local_doc_path = ? WHERE id = ?")
         .bind(&local_path_str)
@@ -175,7 +196,6 @@ pub async fn save_editor_to_knowledge(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Split content by Markdown headers (H1, H2, H3)
     let chunks = split_markdown_by_headings(&clean_content);
 
     for (idx, chunk_text) in chunks.into_iter().enumerate() {
@@ -198,7 +218,6 @@ pub async fn save_editor_to_knowledge(
         .await
         .map_err(|e| e.to_string())?;
 
-        // 觸發背景 tag 與 space (非同步)
         let pool_clone = pool.inner().clone();
         let capture_id_clone = capture_id.clone();
         let chunk_text_clone = chunk_text.clone();
@@ -217,7 +236,7 @@ pub async fn save_editor_to_knowledge(
             );
             let _ = space_engine
                 .assign_to_space(&capture_id_clone, &chunk_text_clone)
-                .await; // (space_id, is_new) — editor 頻率低，不 emit event
+                .await;
         });
     }
 

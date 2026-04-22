@@ -6,20 +6,18 @@ use std::process::Command;
 use uuid::Uuid; // Assuming uuid crate is added to Cargo.toml
 
 pub async fn recognize_text_from_bytes(image_data: &[u8]) -> Result<String, String> {
-    // 透過寫入暫存檔並呼叫 Swift 腳本執行 macOS 內建的 Vision Framework 進行 OCR
     let temp_dir = std::env::temp_dir();
     let id = Uuid::now_v7().to_string();
     let temp_path = temp_dir.join(format!("{}.png", id));
     let script_path = temp_dir.join(format!("{}.swift", id));
 
-    let mut temp_file =
-        File::create(&temp_path).map_err(|e| format!("建立圖片暫存檔失敗: {}", e))?;
+    let mut temp_file = File::create(&temp_path)
+        .map_err(|e| format!("Failed to create temporary image file: {}", e))?;
 
     temp_file
         .write_all(image_data)
-        .map_err(|e| format!("寫入圖片暫存檔失敗: {}", e))?;
+        .map_err(|e| format!("Failed to write image bytes: {}", e))?;
 
-    // macOS Vision Framework 支援中文腳本 (需 macOS 10.15+, zh-Hans/Hant 支援需更新版本)
     let swift_script = r#"
 import Cocoa
 import Vision
@@ -57,7 +55,6 @@ let request = VNRecognizeTextRequest { (request, error) in
     print(fullText)
 }
 
-// 支援繁體中文、簡體中文與英文
 request.recognitionLanguages = ["zh-Hant", "zh-Hans", "en-US"]
 request.usesLanguageCorrection = true
 
@@ -70,12 +67,12 @@ do {
 }
 "#;
 
-    let mut script_file =
-        File::create(&script_path).map_err(|e| format!("建立 Swift 腳本暫存檔失敗: {}", e))?;
+    let mut script_file = File::create(&script_path)
+        .map_err(|e| format!("Failed to create Swift script file: {}", e))?;
 
     script_file
         .write_all(swift_script.as_bytes())
-        .map_err(|e| format!("寫入腳本失敗: {}", e))?;
+        .map_err(|e| format!("Failed to write Swift script: {}", e))?;
 
     let output = Command::new("swift")
         .arg(&script_path)
@@ -83,12 +80,11 @@ do {
         .output()
         .map_err(|e| {
             format!(
-                "執行 Swift 失敗 (確認系統是否安裝 Command Line Tools): {}",
+                "Failed to run Swift OCR script (check Command Line Tools): {}",
                 e
             )
         })?;
 
-    // 執行完畢後清理暫存檔
     let _ = std::fs::remove_file(&temp_path);
     let _ = std::fs::remove_file(&script_path);
 
@@ -97,6 +93,6 @@ do {
         Ok(text)
     } else {
         let err = String::from_utf8_lossy(&output.stderr);
-        Err(format!("macOS Vision OCR 失敗: {}", err))
+        Err(format!("macOS Vision OCR failed: {}", err))
     }
 }

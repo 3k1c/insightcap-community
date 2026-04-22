@@ -35,7 +35,6 @@ impl OpenAiProvider {
             || trimmed.contains("127.0.0.1")
             || trimmed.contains(":11434")
         {
-            // 如果是本地模型，且沒有以 /v1 結尾，自動補齊以相容 OpenAI API
             if !trimmed.ends_with("/v1") {
                 base_url = format!("{}/v1", trimmed);
             }
@@ -52,7 +51,6 @@ impl OpenAiProvider {
         }
     }
 
-    /// 根據模型能力建構 messages 陣列（system vs developer role）
     fn build_messages(
         &self,
         system_prompt: &str,
@@ -67,7 +65,6 @@ impl OpenAiProvider {
             "system"
         };
 
-        // Gemma4Think：只有 think_mode=true 時才在 system prompt 開頭加 <|think|>
         let effective_system_prompt;
         let system_content = if style == ReasoningStyle::Gemma4Think && think_mode {
             effective_system_prompt = format!("<|think|>{}", system_prompt);
@@ -84,7 +81,6 @@ impl OpenAiProvider {
         messages
     }
 
-    /// 根據模型能力建構 request body 參數
     fn build_request_body(
         &self,
         messages: Vec<serde_json::Value>,
@@ -95,7 +91,6 @@ impl OpenAiProvider {
 
         match style {
             ReasoningStyle::OpenAiReasoning => {
-                // o-series：不支援 temperature，用 max_completion_tokens，加入 reasoning_effort
                 json!({
                     "model": self.model,
                     "messages": messages,
@@ -105,8 +100,6 @@ impl OpenAiProvider {
                 })
             }
             ReasoningStyle::OllamaThinkTag => {
-                // Ollama think-capable 模型（DeepSeek-R1、Qwen3 等）
-                // think 參數放在 options 物件內
                 let mut body = json!({
                     "model": self.model,
                     "messages": messages,
@@ -120,8 +113,6 @@ impl OpenAiProvider {
                 body
             }
             ReasoningStyle::Gemma4Think => {
-                // Gemma4 via Ollama：thinking 由 system prompt 的 <|think|> 控制
-                // 建議 sampling 參數：temperature=1.0, top_p=0.95, top_k=64
                 json!({
                     "model": self.model,
                     "messages": messages,
@@ -149,9 +140,7 @@ impl OpenAiProvider {
     }
 }
 
-// ── Ollama <think> tag 狀態機 ─────────────────────────────────────────────
 
-/// 解析 Ollama 模型 content 中的 <think>...</think> tag
 struct ThinkTagParser {
     in_think: bool,
     tag_buffer: String,
@@ -165,19 +154,16 @@ impl ThinkTagParser {
         }
     }
 
-    /// 處理一段 content token，回傳分類後的 StreamToken 列表
     fn parse(&mut self, raw: &str) -> Vec<StreamToken> {
         let mut tokens = Vec::new();
         let mut chars = raw.chars().peekable();
 
         while let Some(ch) = chars.next() {
             if ch == '<' {
-                // 開始可能是 tag，先緩衝
                 self.tag_buffer.push(ch);
             } else if !self.tag_buffer.is_empty() {
                 self.tag_buffer.push(ch);
 
-                // 檢查是否已完成 tag
                 if self.tag_buffer == "<think>" {
                     self.in_think = true;
                     self.tag_buffer.clear();
@@ -185,11 +171,9 @@ impl ThinkTagParser {
                     self.in_think = false;
                     self.tag_buffer.clear();
                 } else if self.tag_buffer.len() > 8 {
-                    // 不是有效 tag，flush buffer 為內容
                     let buf = std::mem::take(&mut self.tag_buffer);
                     self.emit(&buf, &mut tokens);
                 } else {
-                    // 可能是 partial tag，看看是否還有可能匹配
                     let potential = if self.in_think { "</think>" } else { "<think>" };
                     if !potential.starts_with(&self.tag_buffer) {
                         let buf = std::mem::take(&mut self.tag_buffer);
@@ -197,7 +181,6 @@ impl ThinkTagParser {
                     }
                 }
             } else {
-                // 一般字元
                 let s = ch.to_string();
                 self.emit(&s, &mut tokens);
             }
@@ -206,7 +189,6 @@ impl ThinkTagParser {
         tokens
     }
 
-    /// 串流結束時 flush 殘留 buffer
     fn flush(&mut self) -> Vec<StreamToken> {
         if self.tag_buffer.is_empty() {
             return vec![];
@@ -229,16 +211,9 @@ impl ThinkTagParser {
     }
 }
 
-// ── Gemma4 <|channel>thought\n...<channel|> 狀態機 ───────────────────────
-//
-// 格式：<|channel>thought\n[thinking content]<channel|>[final answer]
-// 策略：以逐字元方式掃描，找到開頭 token 進入 reasoning 模式，
-//       找到結尾 token 退出。
-
 struct Gemma4ChannelParser {
     in_think: bool,
     buf: String,
-    // 在開頭 token 結束後，first newline 要丟棄（\n 是格式分隔，不是內容）
     skip_first_newline: bool,
 }
 
@@ -260,24 +235,18 @@ impl Gemma4ChannelParser {
             self.buf.push(ch);
 
             if !self.in_think {
-                // 等待 OPEN token
                 if self.buf.ends_with(Self::OPEN) {
                     self.in_think = true;
                     self.skip_first_newline = false;
                     self.buf.clear();
                 } else if Self::OPEN.starts_with(&self.buf as &str) {
-                    // partial match，繼續等待
-                } else {
-                    // 不匹配，flush 為 content
                     let s = std::mem::take(&mut self.buf);
                     if !s.is_empty() {
                         tokens.push(StreamToken::Content(s));
                     }
                 }
             } else {
-                // 等待 CLOSE token
                 if self.buf.ends_with(Self::CLOSE) {
-                    // 移除尾巴的 CLOSE token，flush 剩餘為 reasoning
                     let reasoning_part = &self.buf[..self.buf.len() - Self::CLOSE.len()];
                     if !reasoning_part.is_empty() {
                         tokens.push(StreamToken::Reasoning(reasoning_part.to_string()));
@@ -295,9 +264,7 @@ impl Gemma4ChannelParser {
                         .rev()
                         .collect::<String>(),
                 ) {
-                    // partial CLOSE — 保留在 buf 繼續等待
                 } else {
-                    // 沒有 partial CLOSE 風險，可以 flush 到 buf[-CLOSE.len()+1] 為止
                     let safe_len = self.buf.len().saturating_sub(Self::CLOSE.len() - 1);
                     if safe_len > 0 {
                         let flush = self.buf[..safe_len].to_string();
@@ -323,7 +290,6 @@ impl Gemma4ChannelParser {
     }
 }
 
-// ── LLMProvider 實作 ─────────────────────────────────────────────────────
 
 impl LLMProvider for OpenAiProvider {
     async fn complete(&self, prompt: &str, options: LLMOptions) -> Result<String, LLMError> {
@@ -451,7 +417,6 @@ impl LLMProvider for OpenAiProvider {
             let bytes = chunk.map_err(|e| LLMError::Network(e.to_string()))?;
             buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-            // SSE 以 \n\n 分隔事件
             while let Some(pos) = buffer.find("\n\n") {
                 let event = buffer[..pos].to_string();
                 buffer = buffer[pos + 2..].to_string();
@@ -470,14 +435,12 @@ impl LLMProvider for OpenAiProvider {
 
                         match style {
                             ReasoningStyle::OpenAiReasoning | ReasoningStyle::DeepSeekReasoning => {
-                                // 先處理 reasoning_content
                                 if let Some(r) = delta["reasoning_content"].as_str() {
                                     if !r.is_empty() {
                                         result.reasoning.push_str(r);
                                         on_token(StreamToken::Reasoning(r.to_string()));
                                     }
                                 }
-                                // 再處理 content
                                 if let Some(c) = delta["content"].as_str() {
                                     if !c.is_empty() {
                                         result.content.push_str(c);
@@ -486,7 +449,6 @@ impl LLMProvider for OpenAiProvider {
                                 }
                             }
                             ReasoningStyle::OllamaThinkTag => {
-                                // Ollama：reasoning 包在 <think> tag 中
                                 if let Some(c) = delta["content"].as_str() {
                                     if !c.is_empty() {
                                         let parsed = think_parser.parse(c);
@@ -505,7 +467,6 @@ impl LLMProvider for OpenAiProvider {
                                 }
                             }
                             ReasoningStyle::Gemma4Think => {
-                                // Gemma4：reasoning 包在 <|channel>thought\n...<channel|> 中
                                 if let Some(c) = delta["content"].as_str() {
                                     if !c.is_empty() {
                                         let parsed = gemma4_parser.parse(c);
@@ -537,7 +498,6 @@ impl LLMProvider for OpenAiProvider {
             }
         }
 
-        // Flush tag parser 殘留
         let flush_tokens = match style {
             ReasoningStyle::OllamaThinkTag => think_parser.flush(),
             ReasoningStyle::Gemma4Think => gemma4_parser.flush(),
@@ -564,7 +524,6 @@ impl LLMProvider for OpenAiProvider {
         let messages = vec![json!({ "role": "user", "content": prompt })];
         let mut req_body = self.build_request_body(messages, &options, options.stream);
 
-        // Ollama 的 JSON mode 有時會與 think 模型衝突導致輸出空字串，因此在 Ollama 避開強制 json_object
         if self.provider_name != "ollama" {
             req_body["response_format"] = json!({ "type": "json_object" });
         }
@@ -592,7 +551,6 @@ impl LLMProvider for OpenAiProvider {
         if let Some(text) = json_res["choices"][0]["message"]["content"].as_str() {
             let mut clean_text = text.trim();
 
-            // 移除可能干擾 JSON 解析的 reasoning tags
             if let Some(end_idx) = clean_text.find("</think>") {
                 clean_text = clean_text[end_idx + "</think>".len()..].trim();
             }
@@ -612,8 +570,6 @@ impl LLMProvider for OpenAiProvider {
                     .trim();
             }
 
-            // 防呆處理：有時候 LLM 會在 JSON 外面再包一層或是前面有奇怪的話
-            // 我們直接找第一個 { 和最後一個 }
             let start = clean_text.find('{').unwrap_or(0);
             let end = clean_text
                 .rfind('}')

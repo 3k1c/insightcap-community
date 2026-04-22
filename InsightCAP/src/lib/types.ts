@@ -12,7 +12,6 @@ export interface ProviderProfile {
     apiKey?: string;
 }
 
-// ─── 知識庫 ─────────────────────────────────────────
 
 export interface Space {
     id: string;
@@ -101,7 +100,6 @@ export interface TimelineItem {
     fileSize?: number;
 }
 
-// ─── 設定 ─────────────────────────────────────────
 
 export interface GeneralSettings {
     launchAtStartup: boolean;
@@ -128,8 +126,8 @@ export interface AIModelSettings {
 export interface KnowledgeSettings {
     kbPath: string;
     autoClassifyEnabled: boolean;
-    notesFolder?: string; // 預設新增筆記的子資料夾（相對於 kbPath），預設為 "notes"
-    autoSpaceMode: 'suggest' | 'auto'; // 'suggest' = toast 確認；'auto' = 直接建立
+    notesFolder?: string; // Default subfolder for new notes (relative to kbPath), default is "notes".
+    autoSpaceMode: 'suggest' | 'auto'; // 'suggest' = confirm via toast; 'auto' = create directly.
 }
 
 export interface HotkeySettings {
@@ -155,15 +153,10 @@ export interface SpaceSuggestion {
 }
 
 export interface EditorSettings {
-    /** 預設字型，空字串代表使用系統預設 */
     defaultFont: string;
-    /** 預設字號，如 '12' */
     defaultFontSize: string;
-    /** 預設行距，如 '1.5' */
     defaultLineSpacing: string;
-    /** Ctrl+S 及匯出選單的預設格式 */
     defaultExportFormat: 'docx' | 'md' | 'txt';
-    /** 匯出檔案的子目錄（相對於文件所在資料夾），如 'exports' */
     exportSubdir: string;
     promptInstructionOverride?: string;
 }
@@ -191,14 +184,12 @@ export interface AllSettings {
     lastOpenConv?: string | null;
 }
 
-// ─── 編輯器模組 ─────────────────────────────────────────
 
 export interface DocumentInfo {
     path: string;
     isUnsaved: boolean;
 }
 
-// ─── Context Scan ─────────────────────────────────────────
 
 export interface ContextGroup {
     knowledgeType: 'data' | 'pattern' | 'log';
@@ -213,7 +204,6 @@ export interface RelatedContextSummary {
     contextHint: string;
 }
 
-// ─── 外部知識庫 ─────────────────────────────────────────
 export type KbType = 'general' | 'legal' | 'finance' | 'training' | 'sales';
 
 export interface KbMetadata {

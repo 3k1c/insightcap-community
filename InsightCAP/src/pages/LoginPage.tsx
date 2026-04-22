@@ -31,7 +31,6 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
         loadLockStatus();
     }, [kbPath]);
 
-    // 倒數計時
     useEffect(() => {
         if (countdown > 0) {
             const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
@@ -78,7 +77,6 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
             <div className="w-full max-w-sm rounded-2xl border border-stroke-divider p-8 bg-surface-card shadow-flyout">
-                {/* Icon */}
                 <div className="mb-6 text-center">
                     <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3 bg-accent-light2">
                         <Lock className="h-6 w-6 text-accent-default" />

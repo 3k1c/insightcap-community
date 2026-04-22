@@ -1,11 +1,12 @@
-use crate::prompts::SPACE_KNOWLEDGE_GUIDE_PROMPT;
-use crate::providers::llm::openai::OpenAiProvider;
-use crate::providers::llm::{LLMOptions, LLMProvider};
-use crate::settings::store::get_settings;
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 
-const SPACE_KNOWLEDGE_GUIDE_SYSTEM: &str = "你是一個資深知識管理專家。你的任務是分析提供的片段內容，為該空間（Space）總結出一份結構化的知識導引。這份導引應包含：核心概念、關鍵字、常用模式。如果內容不足以產出有意義的導引，請回傳 INSUFFICIENT。";
+use crate::prompts::{SPACE_KNOWLEDGE_GUIDE_PROMPT, SPACE_KNOWLEDGE_GUIDE_SYSTEM};
+use crate::providers::llm::openai::OpenAiProvider;
+use crate::providers::llm::{LLMOptions, LLMProvider};
+use crate::settings::store::get_settings;
+
+const MAX_CHUNKS_PER_UPDATE: i64 = 30;
 
 pub struct SpaceKnowledgeGuideEngine {
     pool: SqlitePool,
@@ -16,44 +17,80 @@ impl SpaceKnowledgeGuideEngine {
         Self { pool }
     }
 
-    /// 為指定 Space 生成或更新知識導引
     pub async fn generate_guide(&self, space_id: &str) -> Result<String, String> {
-        // 1. 取得設定
-        let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
-        let cfg = settings.ai_models.content_processor_llm;
-
-        let api_key = cfg.api_key.unwrap_or_default();
-        if api_key.is_empty() && cfg.provider != "ollama" {
-            return Err("未設定 AI API Key".to_string());
-        }
-
-        // 2. 取得 Space 中的內容片段（Top 50 按使用頻率或權重）
-        let rows = sqlx::query(
-            "SELECT content FROM memory_chunks WHERE space_id = ? AND status = 'active' ORDER BY weight DESC LIMIT 50"
+        let space_row = sqlx::query(
+            "SELECT name, knowledge_guide_content FROM spaces WHERE id = ? AND is_archived = 0",
         )
         .bind(space_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Space {} not found", space_id))?;
+
+        let space_name: String = space_row.try_get("name").unwrap_or_default();
+        let existing_guide: String = space_row
+            .try_get("knowledge_guide_content")
+            .unwrap_or_default();
+
+        let chunk_rows = sqlx::query(
+            "SELECT content, knowledge_type FROM memory_chunks \
+             WHERE space_id = ? AND status = 'active' AND pending_confirm = 0 \
+             ORDER BY CASE knowledge_type WHEN 'pattern' THEN 0 WHEN 'log' THEN 1 ELSE 2 END, weight DESC, created_at DESC \
+             LIMIT ?",
+        )
+        .bind(space_id)
+        .bind(MAX_CHUNKS_PER_UPDATE)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        if rows.is_empty() {
+        if chunk_rows.is_empty() {
             return Ok(String::new());
         }
 
-        let mut all_content = String::new();
-        for r in rows {
-            let content: String = r.get("content");
-            all_content.push_str(&content);
-            all_content.push_str("\n---\n");
-        }
+        let chunks_text = chunk_rows
+            .iter()
+            .map(|row| {
+                let knowledge_type: String = row
+                    .try_get("knowledge_type")
+                    .unwrap_or_else(|_| "data".to_string());
+                let content: String = row.try_get("content").unwrap_or_default();
+                let label = match knowledge_type.as_str() {
+                    "pattern" => "【Pattern】",
+                    "log" => "【Log】",
+                    _ => "【Data】",
+                };
 
-        // 3. 準備 Prompt
-        let user_prompt = format!(
-            "{}\n\n待分析內容：\n{}",
-            SPACE_KNOWLEDGE_GUIDE_PROMPT, all_content
+                format!(
+                    "{} {}",
+                    label,
+                    content.chars().take(200).collect::<String>()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let mut user_prompt = format!(
+            "{}\n\nSpace 名稱：{}\n\n記憶 chunks：\n{}\n",
+            SPACE_KNOWLEDGE_GUIDE_PROMPT, space_name, chunks_text
         );
 
-        // 4. 初始化 LLM
+        if !existing_guide.trim().is_empty() {
+            user_prompt.push_str(&format!(
+                "\n現有 Knowledge Guide（請在此基礎上增量更新）：\n{}\n",
+                existing_guide
+            ));
+        }
+
+        let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let cfg = settings.ai_models.content_processor_llm;
+        let api_key = cfg.api_key.clone().unwrap_or_default();
+        let is_ollama = cfg.provider == "ollama";
+
+        if api_key.is_empty() && !is_ollama {
+            return Ok(String::new());
+        }
+
         let llm = OpenAiProvider::new(
             api_key,
             cfg.base_url.clone(),
@@ -67,7 +104,6 @@ impl SpaceKnowledgeGuideEngine {
             think_mode: None,
         };
 
-        // 5. 呼叫 LLM
         let full_prompt = format!("{}\n\n{}", SPACE_KNOWLEDGE_GUIDE_SYSTEM, user_prompt);
         let result = llm
             .complete(&full_prompt, opts)
@@ -79,10 +115,9 @@ impl SpaceKnowledgeGuideEngine {
             return Ok(String::new());
         }
 
-        // 6. 寫回 DB
         let now = Utc::now().to_rfc3339();
         sqlx::query(
-            "UPDATE spaces SET knowledge_guide_content = ?, knowledge_guide_updated_at = ? WHERE id = ?"
+            "UPDATE spaces SET knowledge_guide_content = ?, knowledge_guide_updated_at = ? WHERE id = ?",
         )
         .bind(&result)
         .bind(&now)

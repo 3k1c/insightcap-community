@@ -5,7 +5,6 @@ export interface Folder { id: string; name: string; }
 export interface Conversation { id: string; title: string; }
 
 export const tauriCmd = {
-    // ─── 設定 ─────────────────────────────────────────
     getSettings: async (): Promise<AllSettings> => {
         return invoke('get_settings');
     },
@@ -14,7 +13,6 @@ export const tauriCmd = {
         return invoke('save_settings', { settings });
     },
 
-    // ─── Timeline ───────────────────────────────────────────
     getCaptureTimeline: async (params: { sourceFilter?: string; typeFilter?: string; spaceFilter?: string; limit?: number; offset?: number }): Promise<TimelineItem[]> => {
         return invoke('get_capture_timeline', {
             sourceFilter: params.sourceFilter ?? null,
@@ -25,7 +23,6 @@ export const tauriCmd = {
         });
     },
 
-    // ─── 知識庫 ─────────────────────────────────────────
     getSpaces: async (): Promise<Space[]> => {
         return invoke('get_spaces');
     },
@@ -106,17 +103,14 @@ export const tauriCmd = {
         return invoke('reject_chunk_suggestion', { chunkId });
     },
 
-    // 確認歸類至指定 Space（用戶手動選擇）
     moveChunkToSpace: async (chunkId: string, spaceId: string): Promise<void> => {
         return invoke('move_chunk_to_space', { chunkId, spaceId });
     },
 
-    // 忽略歸類建議（保留在收件匣，清除建議）
     dismissChunkSuggestion: async (chunkId: string): Promise<void> => {
         return invoke('dismiss_chunk_suggestion', { chunkId });
     },
 
-    // @ Mention Source 搜索
     searchSources: async (query: string, limit?: number): Promise<Array<{
         id: string;
         title: string;
@@ -130,7 +124,6 @@ export const tauriCmd = {
     },
 
 
-    // ─── 對話群組 ─────────────────────────────────────────
     updateFolder: async (id: string, name?: string, isPinned?: number, sortOrder?: number, isArchived?: number): Promise<void> => {
         return invoke('update_folder', {
             id,
@@ -181,7 +174,6 @@ export const tauriCmd = {
         return invoke('delete_conversation', { id });
     },
 
-    // Batch reordering
     reorderConversations: async (ids: string[], folderId: string | null): Promise<void> => {
         return invoke('reorder_conversations', { ids, folderId });
     },
@@ -208,7 +200,6 @@ export const tauriCmd = {
         return invoke('update_conversation', { id, isPinned: null, isLocked: 0 });
     },
 
-    // ─── 維護 ─────────────────────────────────────────
     exportKnowledgeBase: async (destDir: String): Promise<void> => {
         return invoke('export_knowledge_base', { destDir });
     },
@@ -240,7 +231,7 @@ export const tauriCmd = {
     enqueueConversationSummary: async (params: {
         conversationId: string;
         triggeredBy: 'switch' | 'page_change' | 'minimize' | 'close' | 'minimize_or_close';
-        force?: boolean; // 測試用
+        force?: boolean; // For testing
     }): Promise<string> => {
         return invoke<string>('enqueue_conversation_summary', {
             conversationId: params.conversationId,
@@ -297,7 +288,6 @@ export const tauriCmd = {
         return invoke('open_file_in_system', { path });
     },
 
-    // ─── AI / Ollama ────────────────────────────────────────
     testOllama: async (baseUrl: string): Promise<boolean> => {
         return invoke('test_ollama', { baseUrl });
     },
@@ -322,7 +312,6 @@ export const tauriCmd = {
         return invoke('test_provider_connection', { provider, baseUrl, apiKey });
     },
 
-    // ─── Workspace 備份/還原 ──────────────────────────────────────────────────
     exportWorkspace: async (destPath: string): Promise<void> => {
         return invoke('export_workspace', { destPath });
     },
@@ -331,7 +320,6 @@ export const tauriCmd = {
         return invoke('import_workspace', { zipPath, destDir });
     },
 
-    // ─── P5-02: 快捷鍵自定義 ──────────────────────────────────────────────────
     updateGlobalHotkey: async (hotkeyStr: string): Promise<void> => {
         return invoke('update_global_hotkey', { hotkeyStr });
     },
@@ -339,7 +327,6 @@ export const tauriCmd = {
         return invoke('update_quick_input_hotkey', { hotkeyStr });
     },
 
-    // ─── P5-03: AI Space 建議 ──────────────────────────────────────────────────
     analyzeSpaceSuggestions: async (): Promise<SpaceSuggestion | null> => {
         return invoke('analyze_space_suggestions');
     },
@@ -348,7 +335,6 @@ export const tauriCmd = {
         return invoke('apply_space_suggestion', { name, color, chunkIds });
     },
 
-    // ─── 編輯器 ────────────────────────────────────────────────────────────────
     exportDocument: async (absolutePath: string, content: string): Promise<void> => {
         return invoke('export_document', { absolutePath, content });
     },
@@ -405,7 +391,6 @@ export const tauriCmd = {
         return invoke('save_editor_to_knowledge', { title, content });
     },
 
-    // ─── 外部知識庫 ───────────────────────────────────────────────────────────────
     loadExternalKb: async (dbPath: string): Promise<ExternalKbLoadResult> => {
         return invoke('load_external_kb', { dbPath });
     },
@@ -422,7 +407,6 @@ export const tauriCmd = {
         return invoke('recheck_external_kbs');
     },
 
-    // ─── 主動盤點 ──────────────────────────────────────────────────────────────────
     scanConversationContext: async (
         conversationId: string,
         userMessage: string
@@ -433,7 +417,6 @@ export const tauriCmd = {
         });
     },
 
-    // ─── 認證 ──────────────────────────────────────────────────────────────────
     getAuthStatus: async (kbPath: string): Promise<{ isSetup: boolean; autoLogin: boolean }> => {
         return invoke('get_auth_status', { kbPath });
     },

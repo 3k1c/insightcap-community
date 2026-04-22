@@ -2,8 +2,6 @@ use crate::db::AppState;
 use crate::services::chunk_relation_engine::{ChunkRelationEngine, LinkedChunk};
 use tauri::State;
 
-/// 查詢指定 chunk 的所有關聯（供前端引用預覽顯示）
-/// chunk_id: capture_id 或 memory_chunk_id
 #[tauri::command]
 pub async fn get_chunk_relations(
     state: State<'_, AppState>,

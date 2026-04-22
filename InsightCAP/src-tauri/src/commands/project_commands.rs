@@ -33,12 +33,15 @@ pub struct UpdateProjectRequest {
     pub is_archived: Option<bool>,
 }
 
+async fn ensure_project_color_column(pool: &SqlitePool) {
+    let _ = sqlx::query("ALTER TABLE projects ADD COLUMN color TEXT")
+        .execute(pool)
+        .await;
+}
+
 #[tauri::command]
 pub async fn get_projects(pool: State<'_, SqlitePool>) -> Result<Vec<Project>, String> {
-    // 確保 color 列存在（自動遷移）
-    let _ = sqlx::query("ALTER TABLE projects ADD COLUMN color TEXT")
-        .execute(pool.inner())
-        .await;
+    ensure_project_color_column(pool.inner()).await;
 
     let rows = sqlx::query(
         "SELECT id, name, default_tags, color, is_pinned, is_archived, sort_order, created_at, updated_at 
@@ -116,10 +119,7 @@ pub async fn create_project(
     let default_tags: String =
         serde_json::to_string(&Vec::<String>::new()).map_err(|e| e.to_string())?;
 
-    // 確保 color 列存在（自動遷移）
-    let _ = sqlx::query("ALTER TABLE projects ADD COLUMN color TEXT")
-        .execute(pool.inner())
-        .await;
+    ensure_project_color_column(pool.inner()).await;
 
     sqlx::query(
         "INSERT INTO projects (id, name, default_tags, color, created_at, updated_at) 
@@ -157,14 +157,10 @@ pub async fn update_project(
     is_pinned: Option<bool>,
     is_archived: Option<bool>,
 ) -> Result<Project, String> {
-    // 確保 color 列存在（自動遷移）
-    let _ = sqlx::query("ALTER TABLE projects ADD COLUMN color TEXT")
-        .execute(pool.inner())
-        .await;
+    ensure_project_color_column(pool.inner()).await;
 
     let now = Utc::now().to_rfc3339();
 
-    // 構建動態 SQL - SQLite uses ? for placeholders
     let mut query_str = "UPDATE projects SET updated_at = ?".to_string();
     let mut bindings: Vec<String> = vec![now.clone()];
 
@@ -196,7 +192,6 @@ pub async fn update_project(
     query_str.push_str(" WHERE id = ?");
     bindings.push(project_id.clone());
 
-    // 構建查詢
     let mut query = sqlx::query(&query_str);
     for binding in bindings {
         query = query.bind(binding);
@@ -207,20 +202,17 @@ pub async fn update_project(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 返回更新後的 project
     get_project_by_id(pool, project_id).await
 }
 
 #[tauri::command]
 pub async fn delete_project(pool: State<'_, SqlitePool>, project_id: String) -> Result<(), String> {
-    // 先將該 project 下的所有對話的 project_id 設為 NULL
     sqlx::query("UPDATE conversations SET project_id = NULL WHERE project_id = ?")
         .bind(&project_id)
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
 
-    // 刪除 project
     sqlx::query("DELETE FROM projects WHERE id = ?")
         .bind(&project_id)
         .execute(pool.inner())
@@ -272,10 +264,7 @@ async fn get_project_by_id(
     pool: State<'_, SqlitePool>,
     project_id: String,
 ) -> Result<Project, String> {
-    // 確保 color 列存在（自動遷移）
-    let _ = sqlx::query("ALTER TABLE projects ADD COLUMN color TEXT")
-        .execute(pool.inner())
-        .await;
+    ensure_project_color_column(pool.inner()).await;
 
     let row = sqlx::query(
         "SELECT id, name, default_tags, color, is_pinned, is_archived, sort_order, created_at, updated_at 

@@ -14,7 +14,6 @@ impl LanguageNormalizer {
         Self
     }
 
-    /// 根據用戶設定標準化內文語系
     pub fn normalize(&self, content: &str, settings: &GeneralSettings) -> String {
         let variant = match settings.language.as_str() {
             "zh-TW" => Variant::ZhTW,
@@ -25,12 +24,10 @@ impl LanguageNormalizer {
         zhconv::zhconv(content, variant)
     }
 
-    /// 強制轉換為繁體（用於 RAG 向量化對齊）
     pub fn to_traditional(&self, content: &str) -> String {
         zhconv::zhconv(content, Variant::ZhTW)
     }
 
-    /// 強制轉換為簡體（用於 RAG 互通）
     pub fn to_simplified(&self, content: &str) -> String {
         zhconv::zhconv(content, Variant::ZhCN)
     }

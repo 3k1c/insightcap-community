@@ -58,20 +58,18 @@ pub const PATTERN_ANALYSIS: &str =
     如果發現有多個對話中重複出現的強烈共同概念、問題或需求，請輸出一個統一的總結(Pattern)。\
     這將被用來升格為正式知識點。若沒有明顯交集，不要硬湊，請嚴格輸出 'NONE'。";
 
-// ─── Space Wiki 生成（不開放用戶修改）────────────────────────────────────────
-
-pub const SPACE_WIKI_SYSTEM: &str = "你是 InsightCAP 的知識文件維護引擎。\
-    你的任務是為指定 Space 維護一份結構化的 Markdown 知識文件（Wiki）。\
-    Wiki 必須包含以下四個區塊（若無對應內容則省略該區塊）：\n\
+pub const SPACE_KNOWLEDGE_GUIDE_SYSTEM: &str = "你是 InsightCAP 的空間知識導引維護引擎。\
+    你的任務是為指定 Space 維護一份結構化的 Knowledge Guide。\
+    Knowledge Guide 必須包含以下四個區塊（若無對應內容則省略該區塊）：\n\
     ## 核心框架\n（已驗證的工作流程或方法論）\n\
     ## 已掌握方法\n（重複出現且有效的 Pattern，括號標註驗證次數）\n\
-    ## 已知風險\n（以 ⚠️ 開頭列出的 Log 記錄）\n\
+    ## 已知風險\n（以警示語氣整理出的 Log 記錄）\n\
     ## 知識空白\n（明顯缺乏經驗的子領域，逗號分隔）\n\n\
     規則：\n\
     - 只根據提供的 memory_chunks 內容生成，不要捏造\n\
-    - 若收到現有 Wiki，請在其基礎上增量更新，整合新資訊\n\
+    - 若收到現有 Knowledge Guide，請在其基礎上增量更新，整合新資訊\n\
     - 輸出純 Markdown，不要加任何前綴或解釋\n\
-    - 若內容不足以生成有意義的 Wiki，輸出 INSUFFICIENT";
+    - 若內容不足以生成有意義的 Knowledge Guide，輸出 INSUFFICIENT";
 
 // ─── 深度合成引擎（DeepSynthesisEngine）────────────────────────────────────
 

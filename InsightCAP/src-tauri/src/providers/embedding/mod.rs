@@ -10,7 +10,6 @@ pub enum EmbedError {
     Failed(String),
 }
 
-/// Embedder trait — 使用 async_trait 確保 dyn 相容
 #[async_trait]
 pub trait Embedder: Send + Sync {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError>;
@@ -19,7 +18,6 @@ pub trait Embedder: Send + Sync {
     fn model_name(&self) -> &str;
 }
 
-/// Embedder 初始化失敗時的 fallback，所有 embed 呼叫回傳空向量
 pub struct NoopEmbedder;
 
 #[async_trait]

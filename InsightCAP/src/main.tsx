@@ -3,10 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './design-system/index.css';
 
-// 初始化 i18n（必須在 React 掛載前）
 import './i18n';
 
-// UI Zoom (Ctrl+= / Ctrl+- / Ctrl+0) — 使用 Tauri set_zoom，隨視窗大小正確縮放
 import { invoke } from '@tauri-apps/api/core';
 
 (function initZoom() {
@@ -16,7 +14,6 @@ import { invoke } from '@tauri-apps/api/core';
     function apply(l: number) {
         const factor = Math.pow(1.2, l);
         invoke('set_zoom', { factor }).then(() => {
-            // set_zoom 改變了 viewport 尺寸，強制 #root 填滿新的 viewport
             const root = document.getElementById('root');
             if (root) {
                 root.style.width = `${window.innerWidth}px`;
@@ -28,7 +25,6 @@ import { invoke } from '@tauri-apps/api/core';
 
     apply(level);
 
-    // 視窗 resize 後同步更新 #root 尺寸
     window.addEventListener('resize', () => {
         const root = document.getElementById('root');
         if (root && root.style.width) {

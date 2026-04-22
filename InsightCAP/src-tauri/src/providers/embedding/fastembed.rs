@@ -5,7 +5,6 @@ use tokio::sync::Mutex;
 
 use crate::providers::embedding::Embedder;
 
-/// FastEmbed 本地向量化實現（Embedder trait 的個人版）
 pub struct FastEmbedder {
     pub active_model_name: String,
     model: Arc<Mutex<TextEmbedding>>,
@@ -14,7 +13,10 @@ pub struct FastEmbedder {
 impl FastEmbedder {
     pub fn new(model_name: &str) -> Result<Self, String> {
         let embedding_model = resolve_embedding_model(model_name);
-        println!("[Embedder] 初始化模型: {:?}", embedding_model);
+        println!(
+            "[Embedder] Initializing embedding model: {:?}",
+            embedding_model
+        );
 
         let mut options = InitOptions::new(embedding_model);
         options.show_download_progress = true;
@@ -23,7 +25,7 @@ impl FastEmbedder {
             TextEmbedding::try_new(options).map_err(|e| format!("FastEmbed init failed: {}", e))?;
 
         let canonical = canonical_embedding_model_name(model_name).to_string();
-        println!("[Embedder] 就緒: {}", canonical);
+        println!("[Embedder] Active embedding model: {}", canonical);
 
         Ok(Self {
             active_model_name: canonical,
@@ -64,13 +66,12 @@ impl Embedder for FastEmbedder {
     }
 }
 
-// ─── 模型解析輔助函式 ──────────────────────────────────────────────────────────
 
 fn resolve_embedding_model(name: &str) -> fastembed::EmbeddingModel {
     match name.trim().to_lowercase().as_str() {
         "bge-small-en-v1.5" | "bge_small_en" => fastembed::EmbeddingModel::BGESmallENV15,
         "all-minilm-l6-v2" | "all_minilm_l6_v2" => fastembed::EmbeddingModel::AllMiniLML6V2,
-        _ => fastembed::EmbeddingModel::MultilingualE5Small, // 預設：多語言支援
+        _ => fastembed::EmbeddingModel::MultilingualE5Small, // safe multilingual default
     }
 }
 

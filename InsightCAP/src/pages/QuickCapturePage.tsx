@@ -10,7 +10,7 @@ import { useT } from '../hooks/useT';
 export function QuickCapturePage() {
     const t = useT();
     const { theme } = useThemeStore();
-    const { language } = useLanguageStore(); // 訂閱語言變更以觸發重繪
+    const { language } = useLanguageStore(); // Subscribe to language changes to trigger re-render
     const [text, setText] = useState('');
     const [status, setStatus] = useState<'idle' | 'error'>('idle');
     const inputRef = useRef<HTMLInputElement>(null);

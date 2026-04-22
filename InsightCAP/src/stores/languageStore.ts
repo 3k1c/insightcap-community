@@ -1,7 +1,3 @@
-/**
- * languageStore — 語言切換狀態
- * localStorage 持久化
- */
 
 import { create } from 'zustand';
 import i18n, { LANGUAGE_STORAGE_KEY, type Language } from '../i18n';
@@ -16,7 +12,6 @@ function readStoredLanguage(): Language {
         const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null;
         if (stored && ['zh-TW', 'zh-CN', 'en'].includes(stored)) return stored;
     } catch {
-        // ignore
     }
     return 'zh-TW';
 }
@@ -31,13 +26,11 @@ export const useLanguageStore = create<LanguageState>(() => ({
         try {
             localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
         } catch {
-            // ignore
         }
         useLanguageStore.setState({ language });
     },
 }));
 
-// 監聽跨視窗 語言 變更
 window.addEventListener('storage', (e) => {
     if (e.key === LANGUAGE_STORAGE_KEY && e.newValue) {
         const lang = e.newValue as Language;

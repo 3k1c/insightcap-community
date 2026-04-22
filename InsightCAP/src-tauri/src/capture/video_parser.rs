@@ -3,18 +3,13 @@ use md5::{Digest, Md5};
 use reqwest::Client;
 use std::process::Command;
 
-// ─── Bilibili WBI 簽名模組 ───
-// B 站 2023 年起對 player/v2 等 API 加入 WBI 防篡改機制，
-// 若請求缺少正確的 w_rid 和 wts 參數，伺服器會返回錯誤或錯位的資料。
 
-/// B 站固定的混淆重排映射表（64 個索引值）
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
     28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
     54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
 ];
 
-/// 從 nav API 回傳的 img_url 和 sub_url 中擷取檔名（不含副檔名）作為 key
 fn extract_key_from_url(url: &str) -> String {
     url.rsplit('/')
         .next()
@@ -25,7 +20,6 @@ fn extract_key_from_url(url: &str) -> String {
         .to_string()
 }
 
-/// 用 MIXIN_KEY_ENC_TAB 打亂 (img_key + sub_key) 並截取前 32 字元
 fn gen_mixin_key(img_key: &str, sub_key: &str) -> String {
     let raw = format!("{}{}", img_key, sub_key);
     let raw_chars: Vec<char> = raw.chars().collect();
@@ -36,7 +30,6 @@ fn gen_mixin_key(img_key: &str, sub_key: &str) -> String {
     mixin.chars().take(32).collect()
 }
 
-/// 從 B 站 nav API 獲取每日更新的 img_key 和 sub_key
 async fn fetch_wbi_keys(
     client: &Client,
     sessdata: Option<&str>,
@@ -73,7 +66,6 @@ async fn fetch_wbi_keys(
     Ok((img_key, sub_key))
 }
 
-/// 對一組查詢參數進行 WBI 簽名，返回帶 w_rid 和 wts 的完整查詢字串
 fn wbi_sign(params: &[(&str, &str)], mixin_key: &str) -> String {
     let wts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -81,7 +73,6 @@ fn wbi_sign(params: &[(&str, &str)], mixin_key: &str) -> String {
         .as_secs()
         .to_string();
 
-    // 加入 wts，然後按 key 字典序排序
     let mut all_params: Vec<(String, String)> = params
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -89,20 +80,17 @@ fn wbi_sign(params: &[(&str, &str)], mixin_key: &str) -> String {
     all_params.push(("wts".to_string(), wts.clone()));
     all_params.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // 過濾掉值中含有特殊字元的參數（!'()*）
     let filtered: Vec<_> = all_params
         .iter()
         .filter(|(_, v)| !v.chars().any(|c| matches!(c, '!' | '\'' | '(' | ')' | '*')))
         .collect();
 
-    // 序列化成 URL 查詢字串
     let query: String = filtered
         .iter()
         .map(|(k, v)| format!("{}={}", k, v))
         .collect::<Vec<_>>()
         .join("&");
 
-    // 計算 MD5(query + mixin_key) = w_rid
     let to_hash = format!("{}{}", query, mixin_key);
     let mut hasher = Md5::new();
     hasher.update(to_hash.as_bytes());
@@ -111,11 +99,8 @@ fn wbi_sign(params: &[(&str, &str)], mixin_key: &str) -> String {
     format!("{}&w_rid={}", query, w_rid)
 }
 
-/// 尋找 yt-dlp 執行檔：先看應用程式同目錄，再向上尋找，最後看 PATH
 fn find_ytdlp() -> Option<std::path::PathBuf> {
-    // 1. 先嘗試 InsightCAP 可執行檔同目錄（Tauri 打包後 yt-dlp.exe 會放這裡）
     if let Ok(current_exe) = std::env::current_exe() {
-        // 向上最多查 5 層父目錄（支援 dev 模式的 target/debug/ 結構）
         let mut dir = current_exe.parent().map(|p| p.to_path_buf());
         for _ in 0..5 {
             if let Some(d) = dir {
@@ -130,31 +115,27 @@ fn find_ytdlp() -> Option<std::path::PathBuf> {
             }
         }
     }
-    // 2. 再嘗試 PATH
     if Command::new("yt-dlp").arg("--version").output().is_ok() {
         return Some(std::path::PathBuf::from("yt-dlp"));
     }
     None
 }
 
-// YouTube extraction：主要使用 yt-dlp，降級使用 HTTP metadata
 pub async fn fetch_youtube_subtitles(url: &str) -> Result<String, String> {
-    // ─── 方案A：yt-dlp（最可靠）───
     if let Some(ytdlp) = find_ytdlp() {
-        println!("[VIDEO_PARSER] 🎬 yt-dlp found at {:?}", ytdlp);
+        println!("[VIDEO_PARSER]    yt-dlp found at {:?}", ytdlp);
         match fetch_with_ytdlp(&ytdlp, url).await {
             Ok(text) if !text.trim().is_empty() => {
-                println!("[VIDEO_PARSER] ✅ yt-dlp extracted: {} chars", text.len());
+                println!("[VIDEO_PARSER]   yt-dlp extracted: {} chars", text.len());
                 return Ok(text);
             }
-            Ok(_) => println!("[VIDEO_PARSER] ⚠️ yt-dlp returned empty, falling back..."),
-            Err(e) => println!("[VIDEO_PARSER] ⚠️ yt-dlp failed: {}, falling back...", e),
+            Ok(_) => println!("[VIDEO_PARSER]    yt-dlp returned empty, falling back..."),
+            Err(e) => println!("[VIDEO_PARSER]    yt-dlp failed: {}, falling back...", e),
         }
     } else {
-        println!("[VIDEO_PARSER] ℹ️ yt-dlp not found, using HTTP fallback.");
+        println!("[VIDEO_PARSER]    yt-dlp not found, using HTTP fallback.");
     }
 
-    // ─── 方案B（降級）：HTTP 爬取標題+描述 ───
     fetch_youtube_metadata(url).await
 }
 
@@ -163,7 +144,6 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
     let _ = std::fs::create_dir_all(&temp_dir);
     let output_template = temp_dir.join("%(id)s").to_string_lossy().to_string();
 
-    // 步驟1：取得影片資訊 (title, description, id)
     let info_output = tokio::process::Command::new(ytdlp)
         .args(["--dump-json", "--no-playlist", "--skip-download", url])
         .output()
@@ -182,16 +162,15 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
                 description = info["description"].as_str().unwrap_or("").to_string();
                 channel = info["uploader"].as_str().unwrap_or("").to_string();
                 video_id = info["id"].as_str().unwrap_or("").to_string();
-                println!("[VIDEO_PARSER] 📹 Video: {} (id={})", title, video_id);
+                println!("[VIDEO_PARSER]    Video: {} (id={})", title, video_id);
             }
         }
     }
 
-    // 步驟2：下載字幕（優先用戶上傳字幕，失敗再用自動字幕）
     let _sub_output = tokio::process::Command::new(ytdlp)
         .args([
-            "--write-sub",      // 嘗試下載用戶上傳的字幕
-            "--write-auto-sub", // 也嘗試自動生成的字幕
+            "--write-sub",      //
+            "--write-auto-sub", //
             "--sub-langs",
             "zh-HK,zh-TW,zh,en",
             "--sub-format",
@@ -206,7 +185,6 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         .await
         .map_err(|e| format!("yt-dlp subtitle error: {}", e))?;
 
-    // 步驟3：讀取生成的 json3 字幕檔案
     let transcript = if !video_id.is_empty() {
         let sub_paths = vec![
             temp_dir.join(format!("{}.zh-HK.json3", video_id)),
@@ -218,7 +196,7 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         let mut found_transcript = String::new();
         for path in &sub_paths {
             if path.exists() {
-                println!("[VIDEO_PARSER] 📄 Found subtitle file: {:?}", path);
+                println!("[VIDEO_PARSER]    Found subtitle file: {:?}", path);
                 if let Ok(content) = std::fs::read_to_string(path) {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                         if let Some(events) = json["events"].as_array() {
@@ -249,9 +227,8 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         String::new()
     };
 
-    // 組合最終結果
     let mut result = format!(
-        "【YouTube 影片】{}",
+        " YouTube    {}",
         if title.is_empty() {
             url.to_string()
         } else {
@@ -259,16 +236,15 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         }
     );
     if !channel.is_empty() {
-        result.push_str(&format!("\n頻道：{}", channel));
+        result.push_str(&format!("\n   {}", channel));
     }
     if !transcript.is_empty() {
-        result.push_str(&format!("\n字幕內容：\n{}", transcript));
+        result.push_str(&format!("\n     \n{}", transcript));
     } else if !description.is_empty() {
-        // 沒有字幕時用 description 替代（最多 2000 字）
         let desc_preview: String = description.chars().take(2000).collect();
-        result.push_str(&format!("\n影片描述：\n{}", desc_preview));
+        result.push_str(&format!("\n     \n{}", desc_preview));
     }
-    result.push_str(&format!("\n來源：{}", url));
+    result.push_str(&format!("\n   {}", url));
 
     if title.is_empty() {
         return Err("yt-dlp could not extract video info".to_string());
@@ -323,17 +299,17 @@ async fn fetch_youtube_metadata(url: &str) -> Result<String, String> {
         return Err("Could not extract YouTube page metadata".to_string());
     }
 
-    let mut result = format!("【YouTube 影片】{}", title);
+    let mut result = format!(" YouTube    {}", title);
     if !channel.is_empty() {
-        result.push_str(&format!("\n頻道：{}", channel));
+        result.push_str(&format!("\n   {}", channel));
     }
     if !description.is_empty() {
-        result.push_str(&format!("\n影片描述：\n{}", description));
+        result.push_str(&format!("\n     \n{}", description));
     }
-    result.push_str(&format!("\n來源：{}", url));
+    result.push_str(&format!("\n   {}", url));
 
     println!(
-        "[VIDEO_PARSER] ✅ Extracted YouTube metadata ({} chars)",
+        "[VIDEO_PARSER]   Extracted YouTube metadata ({} chars)",
         result.len()
     );
     Ok(result)
@@ -362,7 +338,6 @@ fn sanitize_subtitle_text(text: &str) -> String {
         .to_string()
 }
 
-// Bilibili extraction involves 2 steps: view API for CID -> player API for Subtitle Url -> Download
 pub async fn fetch_bilibili_subtitles(
     bvid: &str,
     sessdata: Option<String>,
@@ -375,7 +350,6 @@ pub async fn fetch_bilibili_subtitles(
     println!("[VIDEO_PARSER] Checking Bilibili BVID: {}", bvid);
     println!("[BILI DEBUG] Input BVID: {}", bvid);
 
-    // 1. Get CID & Metadata
     let view_url = format!(
         "https://api.bilibili.com/x/web-interface/view?bvid={}",
         bvid
@@ -408,12 +382,9 @@ pub async fn fetch_bilibili_subtitles(
     println!("[BILI DEBUG] Title from API: {}", title);
     println!("[BILI DEBUG] CID: {}", cid);
 
-    // 2. Get Subtitles List
-    // 2. 使用 WBI 簽名請求 Player API（確保字幕資料正確對應）
     let sess_ref = sessdata.as_deref();
     let cid_str = cid.to_string();
 
-    // 嘗試用 WBI 簽名的 wbi/v2 端點
     let player_json: serde_json::Value = match fetch_wbi_keys(&client, sess_ref).await {
         Ok((img_key, sub_key)) => {
             let mixin_key = gen_mixin_key(&img_key, &sub_key);
@@ -443,7 +414,6 @@ pub async fn fetch_bilibili_subtitles(
                 "[BILI DEBUG] WBI key fetch failed: {}. Falling back to unsigned v2.",
                 e
             );
-            // 降級使用老的 v2 端點
             let player_url = format!(
                 "https://api.bilibili.com/x/player/v2?bvid={}&cid={}",
                 bvid, cid
@@ -483,7 +453,6 @@ pub async fn fetch_bilibili_subtitles(
     let mut transcript = String::new();
     let mut found_sub = false;
 
-    // 2. 獲取字幕列表並進行優先級排序
     if let Some(subtitles) = player_json["data"]["subtitle"]["subtitles"].as_array() {
         if !subtitles.is_empty() {
             let mut best_sub = None;
@@ -494,8 +463,8 @@ pub async fn fetch_bilibili_subtitles(
                     let lan_doc = lan_doc_opt.unwrap_or("");
                     let is_ai = lan.contains("ai")
                         || lan_doc.contains("AI")
-                        || lan_doc.contains("自动")
-                        || lan_doc.contains("自動");
+                        || lan_doc.contains("  ")
+                        || lan_doc.contains("  ");
 
                     let priority = if lan.starts_with("zh") && !is_ai {
                         1
@@ -531,7 +500,6 @@ pub async fn fetch_bilibili_subtitles(
                     let lan = best_sub["lan"].as_str().unwrap_or("unknown");
                     println!("[VIDEO_PARSER] Select best subtitle track: {}", lan);
 
-                    // 3. 下載字幕 JSON
                     if let Ok(sub_res) = client.get(&full_url).send().await {
                         if let Ok(sub_data) = sub_res.json::<serde_json::Value>().await {
                             if let Some(body) = sub_data["body"].as_array() {
@@ -540,7 +508,7 @@ pub async fn fetch_bilibili_subtitles(
                                         let cleaned = sanitize_subtitle_text(text);
                                         if !cleaned.is_empty() {
                                             transcript.push_str(&cleaned);
-                                            transcript.push('\n'); // 使用換行符
+                                            transcript.push('\n'); //
                                         }
                                     }
                                 }
@@ -553,28 +521,21 @@ pub async fn fetch_bilibili_subtitles(
         }
     }
 
-    // ─── 字幕內容校驗（防止 B 站 CDN 回傳錯誤影片的字幕）───
-    // 若為 AI 字幕，CDN 有機率回傳其他影片的快取內容。
-    // 策略：取字幕前 N 句與標題/描述做關鍵詞交叉比對，若完全無關則丟棄。
     if found_sub && !transcript.trim().is_empty() {
         let desc = view_json["data"]["desc"].as_str().unwrap_or("");
         let title_lower = title.to_lowercase();
         let desc_lower = desc.to_lowercase();
-        // 從標題和描述中提取具有語義的關鍵字（至少 2 個字元的片段）
         let reference_text = format!("{} {}", title_lower, desc_lower);
 
-        // 取字幕的前 200 個字元作為樣本
         let sample: String = transcript.chars().take(200).collect();
         let sample_lower = sample.to_lowercase();
 
-        // 用標題中的連續 2-4 字元片段去比對字幕
         let mut match_score = 0;
         let title_chars: Vec<char> = title_lower.chars().collect();
         for window_size in [4, 3, 2] {
             if title_chars.len() >= window_size {
                 for chunk in title_chars.windows(window_size) {
                     let keyword: String = chunk.iter().collect();
-                    // 跳過純標點或空白
                     if keyword
                         .chars()
                         .all(|c| c.is_ascii_punctuation() || c.is_whitespace())
@@ -588,7 +549,6 @@ pub async fn fetch_bilibili_subtitles(
             }
         }
 
-        // 也用描述中的一些片段比對
         let desc_chars: Vec<char> = desc_lower.chars().collect();
         for window_size in [4, 3] {
             if desc_chars.len() >= window_size {
@@ -601,13 +561,12 @@ pub async fn fetch_bilibili_subtitles(
                         continue;
                     }
                     if sample_lower.contains(&keyword) {
-                        match_score += 1; // 描述的權重較低
+                        match_score += 1; //
                     }
                 }
             }
         }
 
-        // 額外檢查：字幕本身是否提及了參考文字中的任何片段
         let sample_chars: Vec<char> = sample_lower.chars().collect();
         for window_size in [4, 3] {
             if sample_chars.len() >= window_size {
@@ -635,46 +594,114 @@ pub async fn fetch_bilibili_subtitles(
 
         if match_score == 0 {
             println!(
-                "[VIDEO_PARSER] ⚠️ Subtitle content does NOT match video title/desc! Discarding as likely CDN cache error."
+                "[VIDEO_PARSER]    Subtitle content does NOT match video title/desc! Discarding as likely CDN cache error."
             );
             found_sub = false;
             transcript.clear();
         }
     }
 
-    // 移除錯誤的 AI 字幕 Fallback 邏輯，AI 字幕已經在上面的 subtitles 列表中處理。
 
-    let mut result = format!("【Bilibili 影片】{}", title);
-    result.push_str(&format!("\nUP主：{}", owner));
+    let mut result = format!(" Bilibili    {}", title);
+    result.push_str(&format!("\nUP  {}", owner));
 
     if found_sub && !transcript.trim().is_empty() {
-        result.push_str("\n字幕內容：\n");
+        result.push_str("\n     \n");
         result.push_str(transcript.trim());
     } else {
         let desc = view_json["data"]["desc"].as_str().unwrap_or("");
-        result.push_str("\n(此影片未提供字幕) 影片描述：\n");
+        result.push_str("\n(        )      \n");
         result.push_str(desc);
     }
 
-    result.push_str(&format!("\n來源：https://www.bilibili.com/video/{}", bvid));
+    result.push_str(&format!("\n   https://www.bilibili.com/video/{}", bvid));
 
     println!(
-        "[VIDEO_PARSER] ✅ Extracted Bilibili info ({} chars)",
+        "[VIDEO_PARSER]   Extracted Bilibili info ({} chars)",
         result.len()
     );
     Ok(result)
 }
 
-/// 解析 URL 內容（YouTube 字幕 / Bilibili 字幕 / 一般網頁）
-/// 由 file_parser::parse_content 委派呼叫
 pub async fn parse_url_content(
     url_str: &str,
     sessdata: Option<String>,
 ) -> Result<ParsedDocument, String> {
-    // YouTube
+    fn clean_inline_text(value: &str) -> String {
+        value.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn readable_title_from_url(url: &str) -> String {
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
+            return "Untitled URL".to_string();
+        }
+
+        let without_scheme = trimmed
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_start_matches("www.");
+        let host_and_path = without_scheme.split('#').next().unwrap_or(without_scheme);
+        let host_and_path = host_and_path.split('?').next().unwrap_or(host_and_path);
+        let mut parts = host_and_path.splitn(2, '/');
+        let host = parts.next().unwrap_or("").trim();
+        let path = parts.next().unwrap_or("").trim();
+
+        if host.is_empty() {
+            return trimmed.to_string();
+        }
+
+        let slug = path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .next_back()
+            .unwrap_or("")
+            .replace(['-', '_'], " ");
+        let slug = clean_inline_text(&slug);
+
+        if slug.is_empty() {
+            host.to_string()
+        } else {
+            format!("{} | {}", slug, host)
+        }
+    }
+
+    fn extract_video_title(content: &str, platform: &str) -> Option<String> {
+        let platform_lower = platform.to_lowercase();
+        let lines: Vec<String> = content
+            .lines()
+            .map(clean_inline_text)
+            .filter(|line| !line.is_empty())
+            .collect();
+
+        for (idx, line) in lines.iter().enumerate() {
+            let line_lower = line.to_lowercase();
+            if !line_lower.starts_with(&platform_lower) {
+                continue;
+            }
+
+            let mut title = line[platform.len()..].trim().to_string();
+            if title.is_empty() {
+                continue;
+            }
+
+            if let Some(channel) = lines.get(idx + 1) {
+                let is_url = channel.starts_with("http://") || channel.starts_with("https://");
+                if !is_url && channel.len() <= 80 {
+                    title = format!("{} | {}", title, channel);
+                }
+            }
+            return Some(clean_inline_text(&title));
+        }
+
+        None
+    }
+
     if url_str.contains("youtube.com/watch") || url_str.contains("youtu.be/") {
         match fetch_youtube_subtitles(url_str).await {
             Ok(content) if !content.trim().is_empty() => {
+                let title = extract_video_title(&content, "YouTube")
+                    .unwrap_or_else(|| readable_title_from_url(url_str));
                 return Ok(ParsedDocument {
                     chunks: vec![FileChunk {
                         content,
@@ -682,7 +709,7 @@ pub async fn parse_url_content(
                         image_path: None,
                         status: "processed".to_string(),
                     }],
-                    title: format!("YouTube Video: {}", url_str),
+                    title,
                 });
             }
             Ok(_) => return Err("YouTube content extraction returned empty".to_string()),
@@ -690,7 +717,6 @@ pub async fn parse_url_content(
         }
     }
 
-    // Bilibili
     if url_str.contains("bilibili.com/video/") {
         if let Some(start) = url_str.find("/video/") {
             let rest = &url_str[start + 7..];
@@ -703,6 +729,8 @@ pub async fn parse_url_content(
                 .unwrap_or("");
             if !bvid.is_empty() {
                 let transcript = fetch_bilibili_subtitles(bvid, sessdata).await?;
+                let title = extract_video_title(&transcript, "Bilibili")
+                    .unwrap_or_else(|| readable_title_from_url(url_str));
                 return Ok(ParsedDocument {
                     chunks: vec![FileChunk {
                         content: transcript,
@@ -710,17 +738,15 @@ pub async fn parse_url_content(
                         image_path: None,
                         status: "processed".to_string(),
                     }],
-                    title: format!("Bilibili Video: {}", bvid),
+                    title,
                 });
             }
         }
     }
 
-    // General Web Page
     crate::capture::readability::scrape_url(url_str).await
 }
 
-/// 舊版統一入口，轉發到 file_parser::parse_content（保持 backward compat）
 pub async fn parse_temp_content(
     kb_path: &str,
     file_path: Option<String>,

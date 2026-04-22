@@ -80,30 +80,24 @@ const FILE_MENU_ITEMS = [
 
 type FileMenuKey = typeof FILE_MENU_ITEMS[number]['key'];
 
-// ─── 主元件 ───────────────────────────────────────────────────────────────────
 
 export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGenerating }) => {
 
-    // ── 基本輸入狀態 ──
     const [input, setInput] = useState('');
     const [ragEnabled, setRagEnabled] = useState(true);
     const [webEnabled, setWebEnabled] = useState(false);
     const [thinkingMode, setThinkingMode] = useState<'normal' | 'think'>('normal');
     const [supportsThinking, setSupportsThinking] = useState(false);
 
-    // ── 附件狀態 ──
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
     const [quotedMessage, setQuotedMessage] = useState<QuotedMessage | null>(null);
 
-    // ── URL 輸入 overlay ──
     const [urlInputOpen, setUrlInputOpen] = useState(false);
     const [urlInputValue, setUrlInputValue] = useState('');
 
-    // ── 加入檔案子選單 ──
     const [fileMenuOpen, setFileMenuOpen] = useState(false);
     const fileMenuRef = useRef<HTMLDivElement>(null);
 
-    // ── @ 來源提及 ──
     const [mentionedSources, setMentionedSources] = useState<{ id: string; title: string }[]>([]);
     const [isMentionOpen, setIsMentionOpen] = useState(false);
     const [mentionQuery, setMentionQuery] = useState('');
@@ -112,7 +106,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
     const [mentionCursorStart, setMentionCursorStart] = useState(-1);
     const mentionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // ── # 標籤提及 ──
     const [mentionedTags, setMentionedTags] = useState<{ id: string; name: string }[]>([]);
     const [isTagOpen, setIsTagOpen] = useState(false);
     const [tagQuery, setTagQuery] = useState('');
@@ -129,14 +122,12 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
     const activeConversationId = useChatStore(s => s.activeConversationId);
     const t = useT();
 
-    // ── 偵測當前模型是否支援 thinking ──
     useEffect(() => {
         invoke<boolean>('get_chat_llm_supports_thinking')
             .then(ok => setSupportsThinking(ok))
             .catch(() => setSupportsThinking(false));
     }, []);
 
-    // ── 推薦標籤（近期高頻）──
     useEffect(() => {
         if (ragEnabled && recentTags.length === 0) loadRecentTags();
     }, [ragEnabled, recentTags.length, loadRecentTags]);
@@ -150,7 +141,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
             .slice(0, 5);
     }, [ragEnabled, recentTags, mentionedTags]);
 
-    // ── 監聽引用訊息事件 ──
     useEffect(() => {
         const handleQuote = (e: Event) => {
             const detail = (e as CustomEvent<QuotedMessage>).detail;
@@ -161,7 +151,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         return () => window.removeEventListener('quote-message', handleQuote);
     }, []);
 
-    // ── 點擊外部關閉檔案選單 ──
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node)) {
@@ -172,12 +161,10 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [fileMenuOpen]);
 
-    // ── URL 輸入框聚焦 ──
     useEffect(() => {
         if (urlInputOpen) setTimeout(() => urlInputRef.current?.focus(), 50);
     }, [urlInputOpen]);
 
-    // ── @ 來源搜尋 ──
     const searchMentionSources = useCallback((q: string) => {
         const filtered = sources
             .filter(s => s.title.toLowerCase().includes(q.toLowerCase()))
@@ -202,24 +189,19 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         textareaRef.current?.focus();
     }, [input, mentionCursorStart]);
 
-    // ── # 標籤搜尋 ──
     const searchTags = useCallback((q: string) => {
         if (q.trim() === '') {
-            // 顯示最近標籤
             setTagResults(recentTags.slice(0, 8).map(t => ({ id: t.id, name: t.name, useCount: t.useCount })));
         } else {
-            // 用 fetchSuggestions 搜尋，並過濾 recentTags
             const fromRecent = recentTags
                 .filter(t => t.name.toLowerCase().includes(q.toLowerCase()))
                 .slice(0, 8)
                 .map(t => ({ id: t.id, name: t.name, useCount: t.useCount }));
             setTagResults(fromRecent);
-            // 同時觸發後端 suggest
             fetchSuggestions(q);
         }
     }, [recentTags, fetchSuggestions]);
 
-    // suggestions 更新時同步 tagResults（若 isTagOpen）
     useEffect(() => {
         if (isTagOpen && tagQuery.trim() !== '' && suggestions.length > 0) {
             const fromSuggestions = suggestions.map((name, i) => ({ id: `sug-${i}`, name }));
@@ -247,7 +229,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         textareaRef.current?.focus();
     }, [input, tagCursorStart]);
 
-    // ── 輸入處理（@ 和 # 偵測）──
     const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const val = e.target.value;
         const cursor = e.target.selectionStart;
@@ -255,7 +236,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         e.target.style.height = 'auto';
         e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
 
-        // # 標籤偵測（優先）
         const hashMatch = val.slice(0, cursor).match(/#([^#\s]*)$/);
         if (hashMatch) {
             const query = hashMatch[1];
@@ -272,7 +252,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
             setIsTagOpen(false);
         }
 
-        // @ 來源偵測
         const atMatch = val.slice(0, cursor).match(/@([^@\s]*)$/);
         if (atMatch) {
             const query = atMatch[1];
@@ -288,16 +267,13 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         }
     };
 
-    // ── 鍵盤處理 ──
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-        // # 標籤面板
         if (isTagOpen && tagResults.length > 0) {
             if (e.key === 'ArrowDown') { e.preventDefault(); setTagIndex(p => (p + 1) % tagResults.length); return; }
             if (e.key === 'ArrowUp') { e.preventDefault(); setTagIndex(p => (p - 1 + tagResults.length) % tagResults.length); return; }
             if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectTag(tagResults[tagIndex]); return; }
             if (e.key === 'Escape') { e.preventDefault(); setIsTagOpen(false); return; }
         }
-        // @ 來源面板
         if (isMentionOpen && mentionResults.length > 0) {
             if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(p => (p + 1) % mentionResults.length); return; }
             if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIndex(p => (p - 1 + mentionResults.length) % mentionResults.length); return; }
@@ -310,21 +286,18 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         }
     };
 
-    // ── 傳送 ──
     const handleSend = () => {
         const text = input.trim();
         const hasAttachments = attachedFiles.length > 0 || !!quotedMessage || mentionedSources.length > 0 || mentionedTags.length > 0;
         if ((!text && !hasAttachments) || isGenerating) return;
 
-        // 有文件仍在解析中，阻擋傳送
         if (attachedFiles.some(f => f.isParsing)) return;
 
         let finalContent = text;
         if (quotedMessage) {
-            finalContent = `> [🔗](#quote_${quotedMessage.id}) ${quotedMessage.content.split('\n').join('\n> ')}\n\n${text}`;
+            finalContent = `> [link](#quote_${quotedMessage.id}) ${quotedMessage.content.split('\n').join('\n> ')}\n\n${text}`;
         }
 
-        // 過濾掉解析失敗的附件（無 tempChunkIds 也不應傳送）
         const validFiles = attachedFiles.filter(f => !f.isError);
         const allTempChunkIds = validFiles.flatMap(f => f.tempChunkIds ?? []);
         onSendMessage(finalContent, {
@@ -348,8 +321,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
     };
 
-    // ── 加入檔案（開啟原生對話框）──
-    // ── 呼叫後端解析附件，取得 tempChunkIds ──
     const parseTempFile = async (fileId: string, filePath: string | null, url: string | null) => {
         if (!activeConversationId) return;
         try {
@@ -410,7 +381,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
         }
     };
 
-    // ── 加入 URL ──
     const handleAddUrl = () => {
         const url = urlInputValue.trim();
         if (!url) { setUrlInputOpen(false); return; }
@@ -546,7 +516,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                                 if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); }
                                 if (e.key === 'Escape') { setUrlInputOpen(false); setUrlInputValue(''); }
                             }}
-                            placeholder="https://..."
+                            placeholder={t('chat.url_placeholder')}
                             className="flex-1 text-fs-base bg-surface-subtle border border-stroke-divider rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-accent-default text-text-primary placeholder:text-text-tertiary"
                         />
                         <button
@@ -632,7 +602,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                                         </div>
                                     ) : (
                                         <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5">
-                                            <span className="text-[9px] text-white font-medium block truncate leading-tight">OCR</span>
+                                            <span className="text-[9px] text-white font-medium block truncate leading-tight">{t('chat.ocr')}</span>
                                         </div>
                                     )}
                                     <button
@@ -650,7 +620,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                                     <div className="flex flex-col overflow-hidden">
                                         <span className="text-fs-sm font-medium text-text-primary truncate leading-tight">{file.name}</span>
                                         <span className={`text-[10px] uppercase leading-tight ${file.isError ? 'text-red-400' : 'text-text-tertiary'}`}>
-                                            {file.isParsing ? t('chat.parsing') : file.isError ? t('chat.parse_failed') : file.fileType === 'url' ? 'URL' : 'DOC'}
+                                            {file.isParsing ? t('chat.parsing') : file.isError ? t('chat.parse_failed') : file.fileType === 'url' ? t('chat.file_type_url') : t('chat.file_type_doc')}
                                         </span>
                                     </div>
                                     <button
@@ -745,7 +715,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
                         <span>{t('chat.web_search')}</span>
                     </button>
 
-                    {/* Think 模式切換：只有模型支援 thinking 時才顯示 */}
                     {supportsThinking && (
                         <button
                             onClick={() => setThinkingMode(thinkingMode === 'think' ? 'normal' : 'think')}

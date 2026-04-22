@@ -4,7 +4,6 @@ import { Layers, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { useKnowledgeStore, type SpaceItem } from '../../stores/knowledgeStore';
 import { useT } from '../../hooks/useT';
 
-// ─── 型別 ─────────────────────────────────────────────────────────────────────
 
 interface TagStat {
     tag: string;
@@ -30,7 +29,6 @@ interface SpaceKnowledgeGuide {
 
 type ActiveTab = 'insight' | 'knowledge_guide';
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function SpaceInsightPanel() {
     const t = useT();
@@ -44,7 +42,6 @@ export function SpaceInsightPanel() {
 
     useEffect(() => { loadSpaces(); }, [loadSpaces]);
 
-    // Insight 資料
     useEffect(() => {
         if (!selectedSpaceId || activeTab !== 'insight') { setInsight(null); return; }
         let cancelled = false;
@@ -56,7 +53,6 @@ export function SpaceInsightPanel() {
         return () => { cancelled = true; };
     }, [selectedSpaceId, activeTab]);
 
-    // 知識指南資料
     useEffect(() => {
         if (!selectedSpaceId || activeTab !== 'knowledge_guide') { setKnowledgeGuide(null); return; }
         let cancelled = false;
@@ -72,7 +68,6 @@ export function SpaceInsightPanel() {
 
     return (
         <div className="rounded-lg border border-stroke-divider bg-surface-card">
-            {/* Header */}
             <div
                 className="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
                 onClick={() => setIsExpanded((v) => !v)}
@@ -89,7 +84,6 @@ export function SpaceInsightPanel() {
 
             {isExpanded && (
                 <div className="px-4 pb-4 space-y-3">
-                    {/* Space selector */}
                     <select
                         className="w-full rounded-md border border-stroke-control bg-surface-layer px-3 py-1.5 text-fs-sm text-text-primary focus:outline-none focus:border-accent-default"
                         value={selectedSpaceId ?? ''}
@@ -106,7 +100,6 @@ export function SpaceInsightPanel() {
                         ))}
                     </select>
 
-                    {/* Tab bar（只在選擇了 Space 後顯示）*/}
                     {selectedSpaceId && (
                         <div className="flex gap-1 rounded-md bg-surface-subtle p-0.5">
                             {(['insight', 'knowledge_guide'] as ActiveTab[]).map((tab) => (
@@ -124,12 +117,10 @@ export function SpaceInsightPanel() {
                         </div>
                     )}
 
-                    {/* Loading */}
                     {isLoading && (
                         <div className="text-fs-sm text-text-tertiary py-2">{t('common.loading')}</div>
                     )}
 
-                    {/* Insight tab */}
                     {!isLoading && activeTab === 'insight' && insight && insight.totalChunks === 0 && (
                         <div className="text-fs-sm text-text-tertiary py-2">{t('space_insight.no_chunks')}</div>
                     )}
@@ -137,7 +128,6 @@ export function SpaceInsightPanel() {
                         <InsightContent insight={insight} t={t} />
                     )}
 
-                    {/* Knowledge Guide tab */}
                     {!isLoading && activeTab === 'knowledge_guide' && selectedSpaceId && (
                         <KnowledgeGuideContent
                             spaceId={selectedSpaceId}
@@ -152,7 +142,6 @@ export function SpaceInsightPanel() {
     );
 }
 
-// ─── InsightContent ───────────────────────────────────────────────────────────
 
 function InsightContent({ insight, t }: { insight: SpaceInsight; t: (key: string, opts?: Record<string, unknown>) => string }) {
     return (
@@ -165,7 +154,7 @@ function InsightContent({ insight, t }: { insight: SpaceInsight; t: (key: string
                 <div>
                     <div className="text-fs-xs font-medium text-text-secondary mb-1">{t('space_insight.ready_label')}</div>
                     <div className="flex items-center gap-1.5 text-fs-sm">
-                        <span className="text-[var(--knowledge-pattern)]">◆</span>
+                        <span className="text-[var(--knowledge-pattern)]">*</span>
                         <span className="text-text-primary">{t('space_insight.pattern_count', { count: insight.patternCount })}</span>
                     </div>
                 </div>
@@ -175,7 +164,7 @@ function InsightContent({ insight, t }: { insight: SpaceInsight; t: (key: string
                 <div>
                     <div className="text-fs-xs font-medium text-text-secondary mb-1">{t('space_insight.caution_label')}</div>
                     <div className="flex items-center gap-1.5 text-fs-sm">
-                        <span className="text-[var(--knowledge-log)]">▲</span>
+                        <span className="text-[var(--knowledge-log)]">*</span>
                         <span className="text-text-primary">{t('space_insight.log_count', { count: insight.logCount })}</span>
                     </div>
                 </div>
@@ -185,7 +174,7 @@ function InsightContent({ insight, t }: { insight: SpaceInsight; t: (key: string
                 <div className="flex flex-wrap gap-3 text-fs-sm">
                     {insight.dataCount > 0 && (
                         <div className="flex items-center gap-1.5">
-                            <span className="text-[var(--knowledge-data)]">●</span>
+                            <span className="text-[var(--knowledge-data)]">*</span>
                             <span className="text-text-primary">{t('space_insight.data_count', { count: insight.dataCount })}</span>
                         </div>
                     )}
@@ -212,7 +201,6 @@ function InsightContent({ insight, t }: { insight: SpaceInsight; t: (key: string
     );
 }
 
-// ─── KnowledgeGuideContent ────────────────────────────────────────────────────
 
 function KnowledgeGuideContent({
     spaceId,
@@ -257,7 +245,6 @@ function KnowledgeGuideContent({
 
     return (
         <div className="space-y-2">
-            {/* Toolbar */}
             <div className="flex items-center justify-between">
                 {knowledgeGuide?.knowledgeGuideUpdatedAt && (
                     <span className="text-fs-xs text-text-tertiary">
@@ -302,7 +289,6 @@ function KnowledgeGuideContent({
                 </div>
             </div>
 
-            {/* Content */}
             {isEditing ? (
                 <textarea
                     value={editValue}

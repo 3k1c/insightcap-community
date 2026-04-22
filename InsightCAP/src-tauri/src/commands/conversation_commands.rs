@@ -33,7 +33,6 @@ pub struct Message {
 
 #[tauri::command]
 pub async fn get_conversations(pool: State<'_, SqlitePool>) -> Result<Vec<Conversation>, String> {
-    // 確保新欄位存在（自動遷移，容忍重複執行）
     let _ = sqlx::query("ALTER TABLE conversations ADD COLUMN is_pinned INTEGER DEFAULT 0")
         .execute(pool.inner())
         .await;
@@ -73,12 +72,14 @@ pub async fn create_conversation(
     project_id: Option<String>,
 ) -> Result<String, String> {
     let id = Uuid::now_v7().to_string();
+    let title = "Untitled Conversation";
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
-        "INSERT INTO conversations (id, title, project_id, created_at, updated_at) VALUES (?, '新對話', ?, ?, ?)"
+        "INSERT INTO conversations (id, title, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
+    .bind(title)
     .bind(&project_id)
     .bind(&now)
     .bind(&now)
@@ -151,7 +152,6 @@ pub async fn add_message(
     .await
     .map_err(|e| e.to_string())?;
 
-    // --- 新增：助理回覆完畢即觸發即時提取，達成毫秒級 Telegram 通知 ---
     if role == "assistant" {
         let _ = crate::background::conversation_scheduler::enqueue_conversation(
             pool.inner(),
@@ -184,7 +184,6 @@ pub async fn summarize_conversation(
     let settings = crate::settings::store::get_settings(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
-    // 優先使用 summary_model，若未設定則使用 chat_llm
     let cfg = settings.ai_models.chat_llm;
 
     let mut opt_provider: Option<OpenAiProvider> = None;
@@ -251,7 +250,6 @@ pub async fn delete_conversation(
     pool: State<'_, SqlitePool>,
     conversation_id: String,
 ) -> Result<(), String> {
-    // 鎖定中的對話禁止刪除
     let locked: i32 =
         sqlx::query_scalar("SELECT COALESCE(is_locked, 0) FROM conversations WHERE id = ?")
             .bind(&conversation_id)
@@ -300,13 +298,11 @@ pub async fn update_conversation(
     Ok(())
 }
 
-/// 自動為對話生成標題（根據前 2 條訊息，由 LLM 產出）
 #[tauri::command]
 pub async fn auto_title_conversation(
     pool: State<'_, SqlitePool>,
     conversation_id: String,
 ) -> Result<String, String> {
-    // 1. 檢查是否仍為預設標題「新對話」
     let current_title: String = sqlx::query_scalar("SELECT title FROM conversations WHERE id = ?")
         .bind(&conversation_id)
         .fetch_optional(pool.inner())
@@ -314,13 +310,12 @@ pub async fn auto_title_conversation(
         .map_err(|e| e.to_string())?
         .unwrap_or_default();
 
-    if current_title != "新對話" {
-        return Ok(current_title); // 已手動改名，不覆蓋
+    if current_title != "Untitled Conversation" {
+        return Ok(current_title);
     }
 
-    // 2. 取前 4 條訊息（最多 2 輪對話）
     let msgs = sqlx::query(
-        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 4"
+        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 4",
     )
     .bind(&conversation_id)
     .fetch_all(pool.inner())
@@ -328,19 +323,17 @@ pub async fn auto_title_conversation(
     .map_err(|e| e.to_string())?;
 
     if msgs.len() < 2 {
-        return Ok(current_title); // 訊息不足，不生成
+        return Ok(current_title);
     }
 
     let mut dialogue = String::new();
     for m in &msgs {
         let role: String = m.get("role");
         let content: String = m.get("content");
-        // 每條訊息最多取前 300 字，避免 token 浪費
         let truncated: String = content.chars().take(300).collect();
-        dialogue.push_str(&format!("{}: {}\n", role, truncated));
+        dialogue.push_str(&format!("{role}: {truncated}\n"));
     }
 
-    // 3. 呼叫 LLM 生成標題
     let settings = crate::settings::store::get_settings(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
@@ -350,7 +343,7 @@ pub async fn auto_title_conversation(
 
     let title = if !api_key.is_empty() || is_ollama {
         let prompt = format!(
-            "{}\n\n【對話內容】\n{}",
+            "{}\n\nPlease generate a concise conversation title.\n{}",
             crate::prompts::AUTO_TITLE_SYSTEM,
             dialogue
         );
@@ -377,32 +370,25 @@ pub async fn auto_title_conversation(
         .await
         {
             Ok(Ok(raw)) => {
-                // 清理：去掉引號、換行、多餘空白
-                let cleaned = raw
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '「' || c == '」' || c == '\'')
-                    .trim()
-                    .to_string();
+                let cleaned = raw.trim().trim_matches(|c| c == '"' || c == '\'').trim();
                 if cleaned.is_empty() {
-                    current_title
+                    current_title.clone()
                 } else {
-                    cleaned
+                    cleaned.to_string()
                 }
             }
             _ => current_title.clone(),
         }
     } else {
-        // 無 LLM：從第一條 user 訊息截取前 20 字
         let first_content: String = msgs[0].get("content");
         let fallback: String = first_content.chars().take(20).collect();
         if fallback.is_empty() {
-            current_title
+            current_title.clone()
         } else {
             fallback
         }
     };
 
-    // 4. 寫回 DB
     let now = Utc::now().to_rfc3339();
     sqlx::query("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?")
         .bind(&title)
@@ -415,7 +401,6 @@ pub async fn auto_title_conversation(
     Ok(title)
 }
 
-/// 前端對話切換 / 關閉時呼叫，將對話加入總結佇列
 #[tauri::command]
 pub async fn enqueue_summary(
     pool: State<'_, SqlitePool>,
@@ -426,8 +411,6 @@ pub async fn enqueue_summary(
     enqueue_conversation(pool.inner(), &conversation_id, trigger).await
 }
 
-/// Decide whether we should append a reminder-confirmation sentence.
-/// Returns Some(message) when append is needed, otherwise None.
 #[tauri::command]
 pub async fn decide_reminder_ack(
     pool: State<'_, SqlitePool>,

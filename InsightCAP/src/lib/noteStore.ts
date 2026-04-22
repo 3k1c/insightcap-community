@@ -1,6 +1,3 @@
-// src/lib/noteStore.ts
-// localStorage-backed note persistence for the editor
-// Namespace: "notes" — keys like  notes:session, notes:files, notes:content:{id}, notes:history:{id}
 
 export interface NoteFile {
     id: string;
@@ -28,7 +25,6 @@ const MAX_HISTORY = 20;
 const contentKey = (id: string) => `${NS}:content:${id}`;
 const historyKey = (id: string) => `${NS}:history:${id}`;
 
-// ── Session ────────────────────────────────────────────────────────────────────
 
 export function loadSession(): NoteSession | null {
     try {
@@ -42,7 +38,6 @@ export function saveSession(session: NoteSession): void {
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
 }
 
-// ── Content ────────────────────────────────────────────────────────────────────
 
 export function loadContent(id: string): string {
     return localStorage.getItem(contentKey(id)) ?? '';
@@ -55,7 +50,6 @@ export function saveContent(id: string, content: string): void {
     } catch {}
 }
 
-// ── File Registry ──────────────────────────────────────────────────────────────
 
 export function loadFiles(): NoteFile[] {
     try {
@@ -94,9 +88,7 @@ export function deleteFile(id: string): void {
     saveFiles(loadFiles().filter(f => f.id !== id));
 }
 
-// ── History ────────────────────────────────────────────────────────────────────
 
-// Tiptap empty doc — skip snapshotting this
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 
 export function loadHistory(id: string): HistoryEntry[] {
@@ -111,7 +103,6 @@ export function addHistory(id: string, snapshot: string): void {
     try {
         if (!snapshot || snapshot === EMPTY_DOC) return;
         const history = loadHistory(id);
-        // Skip if same as most-recent snapshot
         if (history.length > 0 && history[0].snapshot === snapshot) return;
         history.unshift({ ts: Date.now(), snapshot });
         if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;

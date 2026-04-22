@@ -1,8 +1,7 @@
 use crate::prompts;
 use crate::providers::embedding::Embedder;
 use crate::providers::llm::openai::OpenAiProvider;
-use crate::providers::llm::LLMOptions;
-use crate::providers::llm::LLMProvider;
+use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::settings::store::get_settings;
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
@@ -10,11 +9,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// 向量相似度門檻
 const SIMILARITY_THRESHOLD: f32 = 0.65;
-/// 最少需要出現在幾個不同對話
 const MIN_CONVERSATIONS: usize = 3;
-/// 最少需要幾個共同標籤
 const MIN_TAG_OVERLAP: usize = 2;
 
 pub struct PatternEngine {
@@ -22,7 +18,6 @@ pub struct PatternEngine {
     embedder: Arc<dyn Embedder>,
 }
 
-/// 候選 chunk 結構
 struct Candidate {
     id: String,
     conversation_id: String,
@@ -31,7 +26,6 @@ struct Candidate {
     embedding: Option<Vec<f32>>,
 }
 
-/// 一組可升格的候選群
 struct PromotionGroup {
     candidates: Vec<Candidate>,
     conversation_count: usize,
@@ -42,12 +36,9 @@ impl PatternEngine {
         Self { pool, embedder }
     }
 
-    /// 路徑 B 核心邏輯：跨對話自動識別重複模式
-    /// 條件：標籤重疊 ≥ 2 + 向量相似度 ≥ 0.65 + 出現在 ≥ 3 個不同對話
     pub async fn detect_and_promote_patterns(&self) -> Result<usize, String> {
         let db = &self.pool;
 
-        // Step 1: 取得尚未升格的 data 類型 chunks（最近 100 筆）
         let rows = sqlx::query(
             r#"
             SELECT id, conversation_id, content, tags
@@ -67,7 +58,6 @@ impl PatternEngine {
             return Ok(0);
         }
 
-        // Step 2: 解析為 Candidate，計算 embedding
         let mut candidates: Vec<Candidate> = Vec::new();
         for r in &rows {
             let id: String = r.get("id");
@@ -76,10 +66,7 @@ impl PatternEngine {
             let tags_json: String = r.try_get("tags").unwrap_or_else(|_| "[]".to_string());
             let tags: HashSet<String> = serde_json::from_str(&tags_json).unwrap_or_default();
 
-            let embedding = match self.embedder.embed(&content).await {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            };
+            let embedding = self.embedder.embed(&content).await.ok();
 
             candidates.push(Candidate {
                 id,
@@ -90,13 +77,11 @@ impl PatternEngine {
             });
         }
 
-        // Step 3: 找出符合三個條件的候選群
         let groups = self.find_promotion_groups(&candidates);
         if groups.is_empty() {
             return Ok(0);
         }
 
-        // Step 4: 對每個候選群呼叫 LLM 分析
         let settings = get_settings(db).await.map_err(|e| e.to_string())?;
         let llm_cfg = settings.ai_models.content_processor_llm;
         let api_key = llm_cfg.api_key.unwrap_or_default();
@@ -110,17 +95,16 @@ impl PatternEngine {
             llm_cfg.model,
             llm_cfg.provider.clone(),
         );
-        let mut promoted_count = 0;
 
+        let mut promoted_count = 0;
         for group in &groups {
             match self.promote_group(db, &provider, group).await {
                 Ok(true) => promoted_count += 1,
                 Ok(false) => {}
-                Err(e) => eprintln!("[PATTERN-ENGINE] 群組升格失敗: {}", e),
+                Err(e) => eprintln!("[PATTERN-ENGINE] Promote group failed: {}", e),
             }
         }
 
-        // Step 5: 擴展 Log 的 trigger_context
         if promoted_count > 0 {
             let _ = self.expand_log_trigger_contexts(db).await;
         }
@@ -128,7 +112,6 @@ impl PatternEngine {
         Ok(promoted_count)
     }
 
-    /// 找出符合條件的候選群：標籤重疊 ≥ 2、向量相似度 ≥ 0.65、≥ 3 個不同對話
     fn find_promotion_groups(&self, candidates: &[Candidate]) -> Vec<PromotionGroup> {
         let mut groups: Vec<PromotionGroup> = Vec::new();
         let mut used_ids: HashSet<String> = HashSet::new();
@@ -147,14 +130,12 @@ impl PatternEngine {
                     continue;
                 }
 
-                // 條件 1: 標籤重疊 ≥ 2
                 let tag_overlap = anchor.tags.intersection(&other.tags).count();
                 if tag_overlap < MIN_TAG_OVERLAP {
                     continue;
                 }
 
-                // 條件 2: 向量相似度 ≥ 0.65
-                if let (Some(ref v1), Some(ref v2)) = (&anchor.embedding, &other.embedding) {
+                if let (Some(v1), Some(v2)) = (&anchor.embedding, &other.embedding) {
                     let sim = cosine_similarity(v1, v2);
                     if sim < SIMILARITY_THRESHOLD {
                         continue;
@@ -167,15 +148,13 @@ impl PatternEngine {
                 group_conversations.insert(&other.conversation_id);
             }
 
-            // 條件 3: ≥ 3 個不同對話
             if group_conversations.len() >= MIN_CONVERSATIONS
                 && group_candidates.len() >= MIN_CONVERSATIONS
             {
                 for &idx in &group_candidates {
                     used_ids.insert(candidates[idx].id.clone());
                 }
-                // 從 indices 取出實際 Candidate ref 建立 group
-                // 由於 borrow checker，我們只存 ids
+
                 groups.push(PromotionGroup {
                     candidates: group_candidates
                         .iter()
@@ -186,7 +165,7 @@ impl PatternEngine {
                                 conversation_id: c.conversation_id.clone(),
                                 content: c.content.clone(),
                                 tags: c.tags.clone(),
-                                embedding: None, // 不需要再存 embedding
+                                embedding: None,
                             }
                         })
                         .collect(),
@@ -198,7 +177,6 @@ impl PatternEngine {
         groups
     }
 
-    /// 對一個候選群呼叫 LLM 並寫入 memory_chunks（pending_confirm = 1）
     async fn promote_group(
         &self,
         db: &SqlitePool,
@@ -209,14 +187,17 @@ impl PatternEngine {
         let mut all_tags: HashMap<String, usize> = HashMap::new();
 
         for c in &group.candidates {
-            combined_text.push_str(&format!("- 對話 {}: {}\n", c.conversation_id, c.content));
+            combined_text.push_str(&format!(
+                "- Conversation {}: {}\n",
+                c.conversation_id, c.content
+            ));
             for tag in &c.tags {
                 *all_tags.entry(tag.clone()).or_insert(0) += 1;
             }
         }
 
         let prompt_input = format!(
-            "{sys}\n\n來自 {conv_count} 個不同對話的 {chunk_count} 筆資料：\n{data}",
+            "{sys}\n\nAcross {conv_count} conversations, found {chunk_count} similar chunks:\n{data}",
             sys = prompts::PATTERN_ANALYSIS,
             conv_count = group.conversation_count,
             chunk_count = group.candidates.len(),
@@ -232,7 +213,6 @@ impl PatternEngine {
             return Ok(false);
         }
 
-        // 取出現次數 ≥ 2 的共同標籤
         let common_tags: Vec<String> = all_tags
             .into_iter()
             .filter(|(_, count)| *count >= 2)
@@ -243,10 +223,9 @@ impl PatternEngine {
         let now = Utc::now().to_rfc3339();
         let tags_json = serde_json::to_string(&common_tags).unwrap_or_else(|_| "[]".to_string());
 
-        // 寫入 memory_chunks，pending_confirm = 1
         sqlx::query(
             "INSERT INTO memory_chunks (id, knowledge_type, content, tags, confidence, pending_confirm, placed_by, created_at, updated_at) \
-             VALUES (?, 'pattern', ?, ?, 0.70, 1, 'ai', ?, ?)"
+             VALUES (?, 'pattern', ?, ?, 0.70, 1, 'ai', ?, ?)",
         )
         .bind(&chunk_id)
         .bind(&response)
@@ -257,7 +236,6 @@ impl PatternEngine {
         .await
         .map_err(|e| e.to_string())?;
 
-        // 標記原始 candidates 的 promoted_capture_id
         for c in &group.candidates {
             let _ = sqlx::query("UPDATE memory_chunks SET promoted_capture_id = ? WHERE id = ?")
                 .bind(&chunk_id)
@@ -269,8 +247,6 @@ impl PatternEngine {
         Ok(true)
     }
 
-    /// 擴展 Log 的 trigger_context：掃描 log 類型 chunks，
-    /// 將近期相似對話的關鍵字追加到 trigger_context
     async fn expand_log_trigger_contexts(&self, db: &SqlitePool) -> Result<(), String> {
         let logs = sqlx::query(
             "SELECT id, content, trigger_context FROM memory_chunks \
@@ -285,7 +261,6 @@ impl PatternEngine {
             let content: String = log_row.get("content");
             let existing_ctx: String = log_row.try_get("trigger_context").unwrap_or_default();
 
-            // 用 embedding 找近似的 data chunks
             let log_vec = match self.embedder.embed(&content).await {
                 Ok(v) => v,
                 Err(_) => continue,
@@ -314,7 +289,6 @@ impl PatternEngine {
 
                 let sim = cosine_similarity(&log_vec, &data_vec);
                 if sim >= 0.60 {
-                    // 取前 30 字元作為 trigger keyword
                     let keyword = data_content.chars().take(30).collect::<String>();
                     if !existing_set.contains(keyword.as_str()) && !new_contexts.contains(&keyword)
                     {
@@ -322,7 +296,6 @@ impl PatternEngine {
                     }
                 }
 
-                // 最多擴展 3 個新 context
                 if new_contexts.len() >= 3 {
                     break;
                 }
@@ -350,7 +323,6 @@ impl PatternEngine {
     }
 }
 
-/// 餘弦相似度
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;

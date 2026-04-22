@@ -44,7 +44,6 @@ pub async fn parse_file(
     use crate::capture::extractors;
 
     let chunks = match ext.as_str() {
-        // Plain Text types
         "txt" | "log" => {
             let content = crate::capture::encoding::read_text_file(path)
                 .map_err(|e| format!("Failed to read text file: {}", e))?;
@@ -65,7 +64,6 @@ pub async fn parse_file(
                 status: "processed".to_string(),
             }]
         }
-        // PDF
         "pdf" => {
             let p_chunks = extractors::pdf::extract_pdf(kb_path, file_path, file_stem, vision)
                 .await
@@ -80,7 +78,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // DOCX
         "docx" => {
             let d_chunks = extractors::docx::extract_docx(kb_path, file_path, file_stem)
                 .await
@@ -95,7 +92,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // XLSX
         "xlsx" => {
             let x_chunks = extractors::xlsx::extract_xlsx(kb_path, file_path, file_stem)
                 .await
@@ -110,7 +106,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // PPTX
         "pptx" => {
             let p_chunks = extractors::pptx::extract_pptx(kb_path, file_path, file_stem)
                 .await
@@ -125,7 +120,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // CSV
         "csv" => {
             let c_chunks = extractors::csv::extract_csv(kb_path, file_path, file_stem)
                 .await
@@ -140,7 +134,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // CODE
         "py" | "js" | "ts" | "tsx" | "jsx" | "swift" | "rs" | "go" | "java" | "cpp" | "c" | "h"
         | "rb" | "php" => {
             let c_chunks = extractors::code::extract_code(kb_path, file_path, file_stem)
@@ -156,7 +149,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // RTF
         "rtf" => {
             let r_chunks = extractors::rtf::extract_rtf(kb_path, file_path, file_stem)
                 .await
@@ -171,7 +163,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // EPUB
         "epub" => {
             let e_chunks = extractors::epub::extract_epub(kb_path, file_path, file_stem)
                 .await
@@ -186,7 +177,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // HTML
         "html" | "htm" => {
             let h_chunks = extractors::html::extract_html(kb_path, file_path, file_stem)
                 .await
@@ -201,7 +191,6 @@ pub async fn parse_file(
                 })
                 .collect()
         }
-        // Images — 先嘗試系統 OCR，再用 Vision model 增強
         "png" | "jpg" | "jpeg" | "webp" | "gif" => {
             let image_bytes =
                 fs::read(path).map_err(|e| format!("Failed to read image file: {}", e))?;
@@ -213,11 +202,10 @@ pub async fn parse_file(
                 }
                 Err(e) => {
                     eprintln!("[FileParser] OCR failed for {}: {}", title, e);
-                    format!("[OCR 失敗] {}", title)
+                    format!("[OCR failed] {}", title)
                 }
             };
 
-            // Vision model 增強：若可用，以 vision 結果取代 OCR
             let final_text = if let Some(vc) = vision {
                 match crate::providers::llm::vision::try_vision_enhance(
                     vc,
@@ -227,7 +215,7 @@ pub async fn parse_file(
                 .await
                 {
                     Some(vision_text) => {
-                        println!("[FileParser] Vision 增強成功: {}", title);
+                        println!("[FileParser] Vision enhancement succeeded: {}", title);
                         vision_text
                     }
                     None => ocr_text,
@@ -249,10 +237,6 @@ pub async fn parse_file(
     Ok(ParsedDocument { chunks, title })
 }
 
-/// 統一的臨時內容解析入口（不寫 DB）
-/// - file_path：本機檔案路徑
-/// - url：網址（含 YouTube / Bilibili / 一般網頁）
-/// - sessdata：Bilibili 登入 cookie（可選）
 pub async fn parse_content(
     kb_path: &str,
     file_path: Option<String>,
@@ -275,14 +259,12 @@ pub fn take_screenshot() -> Result<String, String> {
 
     let screens = Screen::all().map_err(|e| format!("Failed to detect screens: {}", e))?;
 
-    // For simplicity of MVP, just capture the primary monitor
     let screen = screens.first().ok_or("No screen found")?;
 
     let image = screen
         .capture()
         .map_err(|e| format!("Failed to capture screen: {}", e))?;
 
-    // Convert screenshot into a PNG byte vector
     use std::io::Cursor;
     let mut buffer = Vec::new();
     let mut cursor = Cursor::new(&mut buffer);
@@ -290,12 +272,9 @@ pub fn take_screenshot() -> Result<String, String> {
         .write_to(&mut cursor, screenshots::image::ImageFormat::Png)
         .map_err(|e| format!("Failed to encode screenshot: {}", e))?;
 
-    // Save locally
     let now = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let _filename = format!("screenshot_{}.png", now);
 
-    // Save to the user's data dir / captures
-    // But since we don't have AppHandle here, we'll return the base64 string to the command to save it properly
 
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     let b64 = STANDARD.encode(&buffer);

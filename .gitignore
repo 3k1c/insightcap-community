@@ -26,3 +26,5 @@ vectors/
 # 忽略 InsightCAP_ref 的 target (如果有的話)
 InsightCAP_ref/**/target/
 InsightCAP_3/**/target/
+
+InsightCAP/src-tauri/yt-dlp.exe

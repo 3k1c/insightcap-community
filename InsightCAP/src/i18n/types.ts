@@ -1,7 +1,3 @@
-/**
- * i18n 型別定義 — 防止 key 拼錯
- * 所有介面文字須通過 t('key') 取值
- */
 
 export interface TranslationKeys {
     nav: {
@@ -83,6 +79,7 @@ export interface TranslationKeys {
             workspace_label: string;
             workspace_placeholder: string;
             workspace_hint: string;
+            workspace_required: string;
             browse: string;
             password_label: string;
             password_placeholder: string;

@@ -64,7 +64,6 @@ export interface TimelineGroup {
 }
 
 interface KnowledgeState {
-    // Legacy
     sources: SourceItem[];
     pendingCaptures: CaptureItem[];
     spaces: SpaceItem[];
@@ -72,7 +71,6 @@ interface KnowledgeState {
     isLoadingSources: boolean;
     isLoadingCaptures: boolean;
 
-    // Timeline
     timelineSources: TimelineSourceItem[];
     timelineGroups: TimelineGroup[];
     categoryFilter: CategoryFilter;
@@ -84,13 +82,11 @@ interface KnowledgeState {
     expandedCaptures: CaptureDetail[];
     isLoadingCapDetail: boolean;
 
-    // Legacy actions
     setActiveSpaceId: (id: string | null) => void;
     loadSources: () => Promise<void>;
     loadPendingCaptures: () => Promise<void>;
     loadSpaces: () => Promise<void>;
 
-    // Timeline actions
     setCategoryFilter: (f: CategoryFilter) => void;
     setMediaFilter: (f: MediaFilter) => void;
     setSearchQuery: (q: string) => void;
@@ -98,7 +94,6 @@ interface KnowledgeState {
     loadTimeline: () => Promise<void>;
     expandSource: (id: string | null) => Promise<void>;
 
-    // CRUD actions
     createEditorDocument: (title: string) => Promise<TimelineSourceItem | null>;
     deleteSource: (id: string) => Promise<void>;
     createManualCapture: (sourceId: string | null, content: string, tags?: string, spaceId?: string) => Promise<CaptureDetail | null>;
@@ -137,7 +132,6 @@ function groupByDate(items: TimelineSourceItem[]): TimelineGroup[] {
 }
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
-    // Legacy
     sources: [],
     pendingCaptures: [],
     spaces: [],
@@ -145,7 +139,6 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     isLoadingSources: false,
     isLoadingCaptures: false,
 
-    // Timeline
     timelineSources: [],
     timelineGroups: [],
     categoryFilter: 'all',
@@ -199,7 +192,6 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
         }
     },
 
-    // ── Timeline ────────────────────────────────
 
     setCategoryFilter: (f) => {
         set({ categoryFilter: f });
@@ -258,7 +250,6 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
         }
     },
 
-    // ── CRUD ─────────────────────────────────────
 
     createEditorDocument: async (title) => {
         try {

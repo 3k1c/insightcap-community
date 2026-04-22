@@ -1,7 +1,3 @@
-//! # Word 提取器
-//!
-//! 實作 docx 文字提取、標題分割、表格轉文字與圖片儲存。
-//! 見 Phase3.1.md P3.1-03。
 
 use crate::capture::attachment_manager::copy_image_to_attachments;
 use crate::error::AppError;
@@ -16,7 +12,6 @@ pub struct DocxChunk {
     pub chunk_type: String, // "text" | "image"
 }
 
-/// 提取 docx 內容
 pub async fn extract_docx(
     kb_path: &str,
     file_path: &str,
@@ -24,19 +19,17 @@ pub async fn extract_docx(
 ) -> Result<Vec<DocxChunk>, AppError> {
     let bytes = fs::read(file_path).map_err(|e| AppError::Capture(e.to_string()))?;
     let docx = docx_rs::read_docx(&bytes)
-        .map_err(|e| AppError::Capture(format!("Word 載入失敗: {}", e)))?;
+        .map_err(|e| AppError::Capture(format!("Failed to parse DOCX: {}", e)))?;
 
     let mut chunks = Vec::new();
     let mut current_text = String::new();
     let mut current_level: Option<usize> = None;
 
-    // 1. 處理主文件內容
     for child in &docx.document.children {
         match child {
             DocumentChild::Paragraph(p) => {
                 let level = get_heading_level(p);
 
-                // 如果是標題，切分 Chunk
                 if let Some(l) = level {
                     if !current_text.trim().is_empty() {
                         chunks.push(DocxChunk {
@@ -67,7 +60,6 @@ pub async fn extract_docx(
         }
     }
 
-    // 加入最後一個文字 Chunk
     if !current_text.trim().is_empty() {
         chunks.push(DocxChunk {
             title_level: current_level,
@@ -77,9 +69,6 @@ pub async fn extract_docx(
         });
     }
 
-    // 2. 處理圖片 (docx.media)
-    // 雖然 docx-rs 沒直接提供 Drawing -> Media 的對照，
-    // 但我們可以將所有媒體提取為獨立的 Image Chunk。
     for (i, (name, data)) in docx.media.iter().enumerate() {
         let ext = Path::new(name)
             .extension()
@@ -92,12 +81,12 @@ pub async fn extract_docx(
             Ok(path) => {
                 chunks.push(DocxChunk {
                     title_level: None,
-                    clean_content: "[圖片]".to_string(),
+                    clean_content: "[Image]".to_string(),
                     image_path: Some(path.to_string_lossy().to_string()),
                     chunk_type: "image".to_string(),
                 });
             }
-            Err(e) => eprintln!("[WORD] 提取圖片失敗: {}", e),
+            Err(e) => eprintln!("[DOCX] Failed to store image: {}", e),
         }
     }
 
@@ -219,8 +208,6 @@ mod tests {
             .await
             .unwrap();
 
-        // 根據 extract_docx 邏輯，遇到標題會將「前一段累積的內容」切分成 chunk，
-        // 並不會將標題本身單獨分開，而是包含在它後續的內容中。
         assert_eq!(chunks.len(), 2);
 
         let chunk1 = &chunks[0];
@@ -238,7 +225,6 @@ mod tests {
             .clean_content
             .contains("Second paragraph below subtitle."));
 
-        // Check structural table extraction
         assert!(chunk2.clean_content.contains("Col1 | Col2"));
         assert!(chunk2.clean_content.contains("Val1 | Val2"));
         assert_eq!(chunk2.chunk_type, "text");

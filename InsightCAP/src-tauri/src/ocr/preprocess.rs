@@ -1,39 +1,25 @@
-/// 圖像前處理模組（第二層 OCR 增強）
-///
-/// 在送 OCR 之前對掃描頁圖像做基本前處理：
-/// 灰階化 → Otsu 二值化 → 對比度增強
-/// 使用現有 `image` crate，無需新增依賴。
 use image::{DynamicImage, GrayImage, Luma};
 use std::io::Cursor;
 
-/// 對 PDF 掃描頁圖像進行前處理，回傳處理後的 PNG bytes
-/// 輸入：原始頁面圖像 bytes（PNG 或 JPEG）
-/// 輸出：二值化後的圖像 bytes（PNG）
-/// 若前處理失敗，回傳 Err，呼叫方應降級使用原始圖像
 pub fn preprocess_for_ocr(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let img = image::load_from_memory(image_bytes).map_err(|e| format!("圖像載入失敗: {}", e))?;
+    let img = image::load_from_memory(image_bytes)
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
 
-    // 1. 灰階化（去除顏色干擾）
     let gray = img.to_luma8();
 
-    // 2. Otsu 自適應二值化（黑白化，去除背景灰階）
     let threshold = otsu_threshold(&gray);
     let binary = binarize(&gray, threshold);
 
-    // 3. 輕度亮度增強（提升文字邊緣清晰度）
     let enhanced = DynamicImage::ImageLuma8(binary).brighten(15);
 
-    // 4. 編碼為 PNG bytes
     let mut bytes = Vec::new();
     enhanced
         .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
-        .map_err(|e| format!("圖像編碼失敗: {}", e))?;
+        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
 
     Ok(bytes)
 }
 
-/// Otsu 閾值計算（自動二值化閾值）
-/// 最大化前景與背景的類間方差
 fn otsu_threshold(gray: &GrayImage) -> u8 {
     let mut histogram = [0u32; 256];
     for pixel in gray.pixels() {
@@ -80,8 +66,6 @@ fn otsu_threshold(gray: &GrayImage) -> u8 {
     threshold
 }
 
-/// 以給定閾值對灰階圖像二值化
-/// 高於閾值 → 白（255），低於等於閾值 → 黑（0）
 fn binarize(gray: &GrayImage, threshold: u8) -> GrayImage {
     let (width, height) = gray.dimensions();
     let mut binary = GrayImage::new(width, height);

@@ -1,5 +1,3 @@
-// InsightCAP v2 — Phase 1 基礎建設
-// lib.rs：Phase 1 骨架版，只含基礎模組
 
 pub mod auth;
 pub mod background;
@@ -79,21 +77,15 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // 1. 取得 app_data_dir 和 kb_path
             let app_data_dir = handle
                 .path()
                 .app_data_dir()
                 .expect("Failed to get app data dir");
 
-            // 確保 app_data_dir 存在
             let _ = std::fs::create_dir_all(&app_data_dir);
 
-            // 讀取 bootstrap.json
             let bootstrap_kb_path = db::connection::read_bootstrap(&app_data_dir);
 
-            // 確定有效的 KB 路徑
-            // - 若 bootstrap.json 存在且路徑可存取 → 使用之
-            // - 否則使用 app_data_dir/insightcap_v2（避免與舊 ref DB 衝突）
             let effective_kb_path = if let Some(ref kb_str) = bootstrap_kb_path {
                 let p = std::path::PathBuf::from(kb_str);
                 if p.exists() || std::fs::create_dir_all(&p).is_ok() {
@@ -103,26 +95,22 @@ pub fn run() {
                     app_data_dir.join("insightcap_v2")
                 }
             } else {
-                // 首次安裝：使用獨立路徑避免與 ref 的 DB 衝突
                 app_data_dir.join("insightcap_v2_pending")
             };
 
             let _ = std::fs::create_dir_all(&effective_kb_path);
 
-            // 2. 嘗試從 Keychain 取得 db_key
             let db_key_hex: Option<String> = keyring::Entry::new("insightcap", "auto_login_key")
                 .ok()
                 .and_then(|e| e.get_password().ok());
             let db_key_ref = db_key_hex.as_deref();
 
-            // 3. 初始化 DB（首次安裝時建立空 DB）
             let pool = tauri::async_runtime::block_on(
                 db::connection::init_db(&effective_kb_path, db_key_ref)
-            ).expect("資料庫初始化失敗，請檢查路徑權限或金鑰是否正確");
+            ).expect("Database initialization failed. Check path permissions or key validity.");
 
             println!("[SETUP] Database initialized at {:?}", effective_kb_path);
 
-            // 4. 確保 knowledge settings 存在
             {
                 let pool_ref = pool.clone();
                 let kb_str = effective_kb_path.to_string_lossy().to_string();
@@ -151,13 +139,12 @@ pub fn run() {
                 });
             }
 
-            // 5. 初始化 Embedder 和 VectorStore
             let embedder: Arc<dyn providers::embedding::Embedder> = {
                 let model_name = "MultilingualE5Small";
                 match providers::embedding::fastembed::FastEmbedder::new(model_name) {
                     Ok(e) => Arc::new(e),
                     Err(err) => {
-                        eprintln!("[SETUP] Embedder 初始化失敗: {}，RAG 功能將降級為關鍵字模式", err);
+                        eprintln!("[SETUP] Embedder init failed: {}. RAG will fall back to keyword mode", err);
                         Arc::new(providers::embedding::NoopEmbedder)
                     }
                 }
@@ -167,23 +154,20 @@ pub fn run() {
                 &effective_kb_path,
                 embedder.dimension(),
             ).unwrap_or_else(|e| {
-                eprintln!("[SETUP] VectorStore 載入失敗: {}，使用空索引", e);
+                eprintln!("[SETUP] VectorStore load failed: {}. Using empty index", e);
                 vector_store::local::VectorStore::load_or_create(
                     &effective_kb_path,
                     384,
-                ).expect("無法建立 VectorStore")
+                ).expect("Failed to create VectorStore")
             });
 
-            // 建立背景任務停止 channel
             let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
             let shutdown_tx = std::sync::Arc::new(shutdown_tx);
 
-            // 管理 Pool 和 AppState
             app.manage(pool.clone());
             app.manage(db::AppState::new(pool.clone(), effective_kb_path.clone(), vector_store, embedder, shutdown_tx));
             app.manage(tray_status::TrayState::new());
 
-            // 啟動背景任務
             let processor_pool = pool.clone();
             let processor_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -197,7 +181,6 @@ pub fn run() {
             background::reminder_scheduler::start_reminder_scheduler(app.handle().clone());
             background::telegram_bot::start_telegram_bot(app.handle().clone());
 
-            // 啟動時清理超過 30 天未處理的 pending_confirm chunks
             {
                 let cleanup_pool = pool.clone();
                 tauri::async_runtime::spawn(async move {
@@ -210,23 +193,21 @@ pub fn run() {
                     .await {
                         Ok(r) => {
                             if r.rows_affected() > 0 {
-                                println!("[Cleanup] 已自動移除 {} 筆超過 30 天的 pending chunks", r.rows_affected());
+                                println!("[Cleanup] Auto-removed {} pending chunks older than 30 days", r.rows_affected());
                             }
                         }
-                        Err(e) => eprintln!("[Cleanup] pending chunk cleanup 失敗: {}", e),
+                        Err(e) => eprintln!("[Cleanup] pending chunk cleanup failed: {}", e),
                     }
                 });
             }
 
             background::cloud_sync_watcher::start_cloud_sync_watcher(app.handle().clone(), effective_kb_path.clone());
 
-            // 啟動 HTTP 服務 (Phase 6 基礎)
             let http_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 http_server::start_api_server(http_app).await;
             });
 
-            // 6. 系統托盤
             let show_i = MenuItemBuilder::with_id("show", "Show/Hide").build(app)?;
             let quit_i = MenuItemBuilder::with_id("quit", "Quit InsightCAP").build(app)?;
             let menu = MenuBuilder::new(app)
@@ -235,7 +216,6 @@ pub fn run() {
                 .item(&quit_i)
                 .build()?;
 
-            // 用自訂月亮圖示作為托盤初始圖示（Idle 狀態）
             let initial_icon = {
                 let img = tray_status::compose_icon_pub(tray_status::TrayStatus::Idle);
                 let w = img.width();
@@ -281,13 +261,11 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // 7. 註冊快捷鍵
             let hotkey_settings = tauri::async_runtime::block_on(async {
                 let s = settings::store::get_settings(&pool).await.unwrap_or_default();
                 s.hotkeys
             });
 
-            // 7a. 擷取剪貼簿快捷鍵（Ctrl+Alt+F）
             let capture_shortcut_str = hotkey_settings.capture_clipboard;
             match capture_shortcut_str.parse::<Shortcut>() {
                 Ok(shortcut) => {
@@ -308,7 +286,6 @@ pub fn run() {
                 }
             }
 
-            // 7b. 快速輸入框快捷鍵（Ctrl+Alt+G）
             let quick_input_str = hotkey_settings.quick_input;
             match quick_input_str.parse::<Shortcut>() {
                 Ok(shortcut) => {
@@ -325,14 +302,13 @@ pub fn run() {
             }
 
             println!("\n{}", "=".repeat(50));
-            println!("🚀 InsightCAP v2 — Phase 1 READY!");
-            println!("📅 Startup: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+            println!("InsightCAP v2 - Phase 1 READY!");
+            println!("Startup: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
             println!("{}\n", "=".repeat(50));
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Auth
             commands::auth_commands::get_auth_status,
             commands::auth_commands::setup_auth,
             commands::auth_commands::try_auto_login,
@@ -348,7 +324,6 @@ pub fn run() {
             commands::auth_commands::generate_recovery_phrase,
             commands::auth_commands::verify_password,
             commands::auth_commands::restart_app,
-            // Settings
             commands::settings_commands::get_settings,
             commands::settings_commands::save_settings,
             commands::settings_commands::initialize_workspace,
@@ -357,11 +332,9 @@ pub fn run() {
             commands::settings_commands::test_provider_connection,
             commands::settings_commands::test_model_connection,
             commands::settings_commands::get_chat_llm_supports_thinking,
-            // Capture
             commands::capture_commands::quick_capture,
             commands::capture_commands::ingest_file,
             commands::capture_commands::create_temp_chunk,
-            // Knowledge
             commands::knowledge_commands::get_sources,
             commands::knowledge_commands::get_captures,
             commands::knowledge_commands::get_sources_timeline,
@@ -382,7 +355,6 @@ pub fn run() {
             commands::knowledge_commands::import_kb,
             commands::knowledge_commands::delete_kb,
             commands::knowledge_commands::repair_missing_local_copies,
-            // Memory
             commands::memory_commands::confirm_memory_chunk,
             commands::memory_commands::get_pending_memory_chunks,
             commands::memory_commands::get_pending_patterns,
@@ -390,7 +362,6 @@ pub fn run() {
             commands::memory_commands::batch_confirm_memory_chunks,
             commands::memory_commands::cleanup_expired_pending_chunks,
             commands::memory_commands::update_memory_chunk,
-            // Conversation
             commands::conversation_commands::get_conversations,
             commands::conversation_commands::create_conversation,
             commands::conversation_commands::get_messages,
@@ -402,7 +373,6 @@ pub fn run() {
             commands::conversation_commands::decide_reminder_ack,
             commands::conversation_commands::delete_conversation,
             commands::conversation_commands::update_conversation,
-            // Project
             commands::project_commands::get_projects,
             commands::project_commands::get_project_conversations,
             commands::project_commands::create_project,
@@ -410,27 +380,23 @@ pub fn run() {
             commands::project_commands::delete_project,
             commands::project_commands::update_project_sort_order,
             commands::project_commands::move_conversation_to_project,
-            // Tag
             commands::tag_commands::get_all_tags,
             commands::tag_commands::suggest_tags,
             commands::tag_commands::get_source_ids_by_tag,
-            // Space
             commands::space_commands::get_all_spaces,
             commands::space_commands::get_space_insight,
             commands::space_commands::trigger_space_recluster,
-            commands::space_commands::get_space_wiki,
-            commands::space_commands::save_space_wiki,
-            commands::space_commands::regenerate_space_wiki,
-            // Decision
+            commands::space_commands::get_space_knowledge_guide,
+            commands::space_commands::save_space_knowledge_guide,
+            commands::space_commands::regenerate_space_knowledge_guide,
             commands::decision_commands::create_decision,
             commands::decision_commands::get_due_decisions,
             commands::decision_commands::get_project_decisions,
             commands::decision_commands::report_decision_outcome,
             commands::decision_commands::dismiss_decision,
-            // Chunk Relations
             commands::chunk_relation_commands::get_chunk_relations,
-            // Editor
             commands::editor_commands::open_document,
+            commands::editor_commands::open_file_in_system,
             commands::editor_commands::save_document,
             commands::editor_commands::create_document,
             commands::editor_commands::write_binary_file,
@@ -438,19 +404,14 @@ pub fn run() {
             commands::editor_commands::read_image_base64,
             commands::editor_commands::copy_image_to_assets,
             commands::editor_commands::save_editor_to_knowledge,
-            // Enterprise
             knowledge_source::enterprise::load_external_kb,
             knowledge_source::enterprise::get_external_kbs,
             knowledge_source::enterprise::remove_external_kb,
-            // Bilibili
             commands::bilibili_auth::open_bilibili_login,
-            // Seed (TODO: 測試用，上線前移除)
             commands::seed_commands::seed_test_data,
             commands::seed_commands::clear_seed_data,
-            // RAG
             commands::rag_commands::rag_query,
             commands::rag_commands::rag_query_stream,
-            // Reminders
             commands::reminder_commands::get_active_reminders,
             commands::reminder_commands::get_pending_reminders,
             commands::reminder_commands::confirm_reminder,
@@ -467,7 +428,6 @@ pub fn run() {
             commands::reminder_commands::manual_extract_reminders,
             commands::reminder_commands::check_reminder_health,
             commands::reminder_commands::get_project_timeline,
-            // Window
             set_zoom,
         ])
         .run(tauri::generate_context!())

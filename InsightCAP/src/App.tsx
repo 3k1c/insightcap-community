@@ -9,10 +9,8 @@ import { QuickCapturePage } from './pages/QuickCapturePage';
 import { DecisionReviewToast } from './components/memory/DecisionToast';
 import { ReminderToast } from './components/memory/ReminderToast';
 
-// 偵測當前視窗 label
 const windowLabel = (window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } }).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? '';
 
-// Quick Capture 視窗直接渲染，跳過認證
 if (windowLabel === 'quick-capture') {
     import('./design-system/index.css');
 }
@@ -27,7 +25,6 @@ interface AuthStatus {
 type AppState = 'loading' | 'setup' | 'login' | 'migrate' | 'main';
 
 export default function App() {
-    // Quick Capture 視窗直接渲染，跳過認證流程
     if (windowLabel === 'quick-capture') {
         return <QuickCapturePage />;
     }
@@ -41,7 +38,6 @@ export default function App() {
 
     async function initApp() {
         try {
-            // 取得工作區路徑（從 settings 或 bootstrap.json）
             const path = await getKbPath();
             setKbPath(path);
 
@@ -52,7 +48,6 @@ export default function App() {
             } else if (status.isMigrated) {
                 setAppState('migrate');
             } else if (status.autoLogin) {
-                // 自動登入模式：直接嘗試登入
                 const autoOk = await invoke<boolean>('try_auto_login', { kbPath: path });
                 if (autoOk) {
                     setAppState('main');
@@ -70,8 +65,6 @@ export default function App() {
 
     async function getKbPath(): Promise<string> {
         try {
-            // Phase 1: 從 settings 讀取 kb_path
-            // 暫時使用 app data dir 作為預設值
             const settings = await invoke<{ kbPath?: string }>('get_settings').catch(() => ({}));
             if (settings && (settings as { knowledge?: { kbPath?: string } }).knowledge) {
                 return (settings as { knowledge?: { kbPath?: string } }).knowledge?.kbPath || '';

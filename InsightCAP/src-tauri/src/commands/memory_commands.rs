@@ -4,7 +4,6 @@ use chrono;
 use sqlx::Row;
 use tauri::State;
 
-/// 手動更新 memory_chunk 的 tags / space_id
 #[tauri::command]
 pub async fn update_memory_chunk(
     state: State<'_, AppState>,
@@ -35,7 +34,6 @@ pub async fn update_memory_chunk(
     Ok(())
 }
 
-/// 用戶確認或拒絕 pending_confirm 的 memory_chunk
 #[tauri::command]
 pub async fn confirm_memory_chunk(
     state: State<'_, AppState>,
@@ -50,7 +48,6 @@ pub async fn confirm_memory_chunk(
     engine.confirm_memory_chunk(&chunk_id, accept).await
 }
 
-/// 取得所有 pending_confirm = 1 的 memory_chunks（供前端顯示確認 toast）
 #[tauri::command]
 pub async fn get_pending_memory_chunks(
     state: State<'_, AppState>,
@@ -84,8 +81,6 @@ pub async fn get_pending_memory_chunks(
     Ok(chunks)
 }
 
-/// 取得升格候選的 memory_chunks（pattern_promotion 產出，status = pending_confirm）
-/// 對應舊版 get_pending_patterns，現在正確操作 memory_chunks
 #[tauri::command]
 pub async fn get_pending_patterns(
     state: State<'_, AppState>,
@@ -120,7 +115,6 @@ pub async fn get_pending_patterns(
     Ok(chunks)
 }
 
-/// 批量確認或拒絕 pending_confirm 的 memory_chunks
 #[tauri::command]
 pub async fn batch_confirm_memory_chunks(
     state: State<'_, AppState>,
@@ -141,7 +135,6 @@ pub async fn batch_confirm_memory_chunks(
     Ok(())
 }
 
-/// 清理超過 N 天未處理的 pending_confirm chunks（自動移除）
 #[tauri::command]
 pub async fn cleanup_expired_pending_chunks(
     state: State<'_, AppState>,
@@ -157,12 +150,10 @@ pub async fn cleanup_expired_pending_chunks(
     Ok(result.rows_affected())
 }
 
-/// 用戶確認或拒絕 pattern 升格
-/// 對應舊版 confirm_pattern，現在正確操作 memory_chunks
 #[tauri::command]
 pub async fn confirm_pattern(
     state: State<'_, AppState>,
-    capture_id: String, // 參數名保持相容，實際為 memory_chunk id
+    capture_id: String,
     accept: bool,
 ) -> Result<(), String> {
     let engine = MemoryEngine::new(

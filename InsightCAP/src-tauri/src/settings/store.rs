@@ -1,8 +1,3 @@
-//! # 設定儲存 (Settings Store)
-//!
-//! 本模組負責設定的持久化儲存與加密。
-//! 使用 SQLite 儲存 JSON 序列化後的設定值。
-
 use crate::settings::security::decrypt;
 use crate::settings::security::encrypt;
 use serde::{Deserialize, Serialize};
@@ -97,7 +92,6 @@ impl Default for AIModelSettings {
 pub struct KnowledgeSettings {
     pub kb_path: String,
     pub auto_classify_enabled: bool,
-    /// "suggest" = 前端 toast 確認（預設）；"auto" = 後端直接建立，不問用戶
     #[serde(default = "default_auto_space_mode")]
     pub auto_space_mode: String,
 }
@@ -258,9 +252,6 @@ pub struct AllSettings {
     #[serde(default)]
     pub editor: EditorSettings,
     pub bilibili_sessdata: Option<String>,
-    /// 用戶自訂的 AI 回答風格指令（可選）
-    /// 例如："請用英文回答，語氣要簡潔"
-    /// 注意：系統指引優先，此欄位不可覆蓋系統行為
     #[serde(default)]
     pub chat_prompt_instruction: String,
     #[serde(default)]
@@ -344,13 +335,10 @@ impl AllSettings {
         }
     }
 
-    /// 將各個 model settings 中缺少的 api_key 或 base_url 從對應的 provider_profiles 補上。
-    /// 這樣下游使用時不需要再手動查找 profile。
     pub fn resolve_profiles(&mut self) {
         let profiles = &self.ai_models.provider_profiles;
 
         let resolve_model = |model: &mut ModelSettings| {
-            // 如果 api_key 為 None 或空字串，嘗試從 profile 補齊
             let needs_key = model.api_key.as_ref().map_or(true, |k| k.is_empty());
             let needs_url = model.base_url.as_ref().map_or(true, |u| u.is_empty());
 
@@ -363,7 +351,6 @@ impl AllSettings {
                         model.base_url = profile.base_url.clone();
                     }
                 } else if model.provider == "ollama" && needs_url {
-                    // Ollama 預設值
                     model.base_url = Some("http://localhost:11434".to_string());
                 }
             }
@@ -381,7 +368,6 @@ fn is_path_safe(path: &str) -> bool {
         return true;
     }
 
-    // Check for directory traversal
     if path.contains("..") {
         return false;
     }
@@ -393,7 +379,6 @@ fn is_path_safe(path: &str) -> bool {
         }
     }
 
-    // Windows specific sensitive paths
     #[cfg(windows)]
     {
         let lower = path.to_lowercase();
@@ -478,7 +463,6 @@ pub async fn get_settings(pool: &SqlitePool) -> Result<AllSettings, sqlx::Error>
         }
     }
 
-    // Decrypt API keys after loading from DB
     settings.decrypt_all();
     settings.resolve_profiles();
 
@@ -489,17 +473,15 @@ pub async fn save_settings(
     pool: &SqlitePool,
     mut settings: AllSettings,
 ) -> Result<(), sqlx::Error> {
-    // Validate KB path (S-104)
     if !is_path_safe(&settings.knowledge.kb_path) {
         return Err(sqlx::Error::Protocol(
-            "不安全的知識庫路徑：禁止使用 .. 或系統目錄".to_string(),
+            "Invalid knowledge base path: directory traversal is not allowed".to_string(),
         ));
     }
 
     let mut tx = pool.begin().await?;
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Encrypt API keys before saving to DB
     settings.encrypt_all();
 
     let queries = vec![

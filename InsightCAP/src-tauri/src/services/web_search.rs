@@ -25,8 +25,6 @@ struct TavilyResponse {
     results: Vec<TavilyResult>,
 }
 
-/// 呼叫 Tavily 搜尋 API，回傳格式化的 web context 字串（可直接注入 system prompt）
-/// 回傳 (formatted_context, sources_list)
 pub async fn tavily_search(api_key: &str, query: &str) -> Result<(String, Vec<String>), String> {
     let client = Client::new();
     let body = TavilyRequest {
@@ -42,25 +40,25 @@ pub async fn tavily_search(api_key: &str, query: &str) -> Result<(String, Vec<St
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Tavily 請求失敗: {}", e))?;
+        .map_err(|e| format!("Tavily request failed: {}", e))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Tavily API 錯誤 {}: {}", status, text));
+        return Err(format!("Tavily API error {}: {}", status, text));
     }
 
     let data: TavilyResponse = resp
         .json()
         .await
-        .map_err(|e| format!("Tavily 回應解析失敗: {}", e))?;
+        .map_err(|e| format!("Failed to parse Tavily response: {}", e))?;
 
     let mut parts: Vec<String> = Vec::new();
     let mut sources: Vec<String> = Vec::new();
 
     if let Some(answer) = &data.answer {
         if !answer.trim().is_empty() {
-            parts.push(format!("**搜尋摘要**\n{}", answer.trim()));
+            parts.push(format!("**Web Answer**\n{}", answer.trim()));
         }
     }
 
@@ -68,7 +66,7 @@ pub async fn tavily_search(api_key: &str, query: &str) -> Result<(String, Vec<St
         let content = result.content.trim();
         if !content.is_empty() {
             parts.push(format!(
-                "[{}] **{}**\n來源：{}\n{}",
+                "[{}] **{}**\nSource: {}\n{}",
                 i + 1,
                 result.title,
                 result.url,
@@ -79,7 +77,7 @@ pub async fn tavily_search(api_key: &str, query: &str) -> Result<(String, Vec<St
     }
 
     if parts.is_empty() {
-        return Err("Tavily 搜尋無結果".to_string());
+        return Err("Tavily returned empty search results".to_string());
     }
 
     Ok((parts.join("\n\n"), sources))

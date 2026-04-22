@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
-// ─── LRU Search Cache ─────────────────────────────────────────────────────────
 
 struct SearchCache {
     map: HashMap<u64, Vec<(u64, f32)>>,
@@ -51,11 +50,7 @@ impl SearchCache {
     }
 }
 
-// ─── VectorStore ──────────────────────────────────────────────────────────────
 
-/// A thread-safe, pure-Rust MVP Vector Database.
-/// Uses a simple HashMap for in-memory storage and naive exact K-NN search via Cosine Similarity.
-/// Good enough for MVP (< 100k chunks) and compiles flawlessly on all platforms.
 #[derive(Clone)]
 pub struct VectorStore {
     state: Arc<RwLock<VectorState>>,
@@ -70,7 +65,6 @@ struct VectorState {
 }
 
 impl VectorStore {
-    /// Loads an existing index from disk or creates a new one.
     pub fn load_or_create(db_dir: &Path, dimensions: usize) -> Result<Self, String> {
         let path = db_dir
             .join(".insightcap")
@@ -122,7 +116,6 @@ impl VectorStore {
         })
     }
 
-    /// Loads an existing index from the exact file path, or creates a new one there.
     pub fn load_or_create_at_path(path: &Path, dimensions: usize) -> Self {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -163,7 +156,6 @@ impl VectorStore {
         }
     }
 
-    /// Adds a single vector to the store with a corresponding integer ID.
     pub async fn add_vector(&self, id: u64, vector: &[f32]) -> Result<(), String> {
         let mut state = self.state.write().await;
 
@@ -177,7 +169,6 @@ impl VectorStore {
 
         state.vectors.insert(id, vector.to_vec());
         drop(state);
-        // 新增向量後舊的搜尋結果已過期
         self.search_cache.lock().unwrap().clear();
         Ok(())
     }
@@ -192,11 +183,7 @@ impl VectorStore {
         state.vectors.get(&id).cloned()
     }
 
-    /// Searches for `count` nearest neighbors to the `query` vector using Cosine Similarity.
-    /// Results are LRU-cached (capacity 50) to avoid redundant full scans for repeated queries.
-    /// Returns a list of (id, similarity_score) tuples sorted by highest similarity.
     pub async fn search(&self, query: &[f32], count: usize) -> Result<Vec<(u64, f32)>, String> {
-        // ── Cache lookup ──
         let cache_key = Self::compute_cache_key(query, count);
         if let Some(cached) = self.search_cache.lock().unwrap().get(cache_key) {
             return Ok(cached);
@@ -212,7 +199,6 @@ impl VectorStore {
             ));
         }
 
-        // Cosine Similarity: dot_product(A, B) / (norm(A) * norm(B))
         let query_norm = Self::norm(query);
         if query_norm == 0.0 {
             return Err("Query vector has zero norm".to_string());
@@ -235,13 +221,10 @@ impl VectorStore {
             })
             .collect();
 
-        // Sort descending by similarity
         results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Take top `count`
         results.truncate(count);
 
-        // ── Store in cache ──
         drop(state);
         self.search_cache
             .lock()
@@ -251,7 +234,6 @@ impl VectorStore {
         Ok(results)
     }
 
-    /// Computes a stable u64 hash for a query vector + count pair.
     fn compute_cache_key(query: &[f32], count: usize) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -263,7 +245,6 @@ impl VectorStore {
         hasher.finish()
     }
 
-    /// Removes a vector from the store by its ID.
     pub async fn remove_vector(&self, id: u64) -> Result<(), String> {
         let mut state = self.state.write().await;
         state.vectors.remove(&id);
@@ -272,7 +253,6 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Clears all vectors from the store and saves the empty state.
     pub async fn clear(&self) -> Result<(), String> {
         let mut state = self.state.write().await;
         state.vectors.clear();
@@ -281,7 +261,6 @@ impl VectorStore {
         self.save().await
     }
 
-    /// Saves the vector state to disk using bincode.
     pub async fn save(&self) -> Result<(), String> {
         let state = self.state.read().await;
 

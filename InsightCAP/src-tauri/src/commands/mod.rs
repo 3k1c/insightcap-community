@@ -10,7 +10,7 @@ pub mod memory_commands;
 pub mod project_commands;
 pub mod rag_commands;
 pub mod reminder_commands;
-pub mod seed_commands; // TODO: 測試用，上線前移除
+pub mod seed_commands; // TODO: for testing, remove before release
 pub mod settings_commands;
 pub mod space_commands;
 pub mod tag_commands;

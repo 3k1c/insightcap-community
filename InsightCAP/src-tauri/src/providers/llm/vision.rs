@@ -4,9 +4,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
-// ─── VisionConfig ──────────────────────────────────────────────────────────
 
-/// Vision model 組態，由呼叫端從 settings.ai_models.vision_model 建構
 #[derive(Debug, Clone)]
 pub struct VisionConfig {
     pub provider: String,
@@ -16,7 +14,6 @@ pub struct VisionConfig {
 }
 
 impl VisionConfig {
-    /// 從 ModelSettings 建構；若模型未設定或無 API key（非 Ollama）則回傳 None
     pub fn from_settings(s: &crate::settings::store::ModelSettings) -> Option<Self> {
         if s.model.trim().is_empty() {
             return None;
@@ -34,7 +31,6 @@ impl VisionConfig {
     }
 }
 
-// ─── Vision 能力探測與快取 ──────────────────────────────────────────────────
 
 static VISION_CACHE: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
 
@@ -42,12 +38,9 @@ fn vision_cache() -> &'static Mutex<HashMap<String, bool>> {
     VISION_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// 測試指定模型是否支援 vision（結果快取整個 App 生命週期）
-/// 原理：送一張 4×4 紅色測試圖並詢問顏色，若能回覆即為 vision model
 pub async fn probe_vision_support(config: &VisionConfig) -> bool {
     let cache_key = format!("{}::{}", config.provider, config.model);
 
-    // 快取命中
     {
         let cache = vision_cache().lock().await;
         if let Some(&result) = cache.get(&cache_key) {
@@ -56,7 +49,7 @@ pub async fn probe_vision_support(config: &VisionConfig) -> bool {
     }
 
     println!(
-        "[Vision] 正在探測 {} ({}) 是否支援 vision...",
+        "[Vision] Probing vision support for {} ({})...",
         config.model, config.provider
     );
 
@@ -79,32 +72,29 @@ pub async fn probe_vision_support(config: &VisionConfig) -> bool {
     let is_vision = match result {
         Ok(Ok(text)) => !text.trim().is_empty(),
         Ok(Err(e)) => {
-            println!("[Vision] 探測失敗: {}", e);
+            println!("[Vision] Probe failed: {}", e);
             false
         }
         Err(_) => {
-            println!("[Vision] 探測超時");
+            println!("[Vision] Probe timed out");
             false
         }
     };
 
-    // 寫入快取
     {
         let mut cache = vision_cache().lock().await;
         cache.insert(cache_key, is_vision);
     }
 
     if is_vision {
-        println!("[Vision] ✅ {} 支援 vision", config.model);
+        println!("[Vision] {} supports vision", config.model);
     } else {
-        println!("[Vision] ❌ {} 不支援 vision，略過", config.model);
+        println!("[Vision] {} does not support vision", config.model);
     }
 
     is_vision
 }
 
-/// 嘗試用 vision model 增強圖片理解
-/// 回傳 Some(text) 表示成功，None 表示不可用或失敗
 pub async fn try_vision_enhance(
     config: &VisionConfig,
     image_bytes: &[u8],
@@ -146,7 +136,6 @@ pub async fn try_vision_enhance(
     }
 }
 
-/// 生成 4×4 紅色 PNG 測試圖片（用於 probe）
 fn generate_probe_image() -> Vec<u8> {
     let img = image::DynamicImage::ImageRgb8(image::ImageBuffer::from_pixel(
         4,
@@ -159,14 +148,7 @@ fn generate_probe_image() -> Vec<u8> {
     buf
 }
 
-// ─── 統一 Vision/OCR 呼叫入口 ──────────────────────────────────────────────
 
-/// 統一的 Vision/OCR 呼叫入口
-/// 支援：
-///   - GLM-OCR 模式（OpenAI-compatible, /v1/chat/completions）
-///   - LLaVA / Ollama 舊格式（/api/chat + images array）
-///   - OpenAI GPT-4o Vision
-///   - Anthropic Claude Vision
 pub async fn describe_image(
     image_data: &[u8],
     provider: &str,
@@ -187,14 +169,9 @@ pub async fn describe_image(
         "openai" => call_openai_vision(&client, &b64_img, model, api_key, prompt).await,
         "anthropic" => call_anthropic_vision(&client, &b64_img, model, api_key, prompt).await,
         _ => {
-            // For Ollama, detect whether to use OpenAI-compatible or legacy format
-            // GLM-OCR and newer multimodal models use /v1/chat/completions
-            // LLaVA uses /api/chat with images array
             let base = base_url.unwrap_or("http://localhost:11434");
             let normalized_base = base.trim_end_matches('/');
 
-            // 判斷是否使用 OpenAI-compatible 格式
-            // GLM-OCR、minicpm-v 等新式模型使用 /v1/ 端點
             let is_openai_compat = is_openai_compatible_model(model);
 
             if is_openai_compat {
@@ -214,11 +191,8 @@ pub async fn describe_image(
     }
 }
 
-/// 判斷模型是否需要 OpenAI-compatible 格式
 fn is_openai_compatible_model(model: &str) -> bool {
     let lower = model.to_lowercase();
-    // GLM-OCR、MiniCPM-V、InternVL、DeepSeek 等需要 /v1/ 端點
-    // Qwen-VL 雖然支援 v1，但在本機載入 8B 時使用原生格式通常更穩定
     lower.contains("glm")
         || lower.contains("minicpm")
         || lower.contains("internvl")
@@ -227,23 +201,17 @@ fn is_openai_compatible_model(model: &str) -> bool {
         || lower.contains("internvl2")
 }
 
-// ─── Prompts ────────────────────────────────────────────────────────────────
 
-/// OCR Prompt — 一般場景（截圖、UI、對話內圖片）
 pub fn general_vision_prompt() -> &'static str {
     "You are a precise visual content analyzer. Analyze the provided image and respond in the same language as the text visible in the image (use Traditional Chinese if Chinese text is present, otherwise use English).\n\nPlease provide:\n1. SUMMARY: A concise 1-3 sentence description of what the image shows\n2. TEXT: Extract ALL readable text (UI labels, headings, body text, code, etc.) preserving original formatting where possible\n3. TYPE: Classify as one of: [code, document, screenshot, diagram, photo, other]\n\nOutput Format:\n---\nSUMMARY: <description>\nTEXT: <all visible text>\nTYPE: <classification>\n---\n\nIf no text is visible, write: TEXT: (no text detected)"
 }
 
-/// OCR Prompt — 純文字辨識（文件掃描）
 pub fn ocr_only_prompt() -> &'static str {
     "You are an OCR engine. Extract all text from this image exactly as written, preserving line breaks, paragraph spacing, bullet points, list structure, headers, and numbers. Output ONLY the extracted text, no commentary. If no text is visible, output: (no text detected)"
 }
 
-// ─── 輸出萃取 ───────────────────────────────────────────────────────────────
 
-/// 從 Vision Model 輸出中萃取可用文字
 pub fn extract_text_from_vision_output(raw: &str) -> String {
-    // 嘗試解析結構化輸出（SUMMARY: ... TEXT: ... TYPE: ...）
     if let Some(text_start) = raw.find("TEXT:") {
         let after = &raw[text_start + 5..]; // skip "TEXT:"
         let text_part = if let Some(type_pos) = after.find("\nTYPE:") {
@@ -257,7 +225,6 @@ pub fn extract_text_from_vision_output(raw: &str) -> String {
         }
     }
 
-    // Fallback: 取整個輸出，但移除已知的前綴行
     let fallback: String = raw
         .lines()
         .filter(|line| {
@@ -270,7 +237,6 @@ pub fn extract_text_from_vision_output(raw: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
-    // 截斷過長的輸出
     let max_len = 4000;
     if fallback.chars().count() > max_len {
         fallback.chars().take(max_len).collect()
@@ -279,9 +245,7 @@ pub fn extract_text_from_vision_output(raw: &str) -> String {
     }
 }
 
-// ─── 各 Provider 實作 ──────────────────────────────────────────────────────
 
-/// 呼叫 OpenAI GPT-4o Vision
 async fn call_openai_vision(
     client: &Client,
     b64_img: &str,
@@ -314,7 +278,6 @@ async fn call_openai_vision(
         .to_string())
 }
 
-/// 呼叫 Anthropic Claude Vision
 async fn call_anthropic_vision(
     client: &Client,
     b64_img: &str,
@@ -348,7 +311,6 @@ async fn call_anthropic_vision(
         .to_string())
 }
 
-/// 呼叫 Ollama OpenAI-compatible 端點（GLM-OCR、MiniCPM-V 等）
 async fn call_openai_compat_vision(
     client: &Client,
     b64_img: &str,
@@ -365,7 +327,6 @@ async fn call_openai_compat_vision(
 
     let mut req = client.post(&url);
 
-    // 若有 API key 則加入 Authorization header（雲端服務需要）
     if !api_key.is_empty() {
         req = req.header("Authorization", format!("Bearer {}", api_key));
     }
@@ -410,7 +371,6 @@ async fn call_openai_compat_vision(
         .to_string())
 }
 
-/// 呼叫 Ollama 舊版格式（LLaVA 等 /api/chat + images array）
 async fn call_ollama_legacy_vision(
     client: &Client,
     b64_img: &str,

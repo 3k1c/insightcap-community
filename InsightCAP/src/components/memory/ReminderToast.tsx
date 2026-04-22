@@ -53,7 +53,7 @@ export function ReminderToast() {
             setNotification(null);
         } catch (e) {
             console.error('Failed to complete reminder:', e);
-            toast.error('標記提醒為已完成失敗');
+            toast.error('Failed to mark reminder as completed');
         }
         setProcessing(false);
     }
@@ -66,7 +66,7 @@ export function ReminderToast() {
             setNotification(null);
         } catch (e) {
             console.error('Failed to snooze reminder:', e);
-            toast.error('延後提醒失敗');
+            toast.error('Failed to snooze reminder');
         }
         setProcessing(false);
     }
@@ -79,15 +79,14 @@ export function ReminderToast() {
             setNotification(null);
         } catch (e) {
             console.error('Failed to dismiss reminder:', e);
-            toast.error('關閉提醒失敗');
+            toast.error('Failed to dismiss reminder');
         }
         setProcessing(false);
     }
 
     return (
         <div className="fixed top-4 right-4 z-[100] w-[360px] animate-in slide-in-from-right-5">
-            <div className={`rounded-xl border shadow-lg p-4 ${isUrgent ? 'bg-red-500/5 border-red-500/20' : 'bg-surface-base border-stroke-divider'}`}>
-                {/* Header */}
+            <div className={`rounded-xl border shadow-lg p-4 ${isUrgent ? 'bg-surface-layer border-red-500/35' : 'bg-surface-layer border-stroke-divider'}`}>
                 <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
                         <Clock className={`w-4 h-4 ${isUrgent ? 'text-red-500' : 'text-accent-default'}`} />
@@ -98,10 +97,8 @@ export function ReminderToast() {
                     </button>
                 </div>
 
-                {/* Title */}
                 <h4 className="text-fs-base font-semibold text-text-primary mb-1">{notification.title}</h4>
 
-                {/* Date info */}
                 {notification.eventDate && (
                     <p className="text-fs-sm text-text-secondary mb-3">
                         {notification.eventDate}
@@ -109,7 +106,6 @@ export function ReminderToast() {
                     </p>
                 )}
 
-                {/* Actions */}
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleComplete}

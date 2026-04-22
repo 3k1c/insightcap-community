@@ -54,13 +54,11 @@ pub async fn get_all_spaces(pool: State<'_, SqlitePool>) -> Result<Vec<SpaceItem
     Ok(spaces)
 }
 
-/// 取得指定 Space 的知識可用性洞察：memory_chunks 按 knowledge_type 分佈 + 標籤統計
 #[tauri::command]
 pub async fn get_space_insight(
     pool: State<'_, SqlitePool>,
     space_id: String,
 ) -> Result<SpaceInsight, String> {
-    // Space 基本資訊
     let space_row = sqlx::query("SELECT name FROM spaces WHERE id = ?")
         .bind(&space_id)
         .fetch_optional(pool.inner())
@@ -69,7 +67,6 @@ pub async fn get_space_insight(
         .ok_or_else(|| "Space not found".to_string())?;
     let space_name: String = space_row.get("name");
 
-    // memory_chunks 按 knowledge_type 統計
     let mc_rows = sqlx::query(
         "SELECT knowledge_type, COUNT(*) as cnt FROM memory_chunks WHERE space_id = ? GROUP BY knowledge_type"
     )
@@ -92,7 +89,6 @@ pub async fn get_space_insight(
         }
     }
 
-    // captures 統計（屬於此 Space 的擷取）
     let cap_row = sqlx::query("SELECT COUNT(*) as cnt FROM captures WHERE space_id = ?")
         .bind(&space_id)
         .fetch_one(pool.inner())
@@ -100,7 +96,6 @@ pub async fn get_space_insight(
         .map_err(|e| e.to_string())?;
     let capture_count: i64 = cap_row.try_get("cnt").unwrap_or(0);
 
-    // 標籤統計：合併 memory_chunks.tags + captures.tags，取 Top-10
     let tag_rows = sqlx::query(
         "SELECT tags FROM memory_chunks WHERE space_id = ? AND tags IS NOT NULL AND tags != '[]'
          UNION ALL
@@ -146,7 +141,6 @@ pub async fn get_space_insight(
     })
 }
 
-/// 手動觸發 Space 全量重聚類（新 Space 建立後或前端主動呼叫）
 #[tauri::command]
 pub async fn trigger_space_recluster(state: State<'_, AppState>) -> Result<usize, String> {
     let engine = crate::services::space_engine::SpaceEngine::new(
@@ -159,42 +153,44 @@ pub async fn trigger_space_recluster(state: State<'_, AppState>) -> Result<usize
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SpaceWiki {
+pub struct SpaceKnowledgeGuide {
     pub space_id: String,
-    pub wiki_content: String,
-    pub wiki_updated_at: String,
+    pub knowledge_guide_content: String,
+    pub knowledge_guide_updated_at: String,
 }
 
-/// 取得指定 Space 的 Wiki 內容
 #[tauri::command]
-pub async fn get_space_wiki(
+pub async fn get_space_knowledge_guide(
     pool: State<'_, SqlitePool>,
     space_id: String,
-) -> Result<SpaceWiki, String> {
-    let row = sqlx::query("SELECT id, wiki_content, wiki_updated_at FROM spaces WHERE id = ?")
-        .bind(&space_id)
-        .fetch_optional(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Space not found".to_string())?;
+) -> Result<SpaceKnowledgeGuide, String> {
+    let row = sqlx::query(
+        "SELECT id, knowledge_guide_content, knowledge_guide_updated_at FROM spaces WHERE id = ?",
+    )
+    .bind(&space_id)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Space not found".to_string())?;
 
-    Ok(SpaceWiki {
+    Ok(SpaceKnowledgeGuide {
         space_id,
-        wiki_content: row.try_get("wiki_content").unwrap_or_default(),
-        wiki_updated_at: row.try_get("wiki_updated_at").unwrap_or_default(),
+        knowledge_guide_content: row.try_get("knowledge_guide_content").unwrap_or_default(),
+        knowledge_guide_updated_at: row
+            .try_get("knowledge_guide_updated_at")
+            .unwrap_or_default(),
     })
 }
 
-/// 用戶手動儲存編輯後的 Wiki 內容
 #[tauri::command]
-pub async fn save_space_wiki(
+pub async fn save_space_knowledge_guide(
     pool: State<'_, SqlitePool>,
     space_id: String,
-    wiki_content: String,
+    knowledge_guide_content: String,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
-    sqlx::query("UPDATE spaces SET wiki_content = ?, wiki_updated_at = ? WHERE id = ?")
-        .bind(&wiki_content)
+    sqlx::query("UPDATE spaces SET knowledge_guide_content = ?, knowledge_guide_updated_at = ? WHERE id = ?")
+        .bind(&knowledge_guide_content)
         .bind(&now)
         .bind(&space_id)
         .execute(pool.inner())
@@ -203,12 +199,13 @@ pub async fn save_space_wiki(
     Ok(())
 }
 
-/// 手動觸發指定 Space 的 Wiki 重新生成
 #[tauri::command]
-pub async fn regenerate_space_wiki(
+pub async fn regenerate_space_knowledge_guide(
     pool: State<'_, SqlitePool>,
     space_id: String,
 ) -> Result<String, String> {
-    let engine = crate::services::space_wiki_engine::SpaceWikiEngine::new(pool.inner().clone());
-    engine.update_wiki_for_space(&space_id).await
+    let engine = crate::services::space_knowledge_guide_engine::SpaceKnowledgeGuideEngine::new(
+        pool.inner().clone(),
+    );
+    engine.generate_guide(&space_id).await
 }

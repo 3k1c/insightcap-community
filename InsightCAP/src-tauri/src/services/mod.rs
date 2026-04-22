@@ -6,6 +6,5 @@ pub mod rag_engine;
 pub mod reminder_engine;
 pub mod space_engine;
 pub mod space_knowledge_guide_engine;
-pub mod space_wiki_engine;
 pub mod tag_engine;
 pub mod web_search;

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-// import { ExternalKnowledgeBase, ExternalKbLoadResult } from '../lib/types';
 import { useThemeStore, type Theme } from '../stores/themeStore';
 import { useLanguageStore } from '../stores/languageStore';
 import type { Language } from '../i18n';
@@ -17,7 +16,6 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
 
-// ── Types matching Rust AllSettings ──────────────────────
 
 interface ModelSettings {
     provider: string;
@@ -93,7 +91,6 @@ interface AllSettings {
 
 type SettingsTab = 'general' | 'personal' | 'provider' | 'ai' | 'knowledge' | 'other';
 
-// These will be translated in the component
 const TABS: { id: SettingsTab; labelKey: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'general', labelKey: 'settings.general', icon: Settings2 },
     { id: 'personal', labelKey: 'settings.personal', icon: User },
@@ -137,47 +134,46 @@ const PROVIDER_CARDS: ProviderCard[] = [
         label: 'OpenAI',
         desc: 'GPT-4o, o1, o3...',
         apiUrl: 'https://platform.openai.com/api-keys',
-        emoji: '🟢',
+        emoji: 'OA',
     },
     {
         value: 'anthropic',
         label: 'Anthropic',
         desc: 'Claude 4, Claude 3.5...',
         apiUrl: 'https://console.anthropic.com/settings/keys',
-        emoji: '🟠',
+        emoji: 'AN',
     },
     {
         value: 'google',
         label: 'Google',
         desc: 'Gemini 2.0, 1.5 Pro...',
         apiUrl: 'https://aistudio.google.com/apikey',
-        emoji: '🔵',
+        emoji: 'GO',
     },
     {
         value: 'xai',
         label: 'xAI',
         desc: 'Grok 3, Grok 2...',
         apiUrl: 'https://console.x.ai/team/default/api-keys',
-        emoji: '⚫',
+        emoji: 'XA',
     },
     {
         value: 'openrouter',
         label: 'OpenRouter',
-        desc: '統一入口，支援數百個模型',
+        desc: 'Unified gateway, supports hundreds of models',
         apiUrl: 'https://openrouter.ai/settings/keys',
-        emoji: '🔀',
+        emoji: 'OR',
     },
     {
         value: 'ollama',
         label: 'Ollama',
-        desc: '本地執行，無需 API Key',
+        desc: 'Run locally, no API key required',
         defaultBaseUrl: 'http://localhost:11434',
-        emoji: '🦙',
+        emoji: 'OL',
         local: true,
     },
 ];
 
-// ── Helper Components ────────────────────────────────────
 
 const SectionCard: React.FC<{ title: string; desc?: string; children: React.ReactNode; action?: React.ReactNode }> = ({ title, desc, children, action }) => (
     <div className="bg-surface-layer border border-stroke-divider rounded-xl p-6 mb-6 shadow-sm">
@@ -232,8 +228,6 @@ const InputField: React.FC<{ value: string; onChange: (v: string) => void; place
     />
 );
 
-// ── Popular models per provider ──────────────────────────
-// Last updated: 2026-04-08 via official provider docs
 const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
     openai: [
         { value: 'gpt-4.1', label: 'GPT-4.1' },
@@ -294,19 +288,22 @@ const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
     ],
 };
 
-// ── ModelComboField: popular presets + free text ─────────
-const ModelComboField: React.FC<{ value: string; onChange: (v: string) => void; provider: string; className?: string }> = ({ value, onChange, provider, className }) => {
+const ModelComboField: React.FC<{
+    value: string;
+    onChange: (v: string) => void;
+    provider: string;
+    inputPlaceholder: string;
+    className?: string;
+}> = ({ value, onChange, provider, inputPlaceholder, className }) => {
     const popular = POPULAR_MODELS[provider] ?? [];
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
 
-    // Reset input when provider changes
     React.useEffect(() => {
         const nowPreset = (POPULAR_MODELS[provider] ?? []).some(m => m.value === value);
         if (!nowPreset) onChange('');
     }, [provider]);
 
-    // Close dropdown on outside click
     React.useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -316,10 +313,9 @@ const ModelComboField: React.FC<{ value: string; onChange: (v: string) => void; 
     }, []);
 
     if (popular.length === 0) {
-        return <InputField value={value} onChange={onChange} placeholder="model-name" className={className} />;
+        return <InputField value={value} onChange={onChange} placeholder={inputPlaceholder} className={className} />;
     }
 
-    // const displayLabel = popular.find(m => m.value === value)?.label ?? value;
 
 
     return (
@@ -330,7 +326,7 @@ const ModelComboField: React.FC<{ value: string; onChange: (v: string) => void; 
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     onFocus={() => setOpen(true)}
-                    placeholder="選擇或輸入模型名稱"
+                    placeholder={inputPlaceholder}
                     className="flex-1 bg-transparent px-3 py-1.5 text-fs-sm text-text-primary placeholder:text-text-tertiary focus:outline-none min-w-0"
                 />
                 <button
@@ -353,7 +349,7 @@ const ModelComboField: React.FC<{ value: string; onChange: (v: string) => void; 
                             className={`w-full text-left px-3 py-2 text-fs-sm transition-colors hover:bg-surface-subtle ${value === m.value ? 'text-accent-default bg-accent-default/5' : 'text-text-primary'}`}
                         >
                             {m.label}
-                            {value === m.value && <span className="float-right text-accent-default">✓</span>}
+                            {value === m.value && <span className="float-right text-accent-default">v</span>}
                         </button>
                     ))}
                 </div>
@@ -362,13 +358,17 @@ const ModelComboField: React.FC<{ value: string; onChange: (v: string) => void; 
     );
 };
 
-// ── SummaryModelField: follow presets + free text ────────
-const SUMMARY_PRESETS = [
-    { value: 'follow_chat', label: '跟隨聊天模型' },
-    { value: 'follow_content_processor', label: '跟隨內容處理模型' },
-];
-
-const SummaryModelField: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+const SummaryModelField: React.FC<{
+    value: string;
+    onChange: (v: string) => void;
+    followChatLabel: string;
+    followProcessorLabel: string;
+    inputPlaceholder: string;
+}> = ({ value, onChange, followChatLabel, followProcessorLabel, inputPlaceholder }) => {
+    const summaryPresets = [
+        { value: 'follow_chat', label: followChatLabel },
+        { value: 'follow_content_processor', label: followProcessorLabel },
+    ];
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
 
@@ -380,7 +380,7 @@ const SummaryModelField: React.FC<{ value: string; onChange: (v: string) => void
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const displayLabel = SUMMARY_PRESETS.find(p => p.value === value)?.label;
+    const displayLabel = summaryPresets.find(p => p.value === value)?.label;
 
     return (
         <div ref={ref} className="relative w-48">
@@ -390,7 +390,7 @@ const SummaryModelField: React.FC<{ value: string; onChange: (v: string) => void
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     onFocus={() => setOpen(true)}
-                    placeholder={displayLabel ?? '選擇或輸入模型'}
+                    placeholder={displayLabel ?? inputPlaceholder}
                     className="flex-1 bg-transparent px-3 py-1.5 text-fs-sm text-text-primary placeholder:text-text-tertiary focus:outline-none min-w-0"
                 />
                 <button
@@ -405,7 +405,7 @@ const SummaryModelField: React.FC<{ value: string; onChange: (v: string) => void
             </div>
             {open && (
                 <div className="absolute z-50 mt-1 w-full bg-surface-base border border-stroke-divider rounded-lg shadow-lg overflow-hidden">
-                    {SUMMARY_PRESETS.map(p => (
+                    {summaryPresets.map(p => (
                         <button
                             key={p.value}
                             type="button"
@@ -413,7 +413,7 @@ const SummaryModelField: React.FC<{ value: string; onChange: (v: string) => void
                             className={`w-full text-left px-3 py-2 text-fs-sm transition-colors hover:bg-surface-subtle ${value === p.value ? 'text-accent-default bg-accent-default/5' : 'text-text-primary'}`}
                         >
                             {p.label}
-                            {value === p.value && <span className="float-right text-accent-default">✓</span>}
+                            {value === p.value && <span className="float-right text-accent-default">v</span>}
                         </button>
                     ))}
                 </div>
@@ -422,26 +422,20 @@ const SummaryModelField: React.FC<{ value: string; onChange: (v: string) => void
     );
 };
 
-// ── Main Component ───────────────────────────────────────
 
 export const SettingsPage: React.FC = () => {
     const t = useT();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [settings, setSettings] = useState<AllSettings | null>(null);
     const [saving, setSaving] = useState(false);
-    // const [externalKbs, setExternalKbs] = useState<ExternalKnowledgeBase[]>([]);
-    // const [kbLoading, setKbLoading] = useState(false);
 
-    // Rebuild source tags progress
     const [rebuildTagsProgress, setRebuildTagsProgress] = useState<{ current: number; total: number } | null>(null);
     const rebuildTagsUnlistenRef = useRef<(() => void) | null>(null);
 
-    // Provider edit state
     const [editingProfile, setEditingProfile] = useState<ProviderProfileData | null>(null);
     const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
     const [bilibiliLoggingIn, setBilibiliLoggingIn] = useState(false);
 
-    // Export modal state
     const [exportModal, setExportModal] = useState<{
         open: boolean;
         step: 'confirm' | 'mnemonic';
@@ -451,7 +445,6 @@ export const SettingsPage: React.FC = () => {
         loading: boolean;
     }>({ open: false, step: 'confirm', mnemonic: '', confirmed: false, destPath: '', loading: false });
 
-    // Import modal state
     const [importModal, setImportModal] = useState<{
         open: boolean;
         step: 'input' | 'new_recovery';
@@ -467,7 +460,6 @@ export const SettingsPage: React.FC = () => {
     const { theme, setTheme } = useThemeStore();
     const { language, setLanguage } = useLanguageStore();
 
-    // Personal settings state
     const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
     const [personalLoading, setPersonalLoading] = useState(false);
     const [newRecoveryModal, setNewRecoveryModal] = useState<{ open: boolean; mnemonic: string; confirmed: boolean }>({ open: false, mnemonic: '', confirmed: false });
@@ -481,7 +473,6 @@ export const SettingsPage: React.FC = () => {
         title: string;
     }>({ open: false, password: '', onVerified: () => { }, loading: false, error: '', title: '' });
 
-    // ── Load settings ────────────────────────────────────
 
     useEffect(() => {
         loadSettings();
@@ -494,7 +485,7 @@ export const SettingsPage: React.FC = () => {
             setSettings(s);
         } catch (e) {
             console.error('Failed to load settings', e);
-            toast.error('無法載入設定');
+            toast.error(t('settings.load_failed'));
         }
     };
 
@@ -505,9 +496,9 @@ export const SettingsPage: React.FC = () => {
         try {
             await invoke('save_settings', { settings: target });
             setSettings(target);
-            toast.success('設定已儲存');
+            toast.success(t('settings.saved'));
         } catch (e: any) {
-            toast.error(`儲存失敗: ${e.toString()}`);
+            toast.error(t('settings.save_failed_with_reason', { error: e.toString() }));
         } finally {
             setSaving(false);
         }
@@ -538,60 +529,7 @@ export const SettingsPage: React.FC = () => {
         }
     };
 
-    // ── External KB handlers ─────────────────────────────
-    /*
-        const loadExternalKbs = async () => {
-            try {
-                const kbs = await invoke<ExternalKnowledgeBase[]>('get_external_kbs');
-                setExternalKbs(kbs);
-            } catch (error) {
-                console.error('Failed to load DBs', error);
-            }
-        };
-    
-        const handleAddKb = async () => {
-            try {
-                const selected = await open({
-                    multiple: false,
-                    filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite'] }]
-                });
-                if (selected && typeof selected === 'string') {
-                    setKbLoading(true);
-                    const toastId = toast.loading('正在驗證與掛載外部知識庫...');
-                    try {
-                        const result = await invoke<ExternalKbLoadResult>('load_external_kb', { dbPath: selected });
-                        if (result.success) {
-                            toast.success('外部知識庫掛載成功！', { id: toastId });
-                            loadExternalKbs();
-                        } else {
-                            toast.error(`掛載失敗: ${result.reason}`, { id: toastId });
-                        }
-                    } catch (e: any) {
-                        toast.error(`發生錯誤: ${e.toString()}`, { id: toastId });
-                    }
-                }
-            } catch (error) {
-                console.error('Add KB failed', error);
-                toast.error('開啟檔案對話框失敗');
-            } finally {
-                setKbLoading(false);
-            }
-        };
-    
-        const handleRemoveKb = async (id: string, name: string) => {
-            if (!window.confirm(`確定要移除外部知識庫 "${name}" 的連線嗎？`)) return;
-            try {
-                await invoke('remove_external_kb', { id });
-                toast.success('已移除知識庫連線');
-                loadExternalKbs();
-            } catch (error) {
-                console.error('Remove KB failed', error);
-                toast.error('移除失敗');
-            }
-        };
-    */
 
-    // ── Provider profile handlers ────────────────────────
 
     const handleSaveProfile = () => {
         if (!editingProfile || !settings) return;
@@ -609,13 +547,12 @@ export const SettingsPage: React.FC = () => {
 
     const handleDeleteProfile = (id: string) => {
         if (!settings) return;
-        if (!window.confirm('確定要刪除此 Provider？')) return;
+        if (!window.confirm(t('settings.confirm_delete_provider'))) return;
         const profiles = settings.aiModels.providerProfiles.filter(p => p.id !== id);
         const updated = { ...settings, aiModels: { ...settings.aiModels, providerProfiles: profiles } };
         saveSettings(updated);
     };
 
-    // ── Tab: 一般設定 ────────────────────────────────────
 
     const renderGeneral = () => {
         if (!settings) return null;
@@ -726,7 +663,6 @@ export const SettingsPage: React.FC = () => {
         );
     };
 
-    // ── Tab: LLM Provider ────────────────────────────────────────
 
     const renderProvider = () => {
         if (!settings) return null;
@@ -773,7 +709,7 @@ export const SettingsPage: React.FC = () => {
                                 <div className="font-medium text-text-primary text-fs-sm">{p.name || t('settings.provider_unnamed')}</div>
                                 <div className="text-fs-xs text-text-tertiary mt-0.5">
                                     {PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label ?? p.provider}
-                                    {p.baseUrl ? ` · ${p.baseUrl}` : ''}
+                                    {p.baseUrl ? ` | ${p.baseUrl}` : ''}
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
@@ -789,7 +725,6 @@ export const SettingsPage: React.FC = () => {
 
                     {editingProfile && (
                         <div className="bg-surface-base rounded-lg p-4 border border-accent-default/30 space-y-4">
-                            {/* Provider 選擇卡片 */}
                             <div>
                                 <label className="text-fs-xs text-text-secondary mb-2 block font-medium">{t('settings.provider_type')}</label>
                                 <div className="grid grid-cols-3 gap-2">
@@ -818,7 +753,7 @@ export const SettingsPage: React.FC = () => {
                                                             rel="noopener noreferrer"
                                                             onClick={e => e.stopPropagation()}
                                                             className="text-text-tertiary hover:text-accent-default transition-colors"
-                                                            title="取得 API Key"
+                                                            title={t('settings.get_api_key')}
                                                         >
                                                             <ExternalLink className="w-3 h-3" />
                                                         </a>
@@ -827,7 +762,7 @@ export const SettingsPage: React.FC = () => {
                                                 <div className={`text-fs-sm font-semibold ${isSelected ? 'text-accent-default' : 'text-text-primary'}`}>{card.label}</div>
                                                 <div className="text-fs-xs text-text-tertiary leading-snug">{card.desc}</div>
                                                 {card.local && (
-                                                    <span className="text-fs-xs text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full">本地</span>
+                                                    <span className="text-fs-xs text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full">{t('settings.local_provider')}</span>
                                                 )}
                                             </button>
                                         );
@@ -835,21 +770,18 @@ export const SettingsPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* 名稱 */}
                             <div>
                                 <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_name')}</label>
-                                <InputField value={editingProfile.name} onChange={v => setEditingProfile({ ...editingProfile, name: v })} placeholder="例: My OpenAI" className="w-full" />
+                                <InputField value={editingProfile.name} onChange={v => setEditingProfile({ ...editingProfile, name: v })} placeholder={t('settings.provider_name_placeholder')} className="w-full" />
                             </div>
 
-                            {/* Base URL（Ollama 或自訂） */}
                             {(editingProfile.provider === 'ollama' || editingProfile.baseUrl) && (
                                 <div>
                                     <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_base_url')}</label>
-                                    <InputField value={editingProfile.baseUrl ?? ''} onChange={v => setEditingProfile({ ...editingProfile, baseUrl: v })} placeholder="http://localhost:11434" className="w-full" />
+                                    <InputField value={editingProfile.baseUrl ?? ''} onChange={v => setEditingProfile({ ...editingProfile, baseUrl: v })} placeholder={t('settings.provider_base_url_placeholder')} className="w-full" />
                                 </div>
                             )}
 
-                            {/* API Key（非 Ollama） */}
                             {editingProfile.provider !== 'ollama' && (
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
@@ -864,7 +796,7 @@ export const SettingsPage: React.FC = () => {
                                                     className="flex items-center gap-1 text-fs-xs text-accent-default hover:underline"
                                                 >
                                                     <ExternalLink className="w-3 h-3" />
-                                                    取得 API Key
+                                                    {t('settings.get_api_key')}
                                                 </a>
                                             ) : null;
                                         })()}
@@ -873,7 +805,7 @@ export const SettingsPage: React.FC = () => {
                                         <InputField
                                             value={editingProfile.apiKey ?? ''}
                                             onChange={v => setEditingProfile({ ...editingProfile, apiKey: v })}
-                                            placeholder="sk-..."
+                                            placeholder={t('settings.api_key_placeholder')}
                                             type={showApiKeys[editingProfile.id] ? 'text' : 'password'}
                                             className="w-full pr-10"
                                         />
@@ -908,6 +840,9 @@ export const SettingsPage: React.FC = () => {
                         <SummaryModelField
                             value={ai.summaryModel ?? 'follow_chat'}
                             onChange={v => updateSettings(s => { s.aiModels.summaryModel = v; })}
+                            followChatLabel={t('settings.summary_follow_chat')}
+                            followProcessorLabel={t('settings.summary_follow_processor')}
+                            inputPlaceholder={t('settings.model_select_or_enter')}
                         />
                     </SettingRow>
                 </SectionCard>
@@ -920,22 +855,20 @@ export const SettingsPage: React.FC = () => {
             </div>
         );
     };
-    // ── Tab: AI 設置 ─────────────────────────────────────
 
 
 
     const handleTestModel = async (model: ModelSettings) => {
         if (!model.provider || !model.model) {
-            toast.error('請先選擇供應商與模型');
+            toast.error(t('settings.model_test_select_first'));
             return;
         }
 
-        const tid = toast.loading(`正在測試模型 ${model.model}...`);
+        const tid = toast.loading(t('settings.model_testing', { model: model.model }));
 
         let baseUrl = undefined;
         let apiKey = undefined;
 
-        // 尋找對應的 profile
         const profile = settings?.aiModels.providerProfiles.find(p => p.provider === model.provider);
         if (profile) {
             baseUrl = profile.baseUrl;
@@ -951,9 +884,9 @@ export const SettingsPage: React.FC = () => {
                 baseUrl: baseUrl,
                 apiKey: apiKey
             });
-            toast.success(`連線成功: 收到回應 "${res}"`, { id: tid });
+            toast.success(t('settings.model_test_success', { response: res }), { id: tid });
         } catch (e: any) {
-            toast.error(`連線失敗: ${e.toString()}`, { id: tid });
+            toast.error(t('settings.model_test_failed', { error: e.toString() }), { id: tid });
         }
     };
 
@@ -963,7 +896,6 @@ export const SettingsPage: React.FC = () => {
             value: p.provider,
             label: p.name || PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label || p.provider,
         }));
-        // 去重（同 provider 可能有多個 profile，只保留一個選項）
         const seen = new Set<string>();
         const uniqueOptions = providerOptions.filter(o => {
             if (seen.has(o.value)) return false;
@@ -994,12 +926,18 @@ export const SettingsPage: React.FC = () => {
                     <div>
                         <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.model_name')}</label>
                         <div className="flex gap-2 items-start">
-                            <ModelComboField value={model.model} onChange={v => onChange({ ...model, model: v })} provider={model.provider} className="flex-1" />
+                            <ModelComboField
+                                value={model.model}
+                                onChange={v => onChange({ ...model, model: v })}
+                                provider={model.provider}
+                                inputPlaceholder={t('settings.model_select_or_enter')}
+                                className="flex-1"
+                            />
                             <button
                                 onClick={() => handleTestModel(model)}
                                 className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
                             >
-                                測試
+                                Test
                             </button>
                         </div>
                     </div>
@@ -1027,9 +965,8 @@ export const SettingsPage: React.FC = () => {
                     />
                 </SectionCard>
 
-                {/* ── Telegram Bot ─────────────────────────────────── */}
                 <SectionCard
-                    title="Telegram Bot"
+                    title={t('settings.telegram_title')}
                     desc={t('settings.telegram_desc')}
                     action={
                         <button
@@ -1046,14 +983,14 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                     {settings.telegram.enabled && (
                         <>
-                            <SettingRow label="Bot Token" desc={t('settings.telegram_token_desc')}>
+                            <SettingRow label={t('settings.telegram_bot_token_label')} desc={t('settings.telegram_token_desc')}>
                                 <div className="flex items-center gap-2">
                                     <InputField
                                         value={settings.telegram.botToken}
                                         onChange={v => updateSettings(s => { s.telegram.botToken = v; })}
                                         type={showPasswords.botToken ? 'text' : 'password'}
                                         className="w-72"
-                                        placeholder="123456:ABC-DEF..."
+                                        placeholder={t('settings.telegram_token_placeholder')}
                                     />
                                     <button
                                         onClick={() => setShowPasswords(prev => ({ ...prev, botToken: !prev.botToken }))}
@@ -1063,7 +1000,7 @@ export const SettingsPage: React.FC = () => {
                                     </button>
                                 </div>
                             </SettingRow>
-                            <SettingRow label="Allowed User IDs" desc={t('settings.telegram_userids_desc')}>
+                            <SettingRow label={t('settings.telegram_allowed_user_ids_label')} desc={t('settings.telegram_userids_desc')}>
                                 <div className="flex items-center gap-2">
                                     <InputField
                                         value={settings.telegram.allowedUserIds.join(', ')}
@@ -1071,7 +1008,7 @@ export const SettingsPage: React.FC = () => {
                                             s.telegram.allowedUserIds = v.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
                                         })}
                                         className="w-72"
-                                        placeholder="123456789, 987654321"
+                                        placeholder={t('settings.telegram_user_ids_placeholder')}
                                     />
                                     <button
                                         onClick={async () => {
@@ -1195,7 +1132,6 @@ export const SettingsPage: React.FC = () => {
         );
     };
 
-    // ── Tab: 知識庫 ──────────────────────────────────────────
 
     const renderKnowledge = () => {
         if (!settings) return null;
@@ -1208,7 +1144,7 @@ export const SettingsPage: React.FC = () => {
 
                 <SectionCard title={t('settings.knowledge_setting')}>
                     <SettingRow label={t('settings.knowledge_path')} desc={t('settings.knowledge_path_desc')}>
-                        <InputField value={settings.knowledge.kbPath} onChange={v => updateSettings(s => { s.knowledge.kbPath = v; })} placeholder="path/to/kb" className="w-64" />
+                        <InputField value={settings.knowledge.kbPath} onChange={v => updateSettings(s => { s.knowledge.kbPath = v; })} placeholder={t('settings.knowledge_path_placeholder')} className="w-64" />
                     </SettingRow>
                     <SettingRow label={t('settings.auto_classify')} desc={t('settings.auto_classify_desc')}>
                         <Toggle checked={settings.knowledge.autoClassifyEnabled} onChange={v => updateSettings(s => { s.knowledge.autoClassifyEnabled = v; })} />
@@ -1249,7 +1185,6 @@ export const SettingsPage: React.FC = () => {
                                         rebuildTagsUnlistenRef.current = null;
                                     }
                                 };
-                                // 訂閱進度事件
                                 const unlisten = await listen<{ current: number; total: number; done: boolean }>(
                                     'rebuild-tags-progress',
                                     (event) => {
@@ -1262,7 +1197,6 @@ export const SettingsPage: React.FC = () => {
                                     }
                                 );
                                 rebuildTagsUnlistenRef.current = unlisten;
-                                // 設初始 loading 狀態（避免 listener 在 invoke 前就清掉）
                                 setRebuildTagsProgress({ current: 0, total: 0 });
                                 try {
                                     const count: number = await invoke('rebuild_source_tags');
@@ -1379,43 +1313,6 @@ export const SettingsPage: React.FC = () => {
                     </div>
                 </SectionCard>
 
-                {/* 
-                <SectionCard
-                    title={t('settings.external_kb')}
-                    desc={t('settings.external_kb_desc')}
-                    action={
-                        <button onClick={handleAddKb} disabled={kbLoading} className="flex items-center gap-1.5 bg-accent-default text-white px-3 py-1.5 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                            <Plus className="w-4 h-4" /> {t('common.add')}
-                        </button>
-                    }
-                >
-                    {externalKbs.length === 0 ? (
-                        <div className="text-center py-8 text-text-tertiary">
-                            <Database className="w-7 h-7 mx-auto mb-2 opacity-50" />
-                            <p className="text-fs-sm">{t('settings.external_kb_empty')}</p>
-                        </div>
-                    ) : (
-                        externalKbs.map(kb => (
-                            <div key={kb.id} className="flex items-start justify-between gap-3 bg-surface-base rounded-lg px-4 py-3 border border-stroke-divider">
-                                <div className="min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Database className="w-4 h-4 text-accent-default shrink-0" />
-                                        <span className="font-medium text-text-primary text-fs-sm">{kb.name}</span>
-                                        <span className={`text-fs-xs px-1.5 py-0.5 rounded-full flex items-center gap-1 ${kb.status === 'connected' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${kb.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
-                                            {kb.status === 'connected' ? t('settings.kb_connected') : t('settings.kb_error')}
-                                        </span>
-                                    </div>
-                                    <p className="text-fs-xs text-text-tertiary">{kb.dbPath} · {kb.embeddingModel} ({kb.embeddingDimension}{t('common.dimension')})</p>
-                                </div>
-                                <button onClick={() => handleRemoveKb(kb.id, kb.name)} className="p-1.5 text-text-tertiary hover:text-red-500 rounded-md transition-colors" title={t('common.delete')}>
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ))
-                    )}
-                </SectionCard>
-                */}
 
                 <div className="flex justify-end">
                     <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
@@ -1426,7 +1323,6 @@ export const SettingsPage: React.FC = () => {
         );
     };
 
-    // ── Tab: 其他 ────────────────────────────────────────────
 
     const renderOther = () => {
         if (!settings) return null;
@@ -1479,12 +1375,11 @@ export const SettingsPage: React.FC = () => {
         );
     };
 
-    // ── Tab: 個人設定 ────────────────────────────────────
 
     const handlePasswordChange = async () => {
         if (!settings) return;
         if (!passwordData.oldPassword || !passwordData.newPassword) {
-            toast.error('請輸入密碼');
+            toast.error(t('settings.password_required'));
             return;
         }
         if (passwordData.newPassword !== passwordData.confirmPassword) {
@@ -1497,7 +1392,7 @@ export const SettingsPage: React.FC = () => {
         }
 
         setPersonalLoading(true);
-        const tid = toast.loading('正在更改密碼...');
+        const tid = toast.loading(t('settings.password_changing'));
         try {
             const mnemonic = await invoke<string>('change_password', {
                 payload: {
@@ -1524,7 +1419,7 @@ export const SettingsPage: React.FC = () => {
         if (!window.confirm(t('settings.regenerate_confirm'))) return;
 
         setPersonalLoading(true);
-        const tid = toast.loading('正在生成新恢復碼...');
+        const tid = toast.loading(t('settings.recovery_generating'));
         try {
             const mnemonic = await invoke<string>('reset_recovery_phrase', {
                 payload: {
@@ -1648,11 +1543,9 @@ export const SettingsPage: React.FC = () => {
         );
     };
 
-    // ── Render ────────────────────────────────────────────
 
     return (
         <div className="flex h-full w-full bg-surface-base">
-            {/* Sidebar */}
             <div className="w-64 border-r border-stroke-divider bg-surface-layer/30 p-6 flex flex-col gap-1.5 overflow-y-auto">
                 <div className="px-3 mb-6">
                     <h2 className="text-fs-xl font-bold text-text-primary">{t('settings.nav_title')}</h2>
@@ -1677,7 +1570,6 @@ export const SettingsPage: React.FC = () => {
                 })}
             </div>
 
-            {/* Content */}
             <div className="flex-1 p-10 overflow-y-auto bg-surface-base/50">
                 {activeTab === 'general' && renderGeneral()}
                 {activeTab === 'personal' && renderPersonal()}
@@ -1688,7 +1580,6 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'other' && renderOther()}
             </div>
 
-            {/* ── 匯出備份恢復碼 Modal ── */}
             {exportModal.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="bg-surface-base border border-stroke-divider rounded-xl p-6 w-[480px] max-w-full shadow-xl">
@@ -1745,7 +1636,6 @@ export const SettingsPage: React.FC = () => {
                 </div>
             )}
 
-            {/* ── 匯入知識庫 Modal ── */}
             {importModal.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="bg-surface-base border border-stroke-divider rounded-xl p-6 w-[480px] max-w-full shadow-xl">
@@ -1853,7 +1743,6 @@ export const SettingsPage: React.FC = () => {
                 </div>
             )}
 
-            {/* ── 密碼驗證 Modal ── */}
             {verifyModal.open && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="bg-surface-base border border-stroke-divider rounded-2xl p-8 w-[400px] max-w-full shadow-2xl animate-in fade-in zoom-in duration-200">
@@ -1941,7 +1830,6 @@ export const SettingsPage: React.FC = () => {
                 </div>
             )}
 
-            {/* ── 匯出備份恢復碼 Modal ── */}
             {exportModal.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="bg-surface-base border border-stroke-divider rounded-xl p-6 w-[480px] max-w-full shadow-xl">
@@ -1998,7 +1886,6 @@ export const SettingsPage: React.FC = () => {
                 </div>
             )}
 
-            {/* ── 新恢復碼 Modal ── */}
             {newRecoveryModal.open && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
                     <div className="bg-surface-base border border-stroke-divider rounded-2xl p-8 w-[520px] max-w-full shadow-2xl animate-in fade-in zoom-in duration-300">
@@ -2047,9 +1934,9 @@ export const SettingsPage: React.FC = () => {
                                     try {
                                         await invoke('confirm_new_recovery', { kbPath: settings?.knowledge.kbPath });
                                         setNewRecoveryModal({ open: false, mnemonic: '', confirmed: false });
-                                        window.location.reload(); // 重啟或重新載入以確保安全狀態更新
+                                        window.location.reload(); // Reload to ensure security state is refreshed
                                     } catch (e) {
-                                        toast.error('確認失敗');
+                                        toast.error(t('settings.confirmation_failed'));
                                     }
                                 }}
                                 className="px-8 py-2.5 bg-accent-default text-white rounded-xl font-semibold hover:bg-accent-light1 transition-all shadow-lg shadow-accent-default/20 disabled:opacity-50 disabled:grayscale active:scale-95"

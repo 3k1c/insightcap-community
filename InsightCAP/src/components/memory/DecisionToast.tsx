@@ -30,7 +30,6 @@ export function DecisionReviewToast() {
 
     useEffect(() => {
         loadDueDecisions();
-        // 每 5 分鐘檢查一次
         const interval = setInterval(loadDueDecisions, 5 * 60 * 1000);
         return () => clearInterval(interval);
     }, []);
@@ -90,7 +89,6 @@ export function DecisionReviewToast() {
 
     return (
         <div className="fixed top-[8.5rem] right-4 z-50 w-80 rounded-xl border border-stroke-divider bg-surface-base shadow-flyout animate-in slide-in-from-right-5 duration-300">
-            {/* Header */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
                 <span className="text-fs-sm font-semibold text-text-primary">
                     {t('decision.review_title')}
@@ -108,7 +106,6 @@ export function DecisionReviewToast() {
                     {t('decision.review_desc', { days: daysSince })}
                 </p>
 
-                {/* Decision info */}
                 <div className="rounded-lg bg-surface-subtle p-3 space-y-1.5">
                     <div className="text-fs-xs text-text-tertiary">{t('decision.variable')}</div>
                     <div className="text-fs-sm text-text-primary">{current.variableDesc}</div>
@@ -116,7 +113,6 @@ export function DecisionReviewToast() {
                     <div className="text-fs-sm text-text-primary">{current.chosenOption}</div>
                 </div>
 
-                {/* Rating buttons */}
                 <div className="grid grid-cols-2 gap-2">
                     {RATING_OPTIONS.map(opt => (
                         <button
@@ -132,7 +128,6 @@ export function DecisionReviewToast() {
                     ))}
                 </div>
 
-                {/* Note */}
                 {selectedRating && (
                     <textarea
                         value={note}
@@ -143,7 +138,6 @@ export function DecisionReviewToast() {
                     />
                 )}
 
-                {/* Actions */}
                 <div className="flex gap-2">
                     <button
                         onClick={handleDismiss}

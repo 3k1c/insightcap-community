@@ -3,8 +3,6 @@ use crate::services::pattern_engine::PatternEngine;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Pattern Promotion 背景工作程式
-/// 定期喚醒檢視是否有多對話記憶重疊
 pub fn start_pattern_promotion_worker(app: AppHandle) {
     let mut shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -14,7 +12,7 @@ pub fn start_pattern_promotion_worker(app: AppHandle) {
             tokio::select! {
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
-                        println!("[PATTERN-PROMOTION] 收到停止訊號，退出。");
+                        println!("[PATTERN-PROMOTION] Stop signal received, exiting.");
                         break;
                     }
                 }
@@ -25,11 +23,11 @@ pub fn start_pattern_promotion_worker(app: AppHandle) {
                     let engine = PatternEngine::new(pool, embedder);
                     match engine.detect_and_promote_patterns().await {
                         Ok(count) if count > 0 => {
-                            println!("[PATTERN-PROMOTION] 成功升格 {} 筆跨對話概念！", count);
+                            println!("[PATTERN-PROMOTION] Promoted {} patterns", count);
                             let _ = app.emit("pattern-promoted", count);
                         }
                         Ok(_) => {}
-                        Err(e) => eprintln!("[PATTERN-PROMOTION] 錯誤: {}", e),
+                        Err(e) => eprintln!("[PATTERN-PROMOTION] Error: {}", e),
                     }
                 }
             }

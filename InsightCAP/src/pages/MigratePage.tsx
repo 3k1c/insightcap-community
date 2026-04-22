@@ -12,7 +12,6 @@ interface MigratePageProps {
 
 type UnlockMethod = 'password' | 'mnemonic';
 
-// 恢復碼路徑的第二步：顯示新日常恢復碼並確認後重啟
 function NewRecoveryStep({
     newMnemonic,
     onConfirm,
@@ -63,11 +62,9 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
     const { t } = useTranslation();
     const [method, setMethod] = useState<UnlockMethod>('password');
 
-    // 密碼路徑
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
 
-    // 恢復碼路徑
     const [mnemonic, setMnemonic] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [showNewPassword, setShowNewPassword] = useState(false);
@@ -82,7 +79,6 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
         setLoading(true);
         try {
             await invoke('unlock_migrated_with_password', { kbPath, password });
-            // Keychain 已寫入，重新走 initApp 流程（try_auto_login 會成功）
             onUnlockSuccess();
         } catch (e) {
             const msg = String(e);
@@ -123,7 +119,6 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
         await invoke('restart_app');
     }
 
-    // 恢復碼路徑第二步：顯示新日常恢復碼
     if (newMnemonic) {
         return (
             <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
@@ -145,7 +140,6 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
             <div className="w-full max-w-sm rounded-2xl border border-stroke-divider p-8 bg-surface-card shadow-flyout">
-                {/* Icon + 標題 */}
                 <div className="mb-6 text-center">
                     <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl mb-3 bg-accent-light2">
                         <HardDrive className="h-6 w-6 text-accent-default" />
@@ -158,7 +152,6 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
                     </p>
                 </div>
 
-                {/* 解鎖方式選擇 */}
                 <div className="mb-4 space-y-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -188,7 +181,6 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
                     </label>
                 </div>
 
-                {/* 密碼路徑 */}
                 {method === 'password' && (
                     <div className="space-y-4">
                         <Input
@@ -220,7 +212,6 @@ export function MigratePage({ kbPath, onUnlockSuccess }: MigratePageProps) {
                     </div>
                 )}
 
-                {/* 恢復碼路徑 */}
                 {method === 'mnemonic' && (
                     <div className="space-y-4">
                         <div>

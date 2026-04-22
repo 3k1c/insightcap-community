@@ -1,8 +1,3 @@
-//! # Excel 提取器 (懶加載)
-//!
-//! 實作 xlsx 表頭索引、隨機樣本提取與總行數統計。
-//! 見 Phase3.1.md P3.1-04。
-
 use crate::error::AppError;
 use calamine::{open_workbook, Data, Reader, Xlsx};
 use rand::seq::SliceRandom;
@@ -13,7 +8,6 @@ pub struct XlsxChunk {
     pub clean_content: String,
 }
 
-/// 提取 xlsx 內容 (索引結構與部分樣本)
 pub async fn extract_xlsx(
     _kb_path: &str,
     file_path: &str,
@@ -21,11 +15,14 @@ pub async fn extract_xlsx(
 ) -> Result<Vec<XlsxChunk>, AppError> {
     let path = Path::new(file_path);
     if !path.exists() {
-        return Err(AppError::Capture(format!("檔案不存在: {}", file_path)));
+        return Err(AppError::Capture(format!(
+            "XLSX file not found: {}",
+            file_path
+        )));
     }
 
     let mut excel: Xlsx<_> = open_workbook(file_path)
-        .map_err(|e| AppError::Capture(format!("Excel 開啟失敗: {}", e)))?;
+        .map_err(|e| AppError::Capture(format!("Failed to open XLSX: {}", e)))?;
 
     let sheet_names = excel.sheet_names();
     let mut chunks = Vec::new();
@@ -37,7 +34,6 @@ pub async fn extract_xlsx(
                 continue;
             }
 
-            // 1. 提取表頭 (預設第一行)
             let mut headers = Vec::new();
             if let Some(first_row) = range.rows().next() {
                 for cell in first_row {
@@ -46,8 +42,7 @@ pub async fn extract_xlsx(
             }
             let header_str = headers.join(" | ");
 
-            // 2. 隨機抽取 5 行樣本 (扣除表頭，從 index 1 開始)
-            let data_rows_count = if total_rows > 1 { total_rows - 1 } else { 0 };
+            let data_rows_count = total_rows.saturating_sub(1);
             let mut sample_rows = Vec::new();
 
             if data_rows_count > 0 {
@@ -56,9 +51,7 @@ pub async fn extract_xlsx(
                 all_indices.shuffle(&mut rng);
 
                 let sample_size = std::cmp::min(5, data_rows_count);
-                let selected_indices = &all_indices[0..sample_size];
-
-                for &idx in selected_indices {
+                for &idx in &all_indices[0..sample_size] {
                     if let Some(row) = range.rows().nth(idx) {
                         let row_str: Vec<String> =
                             row.iter().map(|c: &Data| c.to_string()).collect();
@@ -67,10 +60,9 @@ pub async fn extract_xlsx(
                 }
             }
 
-            // 3. 組合 clean_content
             let mut content = format!("[Sheet: {}]\n", sheet_name);
-            content.push_str(&format!("欄位：{}\n", header_str));
-            content.push_str(&format!("樣本（共 {} 行）：\n", data_rows_count));
+            content.push_str(&format!("Headers: {}\n", header_str));
+            content.push_str(&format!("Data rows: {}\n", data_rows_count));
             for row in sample_rows {
                 content.push_str(&format!("{}\n", row));
             }
@@ -85,10 +77,9 @@ pub async fn extract_xlsx(
     Ok(chunks)
 }
 
-/// 讀取 xlsx 的完整資料 (按需載入用)
 pub fn read_xlsx_full(file_path: &str) -> Result<String, AppError> {
     let mut excel: Xlsx<_> = open_workbook(file_path)
-        .map_err(|e| AppError::Capture(format!("Excel 開啟失敗: {}", e)))?;
+        .map_err(|e| AppError::Capture(format!("Failed to open XLSX: {}", e)))?;
 
     let sheet_names = excel.sheet_names();
     let mut full_content = String::new();

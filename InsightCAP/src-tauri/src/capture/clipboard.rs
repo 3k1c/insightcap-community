@@ -30,7 +30,6 @@ fn get_copied_files() -> Option<Vec<PathBuf>> {
             return None;
         }
 
-        // 15 = CF_HDROP
         let handle = GetClipboardData(15);
         if handle.is_err() {
             let _ = CloseClipboard();
@@ -58,7 +57,6 @@ fn get_copied_files() -> Option<Vec<PathBuf>> {
             }
             let mut buf = vec![0u16; (length + 1) as usize];
             if DragQueryFileW(hdrop, i, Some(&mut buf)) > 0 {
-                // Find null terminator
                 if let Some(pos) = buf.iter().position(|&c| c == 0) {
                     buf.truncate(pos);
                 }
@@ -77,28 +75,21 @@ fn get_copied_files() -> Option<Vec<PathBuf>> {
 
 #[cfg(not(target_os = "windows"))]
 fn get_copied_files() -> Option<Vec<PathBuf>> {
-    // macOS TODO: NSPasteboard -> NSFilenamesPboardType
-    // Linux TODO: xclip/wl-clipboard or arboard
     None
 }
 
-/// 單次讀取剪貼簿，無內建重試。
-/// 上層呼叫者負責決定重試策略（pre-check vs post-Ctrl+C）。
 pub fn read_clipboard() -> Result<ClipboardContent, String> {
-    // 優先判斷檔案路徑
     if let Some(paths) = get_copied_files() {
         return Ok(ClipboardContent::Files(paths));
     }
 
     let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard init error: {}", e))?;
 
-    // 讀取文字
     let text = match clipboard.get_text() {
         Ok(t) if !t.trim().is_empty() => Some(t),
         _ => None,
     };
 
-    // 讀取圖片
     let (has_image, image_bytes) = match clipboard.get_image() {
         Ok(img) => (true, Some(img.bytes.into_owned())),
         Err(_) => (false, None),

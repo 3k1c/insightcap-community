@@ -4,26 +4,21 @@ interface UiState {
     isSubSidebarCollapsed: boolean;
     toggleSubSidebar: (force?: boolean) => void;
 
-    // Active conversation title (for TopBar display)
     activeConversationTitle: string;
     setActiveConversationTitle: (title: string) => void;
 
-    // Active page navigation
     activePage: 'chat' | 'repository' | 'settings';
     setActivePage: (page: 'chat' | 'repository' | 'settings') => void;
 
     activeConversationId: string | null;
     setActiveConversationId: (id: string | null) => void;
 
-    // Toggle editor pane in chat page
     isEditorOpen: boolean;
     toggleEditor: (force?: boolean) => void;
 
-    // Conversation sidebar visibility
     isSidebarOpen: boolean;
     toggleSidebar: (force?: boolean) => void;
 
-    // Hide chat column when editor is open
     isChatHidden: boolean;
     toggleChatHidden: () => void;
 }
@@ -46,7 +41,6 @@ export const useUiStore = create<UiState>((set) => ({
     isEditorOpen: false,
     toggleEditor: (force) => set((state) => {
         const next = force !== undefined ? force : !state.isEditorOpen;
-        // 開啟編輯器時自動收起側邊欄
         return { isEditorOpen: next, isSidebarOpen: next ? false : state.isSidebarOpen };
     }),
 

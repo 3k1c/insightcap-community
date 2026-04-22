@@ -1,21 +1,16 @@
 use std::path::PathBuf;
 
 fn main() {
-    // 自動下載 pdfium.dll（Windows x64）
     download_pdfium_if_needed();
-
-    tauri_build::build()
+    tauri_build::build();
 }
 
 fn download_pdfium_if_needed() {
-    // 只在 Windows 上執行
     if !cfg!(target_os = "windows") {
         return;
     }
 
-    // 目標位置：target/{profile}/ 目錄下
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
-    // OUT_DIR 通常是 target/debug/build/<pkg>/out，往上三層到 target/debug/
     let profile_dir = PathBuf::from(&out_dir)
         .ancestors()
         .nth(3)
@@ -23,17 +18,18 @@ fn download_pdfium_if_needed() {
         .to_path_buf();
 
     let dll_dest = profile_dir.join("pdfium.dll");
-
     if dll_dest.exists() {
-        println!("cargo:warning=pdfium.dll 已存在於 {:?}，跳過下載", dll_dest);
+        println!(
+            "cargo:warning=pdfium.dll already exists at {:?}, skipping download",
+            dll_dest
+        );
         return;
     }
 
-    // 同時也複製到 src-tauri/ 目錄（供 tauri bundle resources 使用）
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let src_tauri_dll = PathBuf::from(&manifest_dir).join("pdfium.dll");
 
-    println!("cargo:warning=正在下載 pdfium.dll ...");
+    println!("cargo:warning=Downloading pdfium.dll...");
 
     let url =
         "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-win-x64.tgz";
@@ -56,7 +52,6 @@ New-Item -ItemType Directory -Path $extract | Out-Null
 Write-Host 'Extracting...'
 tar -xzf $tgz -C $extract
 
-# 搜尋解壓後的 pdfium.dll（不假設路徑）
 $dll = Get-ChildItem -Path $extract -Filter 'pdfium.dll' -Recurse | Select-Object -First 1 -ExpandProperty FullName
 if (-not $dll) {{
     Write-Host 'pdfium.dll not found in archive, listing contents:'
@@ -80,17 +75,17 @@ Write-Host 'Done.'
 
     match status {
         Ok(s) if s.success() => {
-            println!("cargo:warning=pdfium.dll 下載成功");
+            println!("cargo:warning=pdfium.dll downloaded successfully");
         }
         Ok(s) => {
             println!(
-                "cargo:warning=pdfium.dll 下載失敗（exit code: {}），PDF 功能將無法使用",
+                "cargo:warning=pdfium.dll download failed, exit code: {}. PDF extraction may be unavailable",
                 s
             );
         }
         Err(e) => {
             println!(
-                "cargo:warning=無法執行 PowerShell：{}，PDF 功能將無法使用",
+                "cargo:warning=failed to run PowerShell: {}. PDF extraction may be unavailable",
                 e
             );
         }

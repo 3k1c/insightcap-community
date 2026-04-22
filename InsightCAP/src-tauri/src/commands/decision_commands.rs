@@ -21,7 +21,6 @@ pub struct Decision {
     pub updated_at: String,
 }
 
-/// 建立決策記錄（由 chat_core_skill 在偵測到框架外變數時呼叫）
 #[tauri::command]
 pub async fn create_decision(
     pool: State<'_, SqlitePool>,
@@ -33,7 +32,6 @@ pub async fn create_decision(
 ) -> Result<Decision, String> {
     let id = Uuid::now_v7().to_string();
     let now = Utc::now().to_rfc3339();
-    // 14 天後觸發回顧
     let trigger_at = (Utc::now() + chrono::Duration::days(14)).to_rfc3339();
     let options_json = serde_json::to_string(&options).map_err(|e| e.to_string())?;
 
@@ -71,7 +69,6 @@ pub async fn create_decision(
     })
 }
 
-/// 取得已到期且未回報的決策（供前端 Toast 顯示）
 #[tauri::command]
 pub async fn get_due_decisions(pool: State<'_, SqlitePool>) -> Result<Vec<Decision>, String> {
     let now = Utc::now().to_rfc3339();
@@ -90,7 +87,6 @@ pub async fn get_due_decisions(pool: State<'_, SqlitePool>) -> Result<Vec<Decisi
     Ok(rows.into_iter().map(|r| row_to_decision(&r)).collect())
 }
 
-/// 取得指定 project 的所有決策
 #[tauri::command]
 pub async fn get_project_decisions(
     pool: State<'_, SqlitePool>,
@@ -111,7 +107,6 @@ pub async fn get_project_decisions(
     Ok(rows.into_iter().map(|r| row_to_decision(&r)).collect())
 }
 
-/// 回報決策結果（路徑 A：用戶主動回報）
 #[tauri::command]
 pub async fn report_decision_outcome(
     pool: State<'_, SqlitePool>,
@@ -135,7 +130,6 @@ pub async fn report_decision_outcome(
     Ok(())
 }
 
-/// 忽略決策回顧（用戶選擇不回報）
 #[tauri::command]
 pub async fn dismiss_decision(
     pool: State<'_, SqlitePool>,

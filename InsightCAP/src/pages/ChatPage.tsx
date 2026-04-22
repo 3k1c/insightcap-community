@@ -7,8 +7,8 @@ import { InputArea } from '../components/chat/InputArea';
 import { ContextHintBanner } from '../components/memory/ContextHintBanner';
 import { EditorPane } from '../components/chat/EditorPane';
 import { useUiStore } from '../stores/uiStore';
-import { FolderPlus, MessageSquarePlus, ChevronDown, ChevronRight, MoreVertical, PanelRight, CalendarClock } from 'lucide-react';
-import { ProjectTimelineModal } from '../components/chat/ProjectTimelineModal';
+import { FolderPlus, MessageSquarePlus, ChevronDown, ChevronRight, MoreVertical, PanelRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const PROJECT_COLORS = ['#6366F1', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6'];
 
@@ -38,12 +38,13 @@ export const ChatPage: React.FC = () => {
         reorderProjects,
     } = useChatStore();
 
+    const { t } = useTranslation();
     const { loadSources } = useKnowledgeStore();
     const { isEditorOpen, toggleEditor, isSidebarOpen, isChatHidden } = useUiStore();
 
     const [dragPreview, setDragPreview] = useState<{ x: number; y: number; text: string } | null>(null);
 
-    // 監聽訊息拖曳預覽事件
+
     useEffect(() => {
         const onPreview = (e: Event) => {
             const { x, y, text } = (e as CustomEvent<{ x: number; y: number; text: string }>).detail;
@@ -58,7 +59,6 @@ export const ChatPage: React.FC = () => {
         };
     }, []);
 
-    // Resizable split: chatPct is the % width of the chat column (editor gets the rest)
     const [chatPct, setChatPct] = useState(45);
     const containerRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
@@ -81,30 +81,24 @@ export const ChatPage: React.FC = () => {
         window.addEventListener('mouseup', onUp);
     }, []);
 
-    // ── Local UI state ──
     const [showProjectMenu, setShowProjectMenu] = useState<string | null>(null);
     const [showConvMenu, setShowConvMenu] = useState<string | null>(null);
     const [showColorPicker, setShowColorPicker] = useState<string | null>(null);
     const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
     const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
-    // ── DnD：拖曳對話到 Project ──
+
     const [draggingConvId, setDraggingConvId] = useState<string | null>(null);
     const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
     const projectRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const convGhostRef = useRef<HTMLDivElement | null>(null);
 
-    // ── DnD：拖曳 Project 排序 ──
+
     const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null);
     const [dragOverProjectIndex, setDragOverProjectIndex] = useState<number | null>(null);
-    const [isTimelineOpen, setIsTimelineOpen] = useState(false);
     const projectGhostRef = useRef<HTMLDivElement | null>(null);
 
-    // 優先使用 activeProjectId，若無則從當前對話中尋找所屬項目
-    const effectiveProjectId = activeProjectId || conversations.find(c => c.id === activeConversationId)?.projectId;
-    const activeProject = projects.find(p => p.id === effectiveProjectId);
 
-    // ── DnD：全域 guard，確保同時只有一個 DnD ──
     const isDndActiveRef = useRef(false);
 
     const startConvDrag = useCallback((e: React.PointerEvent, convId: string, convTitle: string) => {
@@ -290,9 +284,9 @@ export const ChatPage: React.FC = () => {
 
     const handleAddProject = async () => {
         try {
-            // 產生不重複的預設名稱
+
             const existingNames = useChatStore.getState().projects.map(p => p.name);
-            let baseName = '新項目';
+            let baseName = t('chat.default_project_name');
             let candidateName = baseName;
             let suffix = 1;
             while (existingNames.includes(candidateName)) {
@@ -316,7 +310,7 @@ export const ChatPage: React.FC = () => {
                 p => p.name === trimmed && p.id !== projectId
             );
             if (duplicate) {
-                // 名稱重複，恢復原名不儲存
+
                 setRenamingProjectId(null);
                 setRenameValue('');
                 return;
@@ -343,23 +337,23 @@ export const ChatPage: React.FC = () => {
                 toggleProjectExpanded(projectId);
             }
             setRenamingConvId(newId);
-            setRenameValue('新對話');
+            setRenameValue(t('chat.default_conversation_name'));
         }
     };
 
-    // 對話排序：置頂優先，同層再依 updatedAt DESC
+
     const byPinnedThenDate = (a: typeof conversations[0], b: typeof conversations[0]) => {
         if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
         return b.updatedAt.localeCompare(a.updatedAt);
     };
 
-    // 無 project 的對話（對話列表，置頂優先）
+
     const unprojectConversations = conversations
         .filter(c => !c.projectId)
         .sort(byPinnedThenDate);
 
-    // 按 project 分組的對話（各組內部也按日期排序）
-    // 項目列表排序由後端 sort_order 決定，前端不重排 projects[]
+
+
     const conversationsByProject = new Map<string, typeof conversations>();
     conversations.forEach(c => {
         if (c.projectId) {
@@ -374,39 +368,38 @@ export const ChatPage: React.FC = () => {
     });
 
     const noConversation = !activeConversationId && conversations.length === 0;
-
+                            <div className="text-fs-sm text-text-tertiary p-4 text-center">{t('chat.no_conversations_yet')}</div>
     return (
         <>
             <div className="flex h-full w-full bg-surface-base text-text-primary overflow-hidden">
 
-                {/* ── 側邊欄：項目與對話 ── */}
+
                 <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} border-r border-stroke-divider bg-surface-layer flex flex-col shrink-0 overflow-hidden transition-all duration-200`}>
 
-                    {/* 頂部：標題 + 新項目 + 新對話 */}
+
                     <div className="px-3 pt-4 pb-2 flex items-center justify-between shrink-0">
-                        <span className="text-fs-xs font-semibold text-text-tertiary uppercase tracking-wider">工作區</span>
+                        <span className="text-fs-xs font-semibold text-text-tertiary uppercase tracking-wider">{t('chat.workspace')}</span>
                         <div className="flex items-center gap-0.5">
                             <button
                                 onClick={handleAddProject}
                                 className="p-1.5 hover:bg-surface-subtle rounded text-text-secondary transition-colors"
-                                title="新增項目"
+                                title={t('chat.new_project')}
                             >
                                 <FolderPlus className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={() => handleNewConversation()}
                                 className="p-1.5 hover:bg-surface-subtle rounded text-text-secondary transition-colors"
-                                title="新增對話"
+                                title={t('chat.new_conversation')}
                             >
                                 <MessageSquarePlus className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
 
-                    {/* 捲動區域 */}
                     <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5" onClick={() => { setShowProjectMenu(null); setShowConvMenu(null); }}>
 
-                        {/* ── 項目列表（一級） ── */}
+
                         {projects.map((project, projectIndex) => {
                             const convs = conversationsByProject.get(project.id) || [];
                             const isExpanded = expandedProjectIds.has(project.id);
@@ -417,11 +410,10 @@ export const ChatPage: React.FC = () => {
 
                             return (
                                 <div key={project.id} ref={el => { projectRowRefs.current[project.id] = el; }}>
-                                    {/* 拖曳 Project 排序：插入線（前） */}
+
                                     {showInsertBefore && (
                                         <div className="h-0.5 bg-accent-default rounded mx-2 my-0.5" />
                                     )}
-                                    {/* Project 行 */}
                                     <div
                                         className={`flex items-center gap-2.5 px-2 py-2.5 rounded-lg cursor-pointer transition-colors group ${isDragTarget
                                             ? 'bg-accent-light2 ring-1 ring-accent-default'
@@ -440,7 +432,7 @@ export const ChatPage: React.FC = () => {
                                             setRenameValue(project.name);
                                         }}
                                         onClick={(e) => {
-                                            // 雙擊時瀏覽器會先觸發兩次 onClick，用 detail 區分
+
                                             if (e.detail >= 2) return;
                                             if (convs.length > 0) toggleProjectExpanded(project.id);
                                             if (!isActiveProject) {
@@ -448,10 +440,10 @@ export const ChatPage: React.FC = () => {
                                             }
                                         }}
                                     >
-                                        {/* 顏色圓點 */}
+
                                         <div className="w-2.5 h-2.5 rounded-full shrink-0"
                                             style={{ backgroundColor: project.color || '#6366F1' }} />
-                                        {/* 名稱 / inline 改名 */}
+
                                         {renamingProjectId === project.id ? (
                                             <input
                                                 autoFocus
@@ -471,16 +463,16 @@ export const ChatPage: React.FC = () => {
                                                 {project.name}
                                             </span>
                                         )}
-                                        {/* 右側：⋮（hover）/ 箭頭指示（非 hover，純展示） */}
+
                                         {renamingProjectId !== project.id && (
                                             <div className="relative shrink-0 w-3 h-3 flex items-center justify-center">
-                                                {/* 箭頭：純指示，無互動 */}
+
                                                 <div className="group-hover:opacity-0 transition-opacity absolute text-text-tertiary pointer-events-none">
                                                     {convs.length > 0 && (isExpanded
                                                         ? <ChevronDown className="w-3 h-3" />
                                                         : <ChevronRight className="w-3 h-3" />)}
                                                 </div>
-                                                {/* ⋮ hover 才顯示，選單錨點在此 */}
+
                                                 <div
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -490,22 +482,22 @@ export const ChatPage: React.FC = () => {
                                                 >
                                                     <MoreVertical className="w-3 h-3 text-text-secondary" />
                                                 </div>
-                                                {/* Project 快捷選單，錨定在 ⋮ 容器右下角 */}
+
                                                 {showProjectMenu === project.id && (
                                                     <div className="absolute right-0 top-4 bg-surface-flyout border border-stroke-divider rounded-lg shadow-2xl z-50 w-28 py-1 px-1 animate-in fade-in zoom-in duration-150"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <button onClick={(e) => { e.stopPropagation(); handleNewConversation(project.id); setShowProjectMenu(null); }}
                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left transition-colors">
-                                                            新增對話
+                                                            {t('chat.new_conversation')}
                                                         </button>
                                                         <button onClick={(e) => { e.stopPropagation(); updateProject(project.id, undefined, undefined, !project.isPinned); setShowProjectMenu(null); }}
                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left transition-colors">
-                                                            {project.isPinned ? '取消置頂' : '置頂'}
+                                                            {project.isPinned ? t('chat.unpin') : t('chat.pin')}
                                                         </button>
                                                         <button onClick={(e) => { e.stopPropagation(); setShowColorPicker(showColorPicker === project.id ? null : project.id); }}
                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left transition-colors">
-                                                            顏色
+                                                            {t('chat.change_color')}
                                                         </button>
                                                         {showColorPicker === project.id && (
                                                             <div className="flex flex-wrap gap-1.5 px-3 py-2">
@@ -520,7 +512,7 @@ export const ChatPage: React.FC = () => {
                                                         )}
                                                         <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id); setShowProjectMenu(null); }}
                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-red-400 hover:bg-surface-subtle text-left transition-colors">
-                                                            刪除
+                                                            {t('common.delete')}
                                                         </button>
                                                     </div>
                                                 )}
@@ -528,16 +520,16 @@ export const ChatPage: React.FC = () => {
                                         )}
                                     </div>
 
-                                    {/* 拖曳 Project 排序：插入線（後） */}
+
                                     {showInsertAfter && (
                                         <div className="h-0.5 bg-accent-default rounded mx-2 my-0.5" />
                                     )}
 
-                                    {/* 對話列表（二級，縮排） */}
+
                                     {isExpanded && (
                                         <div className="ml-5 mt-0.5 mb-1 space-y-0.5">
                                             {convs.length === 0 ? (
-                                                <div className="px-3 py-1.5 text-fs-sm text-text-tertiary italic">尚無對話</div>
+                                                <div className="px-3 py-1.5 text-fs-sm text-text-tertiary italic">{t('chat.no_conversations')}</div>
                                             ) : (
                                                 convs.map(conv => (
                                                     <div key={conv.id} className={`group flex items-center px-3 py-1.5 text-fs-sm rounded-md cursor-pointer transition-colors ${activeConversationId === conv.id
@@ -585,15 +577,15 @@ export const ChatPage: React.FC = () => {
                                                                     <div className="absolute right-0 top-5 bg-surface-flyout border border-stroke-divider rounded-lg shadow-2xl z-50 min-w-[100px] py-1 px-1 animate-in fade-in zoom-in duration-150">
                                                                         <button onClick={(e) => { e.stopPropagation(); updateConversation(conv.id, !conv.isPinned); setShowConvMenu(null); }}
                                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left items-center gap-2 transition-colors">
-                                                                            {conv.isPinned ? '取消置頂' : '置頂'}
+                                                                            {conv.isPinned ? t('chat.unpin') : t('chat.pin')}
                                                                         </button>
                                                                         <button onClick={(e) => { e.stopPropagation(); updateConversation(conv.id, undefined, !conv.isLocked); setShowConvMenu(null); }}
                                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left items-center gap-2 transition-colors">
-                                                                            {conv.isLocked ? '解除鎖定' : '鎖定'}
+                                                                            {conv.isLocked ? t('chat.unlock') : t('chat.lock')}
                                                                         </button>
                                                                         <button onClick={(e) => { e.stopPropagation(); if (!conv.isLocked) deleteConversation(conv.id); setShowConvMenu(null); }}
                                                                             className={`flex w-full px-3 py-1.5 text-fs-sm text-left items-center gap-2 transition-colors ${conv.isLocked ? 'text-text-tertiary cursor-not-allowed' : 'text-red-400 hover:bg-surface-subtle'}`}>
-                                                                            刪除
+                                                                            {t('common.delete')}
                                                                         </button>
                                                                     </div>
                                                                 )}
@@ -608,7 +600,7 @@ export const ChatPage: React.FC = () => {
                             );
                         })}
 
-                        {/* ── 未分類對話（無項目，直接平鋪） ── */}
+
                         {unprojectConversations.length > 0 && (
                             <div className={projects.length > 0 ? "mt-2 pt-2 border-t border-stroke-divider" : ""}>
                                 {unprojectConversations.map(conv => (
@@ -658,15 +650,15 @@ export const ChatPage: React.FC = () => {
                                                     <div className="absolute right-0 top-5 bg-surface-base border border-stroke-divider rounded-lg shadow-2xl z-50 min-w-[100px] py-1 px-1 animate-in fade-in zoom-in duration-150">
                                                         <button onClick={(e) => { e.stopPropagation(); updateConversation(conv.id, !conv.isPinned); setShowConvMenu(null); }}
                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left items-center gap-2 transition-colors">
-                                                            {conv.isPinned ? '取消置頂' : '置頂'}
+                                                                            {conv.isPinned ? t('chat.unpin') : t('chat.pin')}
                                                         </button>
                                                         <button onClick={(e) => { e.stopPropagation(); updateConversation(conv.id, undefined, !conv.isLocked); setShowConvMenu(null); }}
                                                             className="flex w-full px-3 py-1.5 text-fs-sm text-text-secondary hover:bg-surface-subtle text-left items-center gap-2 transition-colors">
-                                                            {conv.isLocked ? '解除鎖定' : '鎖定'}
+                                                                            {conv.isLocked ? t('chat.unlock') : t('chat.lock')}
                                                         </button>
                                                         <button onClick={(e) => { e.stopPropagation(); if (!conv.isLocked) deleteConversation(conv.id); setShowConvMenu(null); }}
                                                             className={`flex w-full px-3 py-1.5 text-fs-sm text-left items-center gap-2 transition-colors ${conv.isLocked ? 'text-text-tertiary cursor-not-allowed' : 'text-red-400 hover:bg-surface-subtle'}`}>
-                                                            刪除
+                                                                            {t('common.delete')}
                                                         </button>
                                                     </div>
                                                 )}
@@ -678,20 +670,20 @@ export const ChatPage: React.FC = () => {
                         )}
 
                         {conversations.length === 0 && projects.length === 0 && (
-                            <div className="text-fs-sm text-text-tertiary p-4 text-center">尚無對話記錄</div>
+                            <div className="text-fs-sm text-text-tertiary p-4 text-center">{t('chat.no_conversations_yet')}</div>
                         )}
                     </div>
                 </div>
 
-                {/* ── 主體區域 ── */}
+
                 <div ref={containerRef} className="flex flex-1 h-full overflow-hidden">
 
-                    {/* ── 對話主區 ── */}
+
                     <div
                         className="flex flex-col h-full overflow-hidden shrink-0"
                         style={{ width: isChatHidden ? 0 : isEditorOpen ? `${chatPct}%` : '100%', overflow: isChatHidden ? 'hidden' : undefined }}
                     >
-                        {/* 頂部標題列 */}
+
                         <div className="h-12 border-b border-stroke-divider bg-surface-layer flex items-center justify-between px-4 shrink-0">
                             <div className="flex items-center gap-2 min-w-0 pr-4">
                                 {activeProjectId && (
@@ -707,49 +699,46 @@ export const ChatPage: React.FC = () => {
                                     </>
                                 )}
                                 <span className="font-semibold text-fs-sm truncate text-text-secondary">
-                                    {conversations.find(c => c.id === activeConversationId)?.title || 'InsightCAP 助理'}
+                                    {conversations.find(c => c.id === activeConversationId)?.title || t('chat.default_title')}
                                 </span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
-                                    onClick={() => activeProject && setIsTimelineOpen(true)}
-                                    className={`p-1.5 rounded transition-colors ${!activeProject ? 'opacity-30 cursor-not-allowed' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                                    disabled={!activeProject}
-                                    title="查看項目時間表"
-                                >
-                                    <CalendarClock className="w-4 h-4" />
-                                </button>
-                                <button
                                     onClick={() => toggleEditor()}
                                     className={`p-1.5 rounded transition-colors ${isEditorOpen ? 'bg-accent-light2 text-accent-default' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
-                                    title={isEditorOpen ? "關閉編輯器" : "開啟編輯器"}
+                                    title={isEditorOpen ? t('chat.close_editor') : t('chat.open_editor')}
                                 >
                                     <PanelRight className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
 
-                        {noConversation ? (
-                            <div className="flex-1 flex flex-col items-center justify-center">
-                                <h1 className="text-fs-2xl font-bold mb-4">InsightCAP 即時對話</h1>
-                                <p className="text-text-tertiary mb-8">開始詢問關於您的經驗與知識的問題</p>
-                                <button
-                                    onClick={() => handleNewConversation()}
-                                    className="px-6 py-2 bg-accent-default text-white rounded-lg hover:bg-accent-light1 transition-colors shadow-sm"
-                                >
-                                    新增對話
-                                </button>
+                        <div className="flex flex-1 min-h-0">
+                            <div className="flex-1 min-w-0 flex flex-col">
+                                {noConversation ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center">
+                                        <h1 className="text-fs-2xl font-bold mb-4">{t('chat.welcome_title')}</h1>
+                                        <p className="text-text-tertiary mb-8">{t('chat.welcome_hint')}</p>
+                                        <button
+                                            onClick={() => handleNewConversation()}
+                                            className="px-6 py-2 bg-accent-default text-white rounded-lg hover:bg-accent-light1 transition-colors shadow-sm"
+                                        >
+                                            {t('chat.new_conversation')}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <ContextHintBanner stats={contextStats} isInjecting={isGenerating} />
+                                        <MessageList messages={messages} isGenerating={isGenerating} />
+                                        <InputArea onSendMessage={handleSendMessage} isGenerating={isGenerating} />
+                                    </>
+                                )}
                             </div>
-                        ) : (
-                            <>
-                                <ContextHintBanner stats={contextStats} isInjecting={isGenerating} />
-                                <MessageList messages={messages} isGenerating={isGenerating} />
-                                <InputArea onSendMessage={handleSendMessage} isGenerating={isGenerating} />
-                            </>
-                        )}
+
+                        </div>
                     </div>
 
-                    {/* ── 拖曳分隔線 ── */}
+
                     {isEditorOpen && (
                         <div
                             onMouseDown={onDividerMouseDown}
@@ -759,7 +748,7 @@ export const ChatPage: React.FC = () => {
                         </div>
                     )}
 
-                    {/* ── 右側編輯器 ── */}
+
                     {isEditorOpen && (
                         <div className="flex-1 h-full">
                             <EditorPane />
@@ -780,14 +769,6 @@ export const ChatPage: React.FC = () => {
                     </div>
                 </div>,
                 document.body
-            )}
-            {activeProject && (
-                <ProjectTimelineModal
-                    isOpen={isTimelineOpen}
-                    onClose={() => setIsTimelineOpen(false)}
-                    projectId={activeProject.id}
-                    projectName={activeProject.name}
-                />
             )}
         </>
     );

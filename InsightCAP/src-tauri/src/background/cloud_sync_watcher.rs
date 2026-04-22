@@ -10,12 +10,11 @@ pub fn start_cloud_sync_watcher(app: AppHandle, _kb_path: PathBuf) {
             tokio::select! {
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
-                        println!("[CloudSyncWatcher] 收到停止訊號，退出。");
+                        println!("[CloudSyncWatcher] Stop signal received, exiting.");
                         break;
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_secs(30)) => {
-                    // TODO: 偵測 SQLite 檔案的 modified time 是否與內部 cache 有異
                 }
             }
         }

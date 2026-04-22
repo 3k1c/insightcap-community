@@ -17,12 +17,10 @@ pub async fn save_settings(
     settings: AllSettings,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    // 儲存至 DB
     store::save_settings(pool.inner(), settings.clone())
         .await
         .map_err(|e| format!("Database error: {}", e))?;
 
-    // 更新 bootstrap.json
     let app_data_dir = handle
         .path()
         .app_data_dir()
@@ -33,14 +31,13 @@ pub async fn save_settings(
     Ok(())
 }
 
-/// 首次啟動：在指定路徑建立工作區目錄結構
 #[tauri::command]
 pub async fn initialize_workspace(handle: tauri::AppHandle, path: String) -> Result<(), String> {
     let new_path = std::path::PathBuf::from(&path);
 
     for sub in &[".insightcap", "notes", "inbox", "attachments"] {
         std::fs::create_dir_all(new_path.join(sub))
-            .map_err(|e| format!("無法建立目錄 {}: {}", sub, e))?;
+            .map_err(|e| format!("Failed to create workspace subdirectory {}: {}", sub, e))?;
     }
 
     let app_data_dir = handle.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -50,7 +47,6 @@ pub async fn initialize_workspace(handle: tauri::AppHandle, path: String) -> Res
     handle.restart();
 }
 
-/// 切換工作區路徑
 #[tauri::command]
 pub async fn switch_kb_path(handle: tauri::AppHandle, new_path: String) -> Result<(), String> {
     let app_data_dir = handle
@@ -64,7 +60,6 @@ pub async fn switch_kb_path(handle: tauri::AppHandle, new_path: String) -> Resul
     handle.restart();
 }
 
-/// 測試 Ollama 連線
 #[tauri::command]
 pub async fn test_ollama(base_url: String) -> Result<bool, String> {
     let url = if base_url.trim().is_empty() {
@@ -85,7 +80,6 @@ pub async fn test_ollama(base_url: String) -> Result<bool, String> {
     }
 }
 
-/// 測試任意 AI 供應商連線
 #[tauri::command]
 pub async fn test_provider_connection(
     provider: String,
@@ -127,7 +121,6 @@ pub async fn test_provider_connection(
     }
 }
 
-/// 測試指定模型的對話連線
 #[tauri::command]
 pub async fn test_model_connection(
     provider: String,
@@ -161,7 +154,6 @@ pub async fn test_model_connection(
     }
 }
 
-/// 查詢當前 chat_llm 是否支援 thinking
 #[tauri::command]
 pub async fn get_chat_llm_supports_thinking(pool: State<'_, SqlitePool>) -> Result<bool, String> {
     let settings = store::get_settings(pool.inner())

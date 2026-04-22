@@ -13,7 +13,6 @@ use crate::providers::embedding::fastembed::FastEmbedder;
 use crate::providers::embedding::Embedder;
 use crate::vector_store::multi_index::MultiIndexManager;
 
-// ─── Data Structures ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,7 +57,6 @@ struct ExternalKbCompatibility {
     metadata: KbMetadata,
 }
 
-// ─── KnowledgeSource Trait Impl ────────────────────────────────
 
 pub struct EnterpriseKnowledgeSource {
     pub ekb_id: String,
@@ -74,9 +72,9 @@ impl EnterpriseKnowledgeSource {
         multi_index: Arc<MultiIndexManager>,
     ) -> Result<Self, KnowledgeError> {
         let url = format!("sqlite:{}?mode=ro", db_path);
-        let pool = SqlitePool::connect(&url)
-            .await
-            .map_err(|e| KnowledgeError::Database(format!("無法連接外部知識庫: {}", e)))?;
+        let pool = SqlitePool::connect(&url).await.map_err(|e| {
+            KnowledgeError::Database(format!("Failed to connect external DB: {}", e))
+        })?;
 
         Ok(Self {
             ekb_id,
@@ -116,7 +114,6 @@ impl KnowledgeSource for EnterpriseKnowledgeSource {
             let mut chunks = Vec::new();
 
             for (vid, score) in results {
-                // In v2 DB schema, vid corresponds to captures rowid
                 if let Ok(row) = sqlx::query(
                     "SELECT c.id, c.clean_content, c.type, s.title 
                      FROM captures c 
@@ -180,7 +177,6 @@ impl KnowledgeSource for EnterpriseKnowledgeSource {
     }
 }
 
-// ─── Internal Utility Functions ─────────────────────────────────────────────
 
 async fn read_kb_metadata(conn: &SqlitePool) -> Result<KbMetadata, AppError> {
     let rows: Vec<(String, String)> =
@@ -224,13 +220,11 @@ async fn check_compatibility(
     local_embedding_model: &str,
     local_embedding_dimension: u32,
 ) -> Result<ExternalKbCompatibility, AppError> {
-    // 1. 嘗試以唯讀模式開啟外部 .db
     let url = format!("sqlite:{}?mode=ro", db_path);
     let conn = sqlx::SqlitePool::connect(&url)
         .await
-        .map_err(|e| AppError::Database(format!("無法開啟外部知識庫：{}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to open external DB: {}", e)))?;
 
-    // 2. 讀取 settings
     let metadata = read_kb_metadata(&conn)
         .await
         .unwrap_or_else(|_| KbMetadata {
@@ -245,12 +239,11 @@ async fn check_compatibility(
 
     conn.close().await;
 
-    // 3. 版本檢查
     let kb_version: u32 = metadata.kb_version.parse().unwrap_or(0);
     if kb_version < 1 {
         return Ok(ExternalKbCompatibility {
             is_compatible: false,
-            reason: Some("知識庫版本不支援，請使用最新版本重新生成。".to_string()),
+            reason: Some("External KB version is too old".to_string()),
             metadata,
         });
     }
@@ -262,7 +255,6 @@ async fn check_compatibility(
     })
 }
 
-// ─── Tauri Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn load_external_kb(
@@ -321,7 +313,6 @@ pub async fn load_external_kb(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 背景觸發建立快取索引
     let ekb_id_clone = ekb_id.clone();
     let db_path_clone = db_path.clone();
     tauri::async_runtime::spawn(async move {
@@ -353,7 +344,6 @@ pub async fn build_external_kb_index(app: &tauri::AppHandle, ekb_id: &str, db_pa
         Err(_) => return,
     };
 
-    // V2 架構下的 captures 表
     let chunks: Vec<(i64, String)> = match sqlx::query_as(
         "SELECT rowid, clean_content FROM captures WHERE status = 'inbox' OR status = 'processed' AND clean_content != '' LIMIT 10000"
     )

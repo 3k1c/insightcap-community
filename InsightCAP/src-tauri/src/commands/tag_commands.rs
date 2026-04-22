@@ -51,7 +51,6 @@ pub async fn suggest_tags(
     Ok(suggestions)
 }
 
-/// 取得含有指定 tag 的所有 source_id（用於前端標籤篩選）
 #[tauri::command]
 pub async fn get_source_ids_by_tag(
     pool: State<'_, SqlitePool>,

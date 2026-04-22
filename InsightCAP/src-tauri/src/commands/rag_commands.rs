@@ -29,7 +29,7 @@ pub async fn rag_query(
             match tavily_search(&ws.api_key, &query).await {
                 Ok((ctx, _)) => Some(ctx),
                 Err(e) => {
-                    eprintln!("[WebSearch] 搜尋失敗: {}", e);
+                    eprintln!("[WebSearch] Search failed: {}", e);
                     None
                 }
             }
@@ -62,10 +62,6 @@ pub async fn rag_query(
         .await
 }
 
-/// Streaming 版本：每個 token 透過 Tauri event 推送到前端
-/// event name: "rag-stream-token"      payload: { conversationId, token }
-/// event name: "rag-stream-reasoning"  payload: { conversationId, token }
-/// 完成後發 "rag-stream-done"          payload: { conversationId, fullAnswer, reasoning, ... }
 #[tauri::command]
 pub async fn rag_query_stream(
     app: tauri::AppHandle,
@@ -84,7 +80,6 @@ pub async fn rag_query_stream(
 ) -> Result<(), String> {
     let is_think = thinking_mode.as_deref().unwrap_or("normal") == "think";
 
-    // 聯網搜尋：若啟用則先呼叫 Tavily，取得 web context 及來源清單
     let (web_ctx_text, web_sources) = if web_enabled.unwrap_or(false) {
         let settings = crate::settings::store::get_settings(&state.db)
             .await
@@ -94,7 +89,7 @@ pub async fn rag_query_stream(
             match tavily_search(&ws.api_key, &query).await {
                 Ok((ctx, srcs)) => (Some(ctx), srcs),
                 Err(e) => {
-                    eprintln!("[WebSearch] 搜尋失敗: {}", e);
+                    eprintln!("[WebSearch] Search failed: {}", e);
                     (None, vec![])
                 }
             }
@@ -125,7 +120,6 @@ pub async fn rag_query_stream(
         )
         .await?;
 
-    // 將網路搜尋來源加入 citation_sources
     for src in &web_sources {
         if !citation_sources.iter().any(|s| s == src) {
             citation_sources.push(src.clone());
@@ -140,14 +134,12 @@ pub async fn rag_query_stream(
     let api_key = cfg.api_key.clone().unwrap_or_default();
 
     if api_key.is_empty() && !is_ollama {
-        return Err("LLM 未設定".to_string());
+        return Err("LLM API key not configured".to_string());
     }
 
-    // 偵測模型原生推理能力，決定是否需要 prompt 注入
     let reasoning_style = model_caps::detect(&cfg.model, &cfg.provider);
     let has_native_reasoning = reasoning_style != model_caps::ReasoningStyle::None;
 
-    // 若有聯網搜尋結果，附加到 base_prompt 後
     let base_prompt_with_web = if let Some(web_ctx) = &web_ctx_text {
         format!(
             "{}\n\n{}\n{}",
@@ -159,7 +151,6 @@ pub async fn rag_query_stream(
         base_prompt
     };
 
-    // 只有非原生推理模型才注入 THINK_MODE_PREFIX
     let system_prompt = if is_think && !has_native_reasoning {
         format!(
             "{}{}",

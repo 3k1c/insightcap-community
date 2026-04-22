@@ -25,7 +25,6 @@ pub struct CaptureItem {
     pub created_at: String,
 }
 
-/// 取得來源列表（以 sources 為單位，可按 space_id 篩選）
 #[tauri::command]
 pub async fn get_sources(
     pool: State<'_, SqlitePool>,
@@ -77,7 +76,6 @@ pub async fn get_sources(
     Ok(sources)
 }
 
-/// 取得 captures 列表（可按 source_id 或 status 篩選）
 #[tauri::command]
 pub async fn get_captures(
     pool: State<'_, SqlitePool>,
@@ -129,8 +127,6 @@ pub async fn get_captures(
     Ok(captures)
 }
 
-// ── Timeline 查詢 ──────────────────────────────────────
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineSourceItem {
@@ -148,7 +144,6 @@ pub struct TimelineSourceItem {
     pub tags: Vec<String>,
 }
 
-/// 透過 title 取得來源預覽
 #[tauri::command]
 pub async fn get_source_preview_by_title(
     pool: State<'_, SqlitePool>,
@@ -162,10 +157,9 @@ pub async fn get_source_preview_by_title(
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(preview.unwrap_or_else(|| "無法取得來源預覽。".to_string()))
+    Ok(preview.unwrap_or_else(|| "Source preview is unavailable.".to_string()))
 }
 
-/// 取得 Timeline 來源列表（按日期排序，可按 category / media_type 篩選）
 #[tauri::command]
 pub async fn get_sources_timeline(
     pool: State<'_, SqlitePool>,
@@ -179,7 +173,6 @@ pub async fn get_sources_timeline(
     let max = limit.unwrap_or(50);
     let off = offset.unwrap_or(0);
 
-    // 先偵測 sources 表是否有 006 migration 的欄位
     let has_new_cols: bool = sqlx::query_scalar::<_, i32>(
         "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_category'",
     )
@@ -287,9 +280,6 @@ pub async fn get_sources_timeline(
     Ok(sources)
 }
 
-// ── Editor Document CRUD ───────────────────────────────
-
-/// 建立一份編輯器文件（在 sources 中建記錄 + 在磁碟建 .md）
 #[tauri::command]
 pub async fn create_editor_document(
     state: State<'_, AppState>,
@@ -339,7 +329,6 @@ pub async fn create_editor_document(
     })
 }
 
-/// 讀取編輯器文件內容（從磁碟）
 #[tauri::command]
 pub async fn read_editor_document(
     pool: State<'_, SqlitePool>,
@@ -361,7 +350,6 @@ pub async fn read_editor_document(
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
-/// 儲存編輯器文件內容（寫回磁碟 + 更新 sources.updated_at）
 #[tauri::command]
 pub async fn save_editor_document(
     pool: State<'_, SqlitePool>,
@@ -397,12 +385,8 @@ pub async fn save_editor_document(
     Ok(())
 }
 
-// ── Source 刪除 ────────────────────────────────────────
-
-/// 刪除 source（cascade 刪除 captures；若為 editor_doc 同時刪除磁碟檔案）
 #[tauri::command]
 pub async fn delete_source(pool: State<'_, SqlitePool>, source_id: String) -> Result<(), String> {
-    // 偵測是否有 migration 006 欄位
     let has_new_cols: bool = sqlx::query_scalar::<_, i32>(
         "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_category'",
     )
@@ -437,8 +421,6 @@ pub async fn delete_source(pool: State<'_, SqlitePool>, source_id: String) -> Re
     Ok(())
 }
 
-// ── Capture（Chunk）CRUD ───────────────────────────────
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureDetail {
@@ -454,7 +436,6 @@ pub struct CaptureDetail {
     pub updated_at: String,
 }
 
-/// 取得某 source 下的全部 captures（含 tags、space_id）
 #[tauri::command]
 pub async fn get_captures_detail(
     pool: State<'_, SqlitePool>,
@@ -507,7 +488,6 @@ pub async fn get_captures_detail(
     Ok(captures)
 }
 
-/// 建立手動 capture（獨立 chunk，可不屬於任何 source）
 #[tauri::command]
 pub async fn create_manual_capture(
     pool: State<'_, SqlitePool>,
@@ -551,7 +531,6 @@ pub async fn create_manual_capture(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 更新 source capture_count
     if let Some(ref sid) = source_id {
         sqlx::query(
             "UPDATE sources SET capture_count = capture_count + 1, updated_at = ? WHERE id = ?",
@@ -577,7 +556,6 @@ pub async fn create_manual_capture(
     })
 }
 
-/// 更新 capture 內容、tags、space
 #[tauri::command]
 pub async fn update_capture(
     pool: State<'_, SqlitePool>,
@@ -634,10 +612,8 @@ pub async fn update_capture(
     Ok(())
 }
 
-/// 刪除 capture
 #[tauri::command]
 pub async fn delete_capture(pool: State<'_, SqlitePool>, capture_id: String) -> Result<(), String> {
-    // 取得 source_id 以便更新 count
     let row = sqlx::query("SELECT source_id FROM captures WHERE id = ?")
         .bind(&capture_id)
         .fetch_optional(pool.inner())
@@ -666,7 +642,6 @@ pub async fn delete_capture(pool: State<'_, SqlitePool>, capture_id: String) -> 
     Ok(())
 }
 
-/// 處理源文件：將 source 的文件解析成 chunks，產生 embeddings，寫入 captures 表
 #[tauri::command]
 pub async fn process_source(
     state: State<'_, AppState>,
@@ -674,7 +649,6 @@ pub async fn process_source(
 ) -> Result<usize, String> {
     let db = &state.db;
 
-    // 1. 從 sources 表取得 file_path 和 title
     let source_row = sqlx::query("SELECT id, file_path, title FROM sources WHERE id = ?")
         .bind(&source_id)
         .fetch_optional(db)
@@ -685,7 +659,6 @@ pub async fn process_source(
     let file_path: String = source_row.get("file_path");
     let title: String = source_row.get("title");
 
-    // 2. 取得 kb_path
     let kb_path = {
         let settings = crate::settings::store::get_settings(db)
             .await
@@ -693,7 +666,6 @@ pub async fn process_source(
         settings.knowledge.kb_path
     };
 
-    // 3. 解析文件
     let parsed = crate::capture::file_parser::parse_file(&kb_path, &file_path, None).await?;
     let parsed_full_content = parsed
         .chunks
@@ -718,20 +690,16 @@ pub async fn process_source(
         .execute(db)
         .await;
 
-    // 4. 對每個 chunk 進行段落切分（與 CaptureProcessor / create_temp_chunk 一致）
     for f_chunk in parsed.chunks {
         let routed_chunks = crate::capture::chunking::chunks_for_file_chunk(&f_chunk);
 
-        // 5. 對每個段落生成 embedding 並寫入 captures
         for routed in routed_chunks {
             let chunk_id = uuid::Uuid::now_v7().to_string();
             let para = routed.content;
 
             let mut vector_id = 0i64;
 
-            // 只有當 status 不是 pending_ocr 時，才產生 embedding 與標籤
             if f_chunk.status != "pending_ocr" {
-                // 產生 embedding
                 match state.embedder.embed(&para).await {
                     Ok(vec) => {
                         use std::collections::hash_map::DefaultHasher;
@@ -769,7 +737,6 @@ pub async fn process_source(
             .map_err(|e| format!("DB error: {}", e))?;
 
             if f_chunk.status != "pending_ocr" {
-                // Tagger：非同步提取標籤（不阻塞主流程）
                 let tag_pool = db.clone();
                 let tag_cid = chunk_id.clone();
                 let tag_content = para.clone();
@@ -789,7 +756,6 @@ pub async fn process_source(
         }
     }
 
-    // 6. 更新 source 的 capture_count
     sqlx::query("UPDATE sources SET capture_count = ?, updated_at = ? WHERE id = ?")
         .bind(chunk_count as i64)
         .bind(&now)
@@ -798,7 +764,6 @@ pub async fn process_source(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 7. 非同步儲存向量索引到磁碟
     let vs = state.vector_store.clone();
     tokio::spawn(async move {
         let _ = vs.save().await;
@@ -822,7 +787,6 @@ pub struct RepositoryStats {
     pub total_logs: i64,
 }
 
-/// 取得儲存庫統計數字
 #[tauri::command]
 pub async fn get_repository_stats(state: State<'_, AppState>) -> Result<RepositoryStats, String> {
     let db = &state.db;
@@ -867,18 +831,13 @@ pub async fn get_repository_stats(state: State<'_, AppState>) -> Result<Reposito
     })
 }
 
-// ─── KB Maintenance Commands ────────────────────────────────────────────────
-
-/// 重建知識庫向量索引：清除現有向量 → 重新對所有 captures 產生 embedding
 #[tauri::command]
 pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, String> {
     let db = &state.db;
 
-    // 1. 清空向量儲存
     state.vector_store.clear().await?;
     println!("[RebuildIndex] Vector store cleared.");
 
-    // 2. 取得所有需要重建的 captures
     let rows = sqlx::query(
         "SELECT id, clean_content FROM captures \
          WHERE status != 'archived' AND capture_method != 'temp_attachment' \
@@ -919,7 +878,6 @@ pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, Strin
             .await
             .map_err(|e| format!("vector store error: {}", e))?;
 
-        // 同步更新 captures 的 vector_id
         sqlx::query("UPDATE captures SET vector_id = ? WHERE id = ?")
             .bind(vector_id as i64)
             .bind(&id)
@@ -930,7 +888,6 @@ pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, Strin
         count += 1;
     }
 
-    // 3. 重建 memory_chunks 向量（三層記憶系統也使用同一個 VectorStore）
     let mc_rows = sqlx::query(
         "SELECT id, content, vector_id FROM memory_chunks \
          WHERE content IS NOT NULL AND content != '' \
@@ -961,7 +918,6 @@ pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, Strin
             .await
             .map_err(|e| e.to_string())?;
 
-        // 優先沿用原始 vector_id，無則用 hash(id) 產生新的
         let vector_id = match existing_vid {
             Some(vid) if vid != 0 => vid as u64,
             _ => {
@@ -989,7 +945,6 @@ pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, Strin
         count += 1;
     }
 
-    // 4. 儲存索引到磁碟
     state.vector_store.save().await?;
     println!(
         "[RebuildIndex] Done. {} vectors rebuilt (captures + memory_chunks).",
@@ -998,8 +953,6 @@ pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, Strin
     Ok(count)
 }
 
-/// 對所有歷史 sources 重新生成 Source 層級標籤（帶進度回報，串行）
-/// 只處理 tags 為空或 '[]' 的 source，跳過已有標籤者
 #[tauri::command]
 pub async fn rebuild_source_tags(
     state: State<'_, AppState>,
@@ -1007,7 +960,6 @@ pub async fn rebuild_source_tags(
 ) -> Result<usize, String> {
     let db = &state.db;
 
-    // 只取尚未有標籤的 source（tags 為 NULL、'[]' 或空字串）
     let rows = sqlx::query(
         "SELECT id, clean_content FROM sources \
          WHERE (tags IS NULL OR tags = '[]' OR tags = '') \
@@ -1019,7 +971,10 @@ pub async fn rebuild_source_tags(
     .map_err(|e| e.to_string())?;
 
     let total = rows.len();
-    println!("[RebuildSourceTags] 需要處理 {} 個 source（無標籤）", total);
+    println!(
+        "[RebuildSourceTags] Processing {} sources without tags",
+        total
+    );
 
     let _ = app.emit(
         "rebuild-tags-progress",
@@ -1050,7 +1005,7 @@ pub async fn rebuild_source_tags(
             }
             Err(e) => {
                 eprintln!(
-                    "[RebuildSourceTags] source {} 失敗: {}",
+                    "[RebuildSourceTags] source {} failed: {}",
                     &id[..8.min(id.len())],
                     e
                 );
@@ -1073,15 +1028,26 @@ pub async fn rebuild_source_tags(
     );
 
     println!(
-        "[RebuildSourceTags] 完成，成功 {}/{} 個 source",
+        "[RebuildSourceTags] Finished, succeeded {}/{} sources",
         count, total
     );
     Ok(count)
 }
 
-/// 匯出知識庫：將整個 KB 目錄（.insightcap/ + files/ + notes/）壓縮為 .zip
-/// 匯出知識庫：加密 DB 原樣打包，另附 backup_recovery.bin（用備份恢復碼加密的 db_key 快照）
-/// mnemonic：前端生成並讓用戶確認保存的 24-word 備份專用恢復碼
+const KB_EXPORT_SCHEMA_VERSION: u32 = 17;
+const KB_MANIFEST_PATH: &str = ".insightcap/manifest.json";
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KbExportManifest {
+    schema_version: u32,
+    exported_at: String,
+    includes_reminders: bool,
+}
+
+fn parse_manifest_schema_version(value: &str) -> Option<u32> {
+    value.parse::<u32>().ok()
+}
 #[tauri::command]
 pub async fn export_kb(
     state: State<'_, AppState>,
@@ -1092,64 +1058,70 @@ pub async fn export_kb(
     use crate::auth::recovery::write_recovery_bin;
     use std::io::Write;
 
-    // 1. WAL checkpoint 確保 DB 資料完整
     sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
         .execute(&state.db)
         .await
         .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
 
-    // 2. 從 Keyring 讀取當前 db_key
     let key_hex = keyring::Entry::new("insightcap", "auto_login_key")
-        .map_err(|e| format!("Keyring 存取失敗: {}", e))?
+        .map_err(|e| format!("Keyring access failed: {}", e))?
         .get_password()
-        .map_err(|_| "無法取得 db_key，請確認已登入自動登入模式".to_string())?;
-    let key_bytes = hex::decode(&key_hex).map_err(|_| "db_key 格式錯誤".to_string())?;
+        .map_err(|_| "Failed to read db_key; make sure auto-login mode is available".to_string())?;
+    let key_bytes = hex::decode(&key_hex).map_err(|_| "Invalid db_key hex".to_string())?;
     if key_bytes.len() != 32 {
-        return Err("db_key 長度錯誤".to_string());
+        return Err("Invalid db_key length".to_string());
     }
     let mut db_key = [0u8; 32];
     db_key.copy_from_slice(&key_bytes);
 
-    // 3. 用備份恢復碼衍生 backup_recovery_key，生成 backup_recovery.bin bytes（in-memory）
-    let (backup_recovery_key, salt) =
-        derive_recovery_key_new(&mnemonic).map_err(|e| format!("恢復碼處理失敗: {}", e))?;
+    let (backup_recovery_key, salt) = derive_recovery_key_new(&mnemonic)
+        .map_err(|e| format!("Recovery mnemonic handling failed: {}", e))?;
 
-    // 寫到臨時路徑再讀回（write_recovery_bin 使用原子寫入），完成後刪除
+    let schema_version =
+        sqlx::query_scalar::<_, String>("SELECT id FROM _migrations ORDER BY id DESC LIMIT 1")
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| format!("Failed to read schema version: {}", e))?
+            .and_then(|id| parse_manifest_schema_version(&id))
+            .unwrap_or(KB_EXPORT_SCHEMA_VERSION);
+    let manifest = KbExportManifest {
+        schema_version,
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        includes_reminders: true,
+    };
+
     let kb_root = &state.kb_path;
     let tmp_bin = kb_root.join(".insightcap").join("backup_recovery_tmp.bin");
     write_recovery_bin(&tmp_bin, &db_key, &backup_recovery_key, &salt)
-        .map_err(|e| format!("生成 backup_recovery.bin 失敗: {}", e))?;
-    let backup_bin_data =
-        std::fs::read(&tmp_bin).map_err(|e| format!("讀取 backup_recovery.bin 失敗: {}", e))?;
+        .map_err(|e| format!("Failed to generate backup_recovery.bin: {}", e))?;
+    let backup_bin_data = std::fs::read(&tmp_bin)
+        .map_err(|e| format!("Failed to read backup_recovery.bin: {}", e))?;
     let _ = std::fs::remove_file(&tmp_bin);
 
-    // 4. 打包 zip：加密 DB 原樣 + auth.json + backup_recovery.bin（in-memory）+ files/ + notes/
     let zip_result = (|| -> Result<(), String> {
-        let zip_file =
-            std::fs::File::create(&dest_path).map_err(|e| format!("無法建立匯出檔案: {}", e))?;
+        let zip_file = std::fs::File::create(&dest_path)
+            .map_err(|e| format!("Failed to create export file: {}", e))?;
         let mut zip = zip::ZipWriter::new(zip_file);
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o644);
 
-        // .insightcap/ 目錄：加密 DB 原樣，跳過 WAL/SHM，注入 backup_recovery.bin
         let insightcap_dir = kb_root.join(".insightcap");
         let walker = walkdir::WalkDir::new(&insightcap_dir).follow_links(false);
         for entry in walker {
-            let entry = entry.map_err(|e| format!("走訪目錄失敗: {}", e))?;
+            let entry = entry.map_err(|e| format!("Failed to walk directory: {}", e))?;
             let abs_path = entry.path();
             let rel_path = abs_path
                 .strip_prefix(kb_root)
-                .map_err(|_| "路徑前綴錯誤".to_string())?
+                .map_err(|_| "Invalid path prefix".to_string())?
                 .to_string_lossy()
                 .replace('\\', "/");
 
             if abs_path.is_dir() {
                 zip.add_directory(&format!("{}/", rel_path), options)
-                    .map_err(|e| format!("加入目錄失敗: {}", e))?;
+                    .map_err(|e| format!("Failed to add directory: {}", e))?;
                 continue;
             }
-            // 跳過 WAL/SHM 暫存檔、舊的 backup_recovery.bin（由 in-memory 版本取代）
             if let Some(name) = abs_path.file_name().and_then(|n| n.to_str()) {
                 if name.ends_with("-wal") || name.ends_with("-shm") || name == "backup_recovery.bin"
                 {
@@ -1157,19 +1129,24 @@ pub async fn export_kb(
                 }
             }
             zip.start_file(&rel_path, options)
-                .map_err(|e| format!("加入檔案失敗: {}", e))?;
-            let data =
-                std::fs::read(abs_path).map_err(|e| format!("讀取檔案失敗 {}: {}", rel_path, e))?;
+                .map_err(|e| format!("Failed to add file: {}", e))?;
+            let data = std::fs::read(abs_path)
+                .map_err(|e| format!("Failed to read file {}: {}", rel_path, e))?;
             zip.write_all(&data)
-                .map_err(|e| format!("寫入 zip 失敗: {}", e))?;
+                .map_err(|e| format!("Failed to write zip entry: {}", e))?;
         }
-        // 注入本次生成的 backup_recovery.bin
         zip.start_file(".insightcap/backup_recovery.bin", options)
-            .map_err(|e| format!("加入 backup_recovery.bin 失敗: {}", e))?;
+            .map_err(|e| format!("Failed to add backup_recovery.bin: {}", e))?;
         zip.write_all(&backup_bin_data)
-            .map_err(|e| format!("寫入 backup_recovery.bin 失敗: {}", e))?;
+            .map_err(|e| format!("Failed to write backup_recovery.bin: {}", e))?;
 
-        // files/ 和 notes/ 原樣打包
+        zip.start_file(KB_MANIFEST_PATH, options)
+            .map_err(|e| format!("Failed to add manifest: {}", e))?;
+        let manifest_json = serde_json::to_vec_pretty(&manifest)
+            .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
+        zip.write_all(&manifest_json)
+            .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
         for dir_name in &["files", "notes"] {
             let dir_path = kb_root.join(dir_name);
             if !dir_path.exists() {
@@ -1177,29 +1154,30 @@ pub async fn export_kb(
             }
             let walker = walkdir::WalkDir::new(&dir_path).follow_links(false);
             for entry in walker {
-                let entry = entry.map_err(|e| format!("走訪目錄失敗: {}", e))?;
+                let entry = entry.map_err(|e| format!("Failed to walk directory: {}", e))?;
                 let abs_path = entry.path();
                 let rel_path = abs_path
                     .strip_prefix(kb_root)
-                    .map_err(|_| "路徑前綴錯誤".to_string())?
+                    .map_err(|_| "Invalid path prefix".to_string())?
                     .to_string_lossy()
                     .replace('\\', "/");
 
                 if abs_path.is_dir() {
                     zip.add_directory(&format!("{}/", rel_path), options)
-                        .map_err(|e| format!("加入目錄失敗: {}", e))?;
+                        .map_err(|e| format!("Failed to add directory: {}", e))?;
                 } else {
                     zip.start_file(&rel_path, options)
-                        .map_err(|e| format!("加入檔案失敗: {}", e))?;
+                        .map_err(|e| format!("Failed to add file: {}", e))?;
                     let data = std::fs::read(abs_path)
-                        .map_err(|e| format!("讀取檔案失敗 {}: {}", rel_path, e))?;
+                        .map_err(|e| format!("Failed to read file {}: {}", rel_path, e))?;
                     zip.write_all(&data)
-                        .map_err(|e| format!("寫入 zip 失敗: {}", e))?;
+                        .map_err(|e| format!("Failed to write zip entry: {}", e))?;
                 }
             }
         }
 
-        zip.finish().map_err(|e| format!("zip 完成失敗: {}", e))?;
+        zip.finish()
+            .map_err(|e| format!("Failed to finalize zip: {}", e))?;
         Ok(())
     })();
 
@@ -1207,13 +1185,6 @@ pub async fn export_kb(
     println!("[ExportKB] Exported KB to: {}", dest_path);
     Ok(())
 }
-
-/// 匯入知識庫：
-/// 1. 驗證 ZIP → 解壓到 kb_root
-/// 2. 用備份恢復碼解密 backup_recovery.bin → 取得原始 db_key
-/// 3. 用原始 db_key 開啟加密 DB，PRAGMA rekey 換成新密碼衍生的 new_db_key
-/// 4. 寫新 auth.json、生成新日常 recovery.bin、更新 Keychain
-/// 5. 重啟
 #[tauri::command]
 pub async fn import_kb(
     handle: tauri::AppHandle,
@@ -1238,70 +1209,99 @@ pub async fn import_kb(
 
     let src = std::path::Path::new(&src_path);
     if !src.exists() {
-        return Err("來源檔案不存在".to_string());
+        return Err("Source file does not exist".to_string());
     }
 
-    // 驗證是 ZIP 檔案（magic bytes: PK\x03\x04）
     let header = {
-        let mut f = std::fs::File::open(src).map_err(|e| format!("讀取失敗: {}", e))?;
+        let mut f =
+            std::fs::File::open(src).map_err(|e| format!("Failed to read source file: {}", e))?;
         let mut buf = [0u8; 4];
         use std::io::Read as _;
-        f.read_exact(&mut buf).map_err(|_| "檔案太短".to_string())?;
+        f.read_exact(&mut buf)
+            .map_err(|_| "File is too short".to_string())?;
         buf
     };
     if &header != b"PK\x03\x04" {
-        return Err("無效的知識庫封包（非 .zip 格式）".to_string());
+        return Err("Invalid knowledge base package: expected .zip format".to_string());
+    }
+
+    {
+        let zip_file =
+            std::fs::File::open(src).map_err(|e| format!("Failed to open package: {}", e))?;
+        let mut archive = zip::ZipArchive::new(zip_file)
+            .map_err(|e| format!("Failed to parse package: {}", e))?;
+        match archive.by_name(KB_MANIFEST_PATH) {
+            Ok(mut manifest_file) => {
+                let mut manifest_buf = String::new();
+                manifest_file
+                    .read_to_string(&mut manifest_buf)
+                    .map_err(|e| format!("Failed to read manifest: {}", e))?;
+                let manifest: KbExportManifest = serde_json::from_str(&manifest_buf)
+                    .map_err(|e| format!("Invalid manifest format: {}", e))?;
+                if manifest.schema_version > KB_EXPORT_SCHEMA_VERSION {
+                    return Err(format!(
+                        "Package schema_version={} is newer than supported version {}; please upgrade the app before importing.",
+                        manifest.schema_version, KB_EXPORT_SCHEMA_VERSION
+                    ));
+                }
+            }
+            Err(zip::result::ZipError::FileNotFound) => {
+                println!("[ImportKB] manifest not found, continue with legacy package");
+            }
+            Err(e) => return Err(format!("Failed to read manifest: {}", e)),
+        };
     }
 
     let kb_root = &state.kb_path;
     let db_path = kb_root.join(".insightcap").join("insightcap.db");
     let backup_bin_path = kb_root.join(".insightcap").join("backup_recovery.bin");
 
-    // 步驟 0：關閉現有 DB 連線池，釋放檔案鎖定（Windows 必需，否則覆蓋 DB 會 Access Denied）
     state.db.close().await;
 
-    // 步驟 1：備份現有 DB，解壓 zip 到 kb_root
     if db_path.exists() {
         let bak = db_path.with_extension("db.bak");
-        std::fs::copy(&db_path, &bak).map_err(|e| format!("備份現有 DB 失敗: {}", e))?;
+        std::fs::copy(&db_path, &bak)
+            .map_err(|e| format!("Failed to back up existing DB: {}", e))?;
     }
 
-    let zip_file = std::fs::File::open(src).map_err(|e| format!("開啟封包失敗: {}", e))?;
-    let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| format!("解析封包失敗: {}", e))?;
+    let zip_file =
+        std::fs::File::open(src).map_err(|e| format!("Failed to open package: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(zip_file).map_err(|e| format!("Failed to parse package: {}", e))?;
 
     for i in 0..archive.len() {
         let mut file = archive
             .by_index(i)
-            .map_err(|e| format!("讀取封包項目失敗: {}", e))?;
+            .map_err(|e| format!("Failed to read package entry: {}", e))?;
 
-        // Zip Slip 防護：拒絕含路徑穿越或絕對路徑的條目
         let entry_name = file.name().to_string();
         if entry_name.contains("..") || entry_name.starts_with('/') || entry_name.starts_with('\\')
         {
-            return Err(format!("不安全的封包路徑: {}", entry_name));
+            return Err(format!("Unsafe package path: {}", entry_name));
         }
         let out_path = kb_root.join(&entry_name);
         if file.name().ends_with('/') {
-            std::fs::create_dir_all(&out_path).map_err(|e| format!("建立目錄失敗: {}", e))?;
+            std::fs::create_dir_all(&out_path)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
         } else {
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| format!("建立父目錄失敗: {}", e))?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
             }
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)
-                .map_err(|e| format!("讀取封包內容失敗: {}", e))?;
-            std::fs::write(&out_path, &buf).map_err(|e| format!("寫入檔案失敗: {}", e))?;
+                .map_err(|e| format!("Failed to read package content: {}", e))?;
+            std::fs::write(&out_path, &buf).map_err(|e| format!("Failed to write file: {}", e))?;
         }
     }
 
-    // 步驟 2：讀取 backup_recovery.bin，用備份恢復碼解密取得原始 db_key
     if !backup_bin_path.exists() {
-        return Err("封包中缺少 backup_recovery.bin，無法還原".to_string());
+        return Err("Package is missing backup_recovery.bin; cannot restore".to_string());
     }
     let bin_data = std::fs::read(&backup_bin_path)
-        .map_err(|e| format!("讀取 backup_recovery.bin 失敗: {}", e))?;
+        .map_err(|e| format!("Failed to read backup_recovery.bin: {}", e))?;
     if bin_data.len() < 17 {
-        return Err("backup_recovery.bin 格式錯誤".to_string());
+        return Err("Invalid backup_recovery.bin format".to_string());
     }
     let mut stored_salt = [0u8; 16];
     stored_salt.copy_from_slice(&bin_data[1..17]);
@@ -1311,17 +1311,16 @@ pub async fn import_kb(
     let (mut db_key, _) = read_recovery_bin(&backup_bin_path, &backup_recovery_key)
         .map_err(|_| "INVALID_MNEMONIC".to_string())?;
 
-    // 步驟 3：用原始 db_key 開啟加密 DB，PRAGMA rekey 換成新密碼的 new_db_key
     let mut new_salt = [0u8; 32];
     rand::rng().fill_bytes(&mut new_salt);
     let mut new_db_key = derive_db_key(&new_password, &new_salt)
-        .map_err(|e| format!("新密碼 key 衍生失敗: {}", e))?;
+        .map_err(|e| format!("Failed to derive new DB key: {}", e))?;
     let db_key_hex = hex::encode(&db_key);
     let new_key_hex = hex::encode(&new_db_key);
 
     let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
     let options = SqliteConnectOptions::from_str(&db_url)
-        .map_err(|e| format!("DB URL 解析失敗: {}", e))?
+        .map_err(|e| format!("Failed to parse DB URL: {}", e))?
         .pragma("key", format!("\"x'{}'\"", db_key_hex))
         .create_if_missing(false);
 
@@ -1329,22 +1328,20 @@ pub async fn import_kb(
         .max_connections(1)
         .connect_with(options)
         .await
-        .map_err(|e| format!("無法建立連接池: {}", e))?;
+        .map_err(|e| format!("Failed to create database pool: {}", e))?;
 
-    // 驗證金鑰：執行一個簡單查詢觸發解密
     sqlx::query("SELECT 1 FROM sqlite_master LIMIT 1")
         .fetch_optional(&pool)
         .await
-        .map_err(|_| "INVALID_MNEMONIC".to_string())?; // 解密失敗表示恢復碼不符
+        .map_err(|_| "INVALID_MNEMONIC".to_string())?;
 
     sqlx::query(&format!("PRAGMA rekey = \"x'{}'\";", new_key_hex))
         .execute(&pool)
         .await
-        .map_err(|e| format!("PRAGMA rekey 失敗: {}", e))?;
+        .map_err(|e| format!("PRAGMA rekey failed: {}", e))?;
 
     pool.close().await;
 
-    // 步驟 4：寫新 auth.json（原子寫入）
     let kb_path_str = kb_root.to_string_lossy().to_string();
     {
         use std::path::PathBuf;
@@ -1357,10 +1354,9 @@ pub async fn import_kb(
         std::fs::rename(&tmp, &auth_json_path).map_err(|e| e.to_string())?;
     }
 
-    // 生成新日常 recovery.bin
     let new_mnemonic = generate_mnemonic();
-    let (new_recovery_key, new_recovery_salt) =
-        derive_recovery_key_new(&new_mnemonic).map_err(|e| format!("生成新恢復碼失敗: {}", e))?;
+    let (new_recovery_key, new_recovery_salt) = derive_recovery_key_new(&new_mnemonic)
+        .map_err(|e| format!("Failed to create new recovery mnemonic: {}", e))?;
     let rec_bin_path = kb_root.join(".insightcap").join("recovery.bin");
     write_recovery_bin(
         &rec_bin_path,
@@ -1368,15 +1364,13 @@ pub async fn import_kb(
         &new_recovery_key,
         &new_recovery_salt,
     )
-    .map_err(|e| format!("寫入 recovery.bin 失敗: {}", e))?;
+    .map_err(|e| format!("Failed to write recovery.bin: {}", e))?;
 
-    // 更新 Keychain（auto_login_key 設為新 db_key）
     Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
-        .map_err(|e| format!("Keychain 存取失敗: {}", e))?
+        .map_err(|e| format!("Keychain access failed: {}", e))?
         .set_password(&new_key_hex)
-        .map_err(|e| format!("Keychain 寫入失敗: {}", e))?;
+        .map_err(|e| format!("Keychain write failed: {}", e))?;
 
-    // 清理已失效的 backup_recovery.bin（DB 已 rekey，該檔案不再有用且含敏感 nonce/salt）
     let _ = std::fs::remove_file(&backup_bin_path);
 
     db_key.zeroize();
@@ -1387,24 +1381,16 @@ pub async fn import_kb(
         src_path
     );
 
-    // 步驟 5：重啟（重啟後 init_db 用 Keychain 的 new_db_key 開啟 DB）
-    // 回傳新恢復碼前先重啟—前端需在重啟前顯示新恢復碼，因此改為回傳 mnemonic，由前端決定重啟時機
-    // 步驟 5：回傳新恢復碼讓前端顯示，前端確認保存後呼叫 restart_app 重啟
-    // 與 recover_with_mnemonic 一致的模式
-    let _ = handle; // 重啟由前端呼叫 restart_app 完成
+    let _ = handle;
     Ok(new_mnemonic)
 }
 
-/// 刪除知識庫：清除所有 DB 資料、向量索引、以及磁碟上的 files/ notes/ 目錄
 #[tauri::command]
 pub async fn delete_kb(state: State<'_, AppState>) -> Result<(), String> {
     let db = &state.db;
 
-    // 1. 清空向量索引
     state.vector_store.clear().await?;
 
-    // 2. 清空主要資料表（排除 settings 以保留使用者偏好）
-    //    順序：先刪子表再刪父表，避免 FOREIGN KEY constraint 錯誤
     let tables = [
         "chunk_relations",
         "decisions",
@@ -1427,23 +1413,21 @@ pub async fn delete_kb(state: State<'_, AppState>) -> Result<(), String> {
                 println!("[DeleteKB] Table {} does not exist, skipping.", table);
                 continue;
             }
-            return Err(format!("清除 {} 失敗: {}", table, e));
+            return Err(format!("Failed to clear table {}: {}", table, e));
         }
     }
 
-    // 3. VACUUM 回收空間
     sqlx::query("VACUUM")
         .execute(db)
         .await
         .map_err(|e| format!("VACUUM failed: {}", e))?;
 
-    // 4. 刪除磁碟上的來源文件、筆記、編輯器文件目錄
     let kb_root = &state.kb_path;
     for dir_name in &["files", "notes", ".insightcap/documents"] {
         let dir_path = kb_root.join(dir_name);
         if dir_path.exists() {
             std::fs::remove_dir_all(&dir_path)
-                .map_err(|e| format!("刪除 {} 目錄失敗: {}", dir_name, e))?;
+                .map_err(|e| format!("Failed to delete {} directory: {}", dir_name, e))?;
             println!("[DeleteKB] Removed directory: {}", dir_path.display());
         }
     }
@@ -1452,14 +1436,11 @@ pub async fn delete_kb(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
-/// 修復歷史資料：掃描所有 file_path 有效但 local_doc_path 為空的 sources，
-/// 將原始檔案複製到 kb_path/files/ 並更新 local_doc_path
 #[tauri::command]
 pub async fn repair_missing_local_copies(state: State<'_, AppState>) -> Result<String, String> {
     let db = &state.db;
     let kb_path = state.kb_path.to_string_lossy().to_string();
 
-    // 查出所有 file_path 有值、local_doc_path 為空、且 type = 'file' 的 sources
     let rows = sqlx::query(
         "SELECT id, file_path FROM sources \
          WHERE type = 'file' AND file_path IS NOT NULL AND file_path != '' \
@@ -1467,14 +1448,15 @@ pub async fn repair_missing_local_copies(state: State<'_, AppState>) -> Result<S
     )
     .fetch_all(db)
     .await
-    .map_err(|e| format!("查詢失敗: {}", e))?;
+    .map_err(|e| format!("Query failed: {}", e))?;
 
     if rows.is_empty() {
-        return Ok("無需修復的歷史資料".to_string());
+        return Ok("No missing local copies need repair".to_string());
     }
 
     let files_dir = std::path::Path::new(&kb_path).join("files");
-    std::fs::create_dir_all(&files_dir).map_err(|e| format!("無法建立 files 目錄: {}", e))?;
+    std::fs::create_dir_all(&files_dir)
+        .map_err(|e| format!("Failed to create files directory: {}", e))?;
 
     let mut copied = 0usize;
     let mut skipped = 0usize;
@@ -1484,7 +1466,6 @@ pub async fn repair_missing_local_copies(state: State<'_, AppState>) -> Result<S
         let file_path: String = row.try_get("file_path").unwrap_or_default();
         let src = std::path::Path::new(&file_path);
 
-        // 原始檔案已不存在，跳過
         if !src.exists() {
             skipped += 1;
             continue;
@@ -1515,17 +1496,17 @@ pub async fn repair_missing_local_copies(state: State<'_, AppState>) -> Result<S
                 .execute(db)
                 .await;
                 copied += 1;
-                println!("[RepairCopies] ✅ {} → {}", file_path, dest.display());
+                println!("[RepairCopies] copied {} -> {}", file_path, dest.display());
             }
             Err(e) => {
-                eprintln!("[RepairCopies] ❌ 複製失敗 {}: {}", file_path, e);
+                eprintln!("[RepairCopies] copy failed {}: {}", file_path, e);
                 skipped += 1;
             }
         }
     }
 
     let msg = format!(
-        "修復完成：已複製 {} 個檔案，跳過 {} 個（原始檔案不存在或複製失敗）",
+        "Repair completed: copied {} files, skipped {} files",
         copied, skipped
     );
     println!("[RepairCopies] {}", msg);

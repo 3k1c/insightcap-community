@@ -212,7 +212,7 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
                         <button
                             onClick={onClose}
                             className="rounded-md p-1.5 text-text-tertiary hover:text-text-secondary hover:bg-surface-subtle"
-                            aria-label="close-pending-drawer"
+                            aria-label={t('pending_drawer.close_aria')}
                         >
                             <X size={16} />
                         </button>
@@ -236,7 +236,7 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
                     {visibleChunks.length > 0 && (
                         <div className="mt-3 rounded-lg border border-stroke-control bg-surface-base px-3 py-2">
                             <div className="flex items-center justify-between text-fs-xs text-text-secondary">
-                                <span>已選</span>
+                                <span>{t('pending_drawer.selected_label')}</span>
                                 <span>{selectedRate}%</span>
                             </div>
                             <div className="mt-2 h-1.5 rounded-full bg-surface-subtle">
@@ -307,7 +307,7 @@ export function PendingConfirmDrawer({ open, onClose, onCountChange }: Props) {
                                                         className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-text-primary"
                                                     >
                                                         <ChevronDown size={12} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                                        {isExpanded ? '收合' : '展開'}
+                                                        {isExpanded ? 'Collapse' : 'Expand'}
                                                     </button>
                                                 </div>
 

@@ -12,7 +12,7 @@ pub fn start_ocr_worker(app: AppHandle) {
             tokio::select! {
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
-                        println!("[OCR-WORKER] 收到停止訊號，退出。");
+                        println!("[OCR-WORKER] Stop signal received, exiting.");
                         break;
                     }
                 }
@@ -43,26 +43,21 @@ pub fn start_ocr_worker(app: AppHandle) {
                 let img_bytes: Option<Vec<u8>> = row.try_get("image_data").unwrap_or(None);
 
                 if let Some(bytes) = img_bytes {
-                    // 保留原始圖像供 vision model（前處理 binarize 會破壞顏色資訊）
                     let raw_bytes = bytes.clone();
 
-                    // 第二層：圖像前處理，失敗時靜默降級
                     let ocr_input = match preprocess_for_ocr(&bytes) {
-                        Ok(preprocessed) => preprocessed,
+                        Ok(processed) => processed,
                         Err(e) => {
-                            eprintln!("[OCR-WORKER] 前處理失敗，使用原始圖像: {e}");
+                            eprintln!("[OCR-WORKER] Preprocess failed, fallback to raw image: {e}");
                             bytes
                         }
                     };
 
-                    // 第一層：原生 OCR
                     match crate::ocr::perform_ocr(&ocr_input).await {
                         Ok(raw_text) => {
-                            // 第三層：文字後處理
                             let language = detect_language(&raw_text);
                             let mut clean_text = postprocess_ocr_text(&raw_text, language);
 
-                            // Vision model 增強：用原始圖像嘗試 vision，成功則取代 OCR 結果
                             if let Ok(settings) = crate::settings::store::get_settings(&pool).await
                             {
                                 if let Some(vc) =
@@ -78,13 +73,14 @@ pub fn start_ocr_worker(app: AppHandle) {
                                         )
                                         .await
                                     {
-                                        println!("[OCR-WORKER] Vision 增強成功 {capture_id}");
+                                        println!(
+                                            "[OCR-WORKER] Vision enhancement applied: {capture_id}"
+                                        );
                                         clean_text = vision_text;
                                     }
                                 }
                             }
 
-                            // Embedding 向量化並寫入 VectorStore
                             let app_state = app.state::<AppState>();
                             let vector_id_opt: Option<i64> =
                                 match app_state.embedder.embed(&clean_text).await {
@@ -120,13 +116,11 @@ pub fn start_ocr_worker(app: AppHandle) {
                             .execute(&pool)
                             .await;
 
-                            // 非同步儲存向量索引
                             let vs = app_state.vector_store.clone();
                             tokio::spawn(async move {
                                 let _ = vs.save().await;
                             });
 
-                            // 標籤生成
                             let tag_pool = pool.clone();
                             let tag_cid = capture_id.clone();
                             let tag_content = clean_text.clone();
@@ -137,7 +131,6 @@ pub fn start_ocr_worker(app: AppHandle) {
                                     tag_engine.process_new_capture(&tag_cid, &tag_content).await;
                             });
 
-                            // Space 聚類
                             let sp_pool = pool.clone();
                             let sp_embedder = app_state.embedder.clone();
                             let sp_vs = app_state.vector_store.clone();
@@ -152,7 +145,6 @@ pub fn start_ocr_worker(app: AppHandle) {
                                 let _ = space_engine.assign_to_space(&sp_cid, &sp_content).await;
                             });
 
-                            // 反向鏈接分析
                             let rel_pool = pool.clone();
                             let rel_embedder = app_state.embedder.clone();
                             let rel_vs = app_state.vector_store.clone();
@@ -167,10 +159,10 @@ pub fn start_ocr_worker(app: AppHandle) {
                                     .await;
                             });
 
-                            println!("[OCR-WORKER] ✅ {capture_id}");
+                            println!("[OCR-WORKER] OCR completed: {capture_id}");
                         }
                         Err(e) => {
-                            eprintln!("[OCR-WORKER] ❌ OCR 失敗 {capture_id}: {e}");
+                            eprintln!("[OCR-WORKER] OCR failed {capture_id}: {e}");
                             let _ = sqlx::query(
                                 "UPDATE captures SET status = 'processed', clean_content = '' WHERE id = ?"
                             )
