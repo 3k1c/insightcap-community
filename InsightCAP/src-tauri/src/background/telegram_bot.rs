@@ -22,6 +22,340 @@ const DRAFT_THROTTLE_MS: u64 = 300;
 
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Copy)]
+enum TelegramLanguage {
+    ZhTw,
+    ZhCn,
+    En,
+}
+
+impl TelegramLanguage {
+    fn from_code(language: &str) -> Self {
+        match language {
+            "zh-CN" => Self::ZhCn,
+            "en" => Self::En,
+            _ => Self::ZhTw,
+        }
+    }
+}
+
+async fn telegram_language(app: &AppHandle) -> TelegramLanguage {
+    let state = app.state::<AppState>();
+    telegram_language_from_pool(&state.db).await
+}
+
+async fn telegram_language_from_pool(pool: &SqlitePool) -> TelegramLanguage {
+    crate::settings::store::get_settings(pool)
+        .await
+        .map(|settings| TelegramLanguage::from_code(&settings.general.language))
+        .unwrap_or(TelegramLanguage::ZhTw)
+}
+
+fn tg_start_message(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => {
+            "InsightCAP Telegram 助手\n\n\
+             我可以幫你把 Telegram 中的文字、網址、圖片與文件擷取到 InsightCAP，並直接用你的知識庫進行問答。\n\n\
+             直接傳送問題即可開始 RAG 對話；傳送網址會自動加入擷取佇列。\n\n\
+             可用命令：\n\
+             /new - 建立新對話\n\
+             /list - 選擇或封存對話\n\
+             /rename <名稱> - 重新命名目前對話\n\
+             /project - 選擇專案\n\
+             /newproject <名稱> - 建立新專案\n\
+             /reminders - 查看提醒\n\
+             /status - 查看知識庫狀態\n\
+             /recent - 查看最近擷取"
+        }
+        TelegramLanguage::ZhCn => {
+            "InsightCAP Telegram 助手\n\n\
+             我可以帮你把 Telegram 中的文字、网址、图片与文件采集到 InsightCAP，并直接用你的知识库进行问答。\n\n\
+             直接发送问题即可开始 RAG 对话；发送网址会自动加入采集队列。\n\n\
+             可用命令：\n\
+             /new - 建立新对话\n\
+             /list - 选择或归档对话\n\
+             /rename <名称> - 重命名当前对话\n\
+             /project - 选择项目\n\
+             /newproject <名称> - 建立新项目\n\
+             /reminders - 查看提醒\n\
+             /status - 查看知识库状态\n\
+             /recent - 查看最近采集"
+        }
+        TelegramLanguage::En => {
+            "InsightCAP Telegram Assistant\n\n\
+             I can capture Telegram text, links, images, and documents into InsightCAP, and answer questions with your knowledge base.\n\n\
+             Send a question to start a RAG conversation. Send a URL to add it to the capture queue.\n\n\
+             Commands:\n\
+             /new - Start a new conversation\n\
+             /list - Select or archive conversations\n\
+             /rename <name> - Rename the current conversation\n\
+             /project - Select a project\n\
+             /newproject <name> - Create a new project\n\
+             /reminders - View reminders\n\
+             /status - View knowledge base status\n\
+             /recent - View recent captures"
+        }
+    }
+}
+
+fn tg_unknown_command_message(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => {
+            "未知命令。可用命令：/new /list /rename /project /newproject /reminders /status /recent"
+        }
+        TelegramLanguage::ZhCn => {
+            "未知命令。可用命令：/new /list /rename /project /newproject /reminders /status /recent"
+        }
+        TelegramLanguage::En => {
+            "Unknown command. Available commands: /new /list /rename /project /newproject /reminders /status /recent"
+        }
+    }
+}
+
+fn tg_url_received(lang: TelegramLanguage, label: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("已收到 {label} 連結，正在解析並加入佇列..."),
+        TelegramLanguage::ZhCn => format!("已收到 {label} 链接，正在解析并加入队列..."),
+        TelegramLanguage::En => format!("Received {label} link. Parsing and queuing..."),
+    }
+}
+
+fn tg_url_exists(lang: TelegramLanguage, label: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("{label} 連結已存在於知識庫。"),
+        TelegramLanguage::ZhCn => format!("{label} 链接已存在于知识库。"),
+        TelegramLanguage::En => format!("{label} link already exists in repository."),
+    }
+}
+
+fn tg_url_queued(lang: TelegramLanguage, label: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("{label} 連結已加入擷取佇列。可用 /recent 查看最近擷取。"),
+        TelegramLanguage::ZhCn => format!("{label} 链接已加入采集队列。可用 /recent 查看最近采集。"),
+        TelegramLanguage::En => format!("{label} link queued successfully. Use /recent to view latest captures."),
+    }
+}
+
+fn tg_new_conversation(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "已建立新對話，並設為目前對話。",
+        TelegramLanguage::ZhCn => "已建立新对话，并设为当前对话。",
+        TelegramLanguage::En => "Started a new conversation and set it as current.",
+    }
+}
+
+fn tg_no_conversations(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "目前沒有對話。請使用 /new 建立新對話。",
+        TelegramLanguage::ZhCn => "目前没有对话。请使用 /new 建立新对话。",
+        TelegramLanguage::En => "No conversations yet. Use /new to create one.",
+    }
+}
+
+fn tg_select_conversation(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "請選擇對話：",
+        TelegramLanguage::ZhCn => "请选择对话：",
+        TelegramLanguage::En => "Select a conversation:",
+    }
+}
+
+fn tg_current_marker(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "（目前）",
+        TelegramLanguage::ZhCn => "（当前）",
+        TelegramLanguage::En => " (current)",
+    }
+}
+
+fn tg_archive_button(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "封存",
+        TelegramLanguage::ZhCn => "归档",
+        TelegramLanguage::En => "Archive",
+    }
+}
+
+fn tg_conversation_selected(lang: TelegramLanguage, title: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("目前對話：{title}"),
+        TelegramLanguage::ZhCn => format!("当前对话：{title}"),
+        TelegramLanguage::En => format!("Current conversation: {title}"),
+    }
+}
+
+fn tg_conversation_not_found(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "找不到對話。",
+        TelegramLanguage::ZhCn => "找不到对话。",
+        TelegramLanguage::En => "Conversation not found.",
+    }
+}
+
+fn tg_conversation_archived_or_missing(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "對話已封存或不存在。",
+        TelegramLanguage::ZhCn => "对话已归档或不存在。",
+        TelegramLanguage::En => "Conversation already archived or not found.",
+    }
+}
+
+fn tg_conversation_archived(lang: TelegramLanguage, title: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("已封存對話：{title}"),
+        TelegramLanguage::ZhCn => format!("已归档对话：{title}"),
+        TelegramLanguage::En => format!("Archived conversation: {title}"),
+    }
+}
+
+fn tg_recent_empty(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "目前沒有已擷取來源。",
+        TelegramLanguage::ZhCn => "目前没有已采集来源。",
+        TelegramLanguage::En => "No captured sources yet.",
+    }
+}
+
+fn tg_recent_header(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "最近擷取：\n\n",
+        TelegramLanguage::ZhCn => "最近采集：\n\n",
+        TelegramLanguage::En => "Recent captures:\n\n",
+    }
+}
+
+fn tg_project_not_found(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "找不到專案。",
+        TelegramLanguage::ZhCn => "找不到项目。",
+        TelegramLanguage::En => "Project not found.",
+    }
+}
+
+fn tg_current_project(lang: TelegramLanguage, name: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("目前專案：{name}"),
+        TelegramLanguage::ZhCn => format!("当前项目：{name}"),
+        TelegramLanguage::En => format!("Current project: {name}"),
+    }
+}
+
+fn tg_new_project_hint(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "請使用 /newproject <名稱> 建立專案。\n例：/newproject InsightCAP MVP",
+        TelegramLanguage::ZhCn => "请使用 /newproject <名称> 建立项目。\n例：/newproject InsightCAP MVP",
+        TelegramLanguage::En => {
+            "Use /newproject <name> to create a project.\nExample: /newproject InsightCAP MVP"
+        }
+    }
+}
+
+fn tg_no_reminders(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "目前沒有啟用中的提醒。",
+        TelegramLanguage::ZhCn => "目前没有启用中的提醒。",
+        TelegramLanguage::En => "No active reminders.",
+    }
+}
+
+fn tg_active_reminders(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "啟用中的提醒：",
+        TelegramLanguage::ZhCn => "启用中的提醒：",
+        TelegramLanguage::En => "Active reminders:",
+    }
+}
+
+fn tg_reminder_completed(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "提醒已標記為完成。",
+        TelegramLanguage::ZhCn => "提醒已标记为完成。",
+        TelegramLanguage::En => "Reminder marked as completed.",
+    }
+}
+
+fn tg_reminder_dismissed(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "提醒已取消。",
+        TelegramLanguage::ZhCn => "提醒已取消。",
+        TelegramLanguage::En => "Reminder dismissed.",
+    }
+}
+
+fn tg_rename_usage(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "用法：/rename <名稱>",
+        TelegramLanguage::ZhCn => "用法：/rename <名称>",
+        TelegramLanguage::En => "Usage: /rename <name>",
+    }
+}
+
+fn tg_no_active_conversation(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "目前沒有作用中的對話。請使用 /new 建立新對話。",
+        TelegramLanguage::ZhCn => "目前没有活动对话。请使用 /new 建立新对话。",
+        TelegramLanguage::En => "No active conversation. Use /new to create one.",
+    }
+}
+
+fn tg_conversation_renamed(lang: TelegramLanguage, name: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("對話已重新命名為：{name}"),
+        TelegramLanguage::ZhCn => format!("对话已重命名为：{name}"),
+        TelegramLanguage::En => format!("Conversation renamed to: {name}"),
+    }
+}
+
+fn tg_select_project(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "請選擇專案：",
+        TelegramLanguage::ZhCn => "请选择项目：",
+        TelegramLanguage::En => "Select a project:",
+    }
+}
+
+fn tg_no_projects(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "目前沒有專案。請使用 /newproject <名稱> 建立。",
+        TelegramLanguage::ZhCn => "目前没有项目。请使用 /newproject <名称> 建立。",
+        TelegramLanguage::En => "No projects yet. Use /newproject <name> to create one.",
+    }
+}
+
+fn tg_create_project_button(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "建立新專案",
+        TelegramLanguage::ZhCn => "建立新项目",
+        TelegramLanguage::En => "Create New Project",
+    }
+}
+
+fn tg_new_project_usage(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "用法：/newproject <名稱>",
+        TelegramLanguage::ZhCn => "用法：/newproject <名称>",
+        TelegramLanguage::En => "Usage: /newproject <name>",
+    }
+}
+
+fn tg_project_created(lang: TelegramLanguage, name: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("已建立專案「{name}」，並設為目前專案。"),
+        TelegramLanguage::ZhCn => format!("已建立项目“{name}”，并设为当前项目。"),
+        TelegramLanguage::En => format!("Created project \"{name}\" and set it as current."),
+    }
+}
+
+fn tg_ai_not_configured(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "AI 尚未設定。請先在 Settings 設定 provider 與 API key。",
+        TelegramLanguage::ZhCn => "AI 尚未设置。请先在 Settings 设置 provider 与 API key。",
+        TelegramLanguage::En => {
+            "AI is not configured. Please set your provider and API key in Settings."
+        }
+    }
+}
+
 pub fn start_telegram_bot(app: AppHandle) {
     if POLLING_ACTIVE.swap(true, Ordering::SeqCst) {
         println!("[TelegramBot] Already running, skipping duplicate start");
@@ -309,13 +643,9 @@ async fn handle_url_capture(
     chat_id: i64,
     url: &str,
 ) -> Result<(), String> {
+    let lang = telegram_language(app).await;
     let label = classify_url_label(url);
-    send_message(
-        bot_token,
-        chat_id,
-        &format!("Received {label} link. Parsing and queuing..."),
-    )
-    .await?;
+    send_message(bot_token, chat_id, &tg_url_received(lang, label)).await?;
 
     let state = app.state::<AppState>();
     let pool = &state.db;
@@ -328,12 +658,7 @@ async fn handle_url_capture(
             .map_err(|e| e.to_string())?;
 
     if existing.is_some() {
-        return send_message(
-            bot_token,
-            chat_id,
-            &format!("{label} link already exists in repository."),
-        )
-        .await;
+        return send_message(bot_token, chat_id, &tg_url_exists(lang, label)).await;
     }
 
     let inbox_id = Uuid::now_v7().to_string();
@@ -352,12 +677,7 @@ async fn handle_url_capture(
     .await
     .map_err(|e| format!("   inbox   : {}", e))?;
 
-    send_message(
-        bot_token,
-        chat_id,
-        &format!("{label} link queued successfully. Use /recent to view latest captures."),
-    )
-    .await
+    send_message(bot_token, chat_id, &tg_url_queued(lang, label)).await
 }
 
 async fn handle_command(
@@ -366,6 +686,7 @@ async fn handle_command(
     chat_id: i64,
     text: &str,
 ) -> Result<(), String> {
+    let lang = telegram_language(app).await;
     let cmd = text
         .split_whitespace()
         .next()
@@ -376,23 +697,7 @@ async fn handle_command(
 
     match cmd {
         "/start" => {
-            send_message(
-                bot_token,
-                chat_id,
-                "        InsightCAP    \n\n\
-                                       \n\
-                                     \n\n\
-                      \n\
-                 /new -      \n\
-                 /list -       \n\
-                 /rename <  > -        \n\
-                 /project -       \n\
-                 /newproject <  > -      \n\
-                 /reminders -       \n\
-                 /status -      \n\
-                 /recent -       ",
-            )
-            .await
+            send_message(bot_token, chat_id, tg_start_message(lang)).await
         }
         "/new" => handle_new_conversation(app, bot_token, chat_id).await,
         "/list" => handle_list_conversations(app, bot_token, chat_id).await,
@@ -409,12 +714,7 @@ async fn handle_command(
         "/recent" => handle_recent(app, bot_token, chat_id).await,
         "/reminders" => handle_list_reminders(app, bot_token, chat_id).await,
         _ => {
-            send_message(
-                bot_token,
-                chat_id,
-                "             /new /list /rename /project /newproject /reminders /status /recent",
-            )
-            .await
+            send_message(bot_token, chat_id, tg_unknown_command_message(lang)).await
         }
     }
 }
@@ -712,12 +1012,8 @@ async fn handle_new_conversation(
 
     set_telegram_context(pool, chat_id, &id).await?;
 
-    send_message(
-        bot_token,
-        chat_id,
-        "Started a new conversation and set it as current.",
-    )
-    .await
+    let lang = telegram_language_from_pool(pool).await;
+    send_message(bot_token, chat_id, tg_new_conversation(lang)).await
 }
 
 async fn handle_list_conversations(
@@ -737,9 +1033,11 @@ async fn handle_list_conversations(
     .map_err(|e| e.to_string())?;
 
     if rows.is_empty() {
-        return send_message(bot_token, chat_id, "               /new       ").await;
+        let lang = telegram_language_from_pool(pool).await;
+        return send_message(bot_token, chat_id, tg_no_conversations(lang)).await;
     }
 
+    let lang = telegram_language_from_pool(pool).await;
     let current_conv = get_telegram_context(pool, chat_id)
         .await
         .unwrap_or_default();
@@ -750,14 +1048,18 @@ async fn handle_list_conversations(
         let title: String = row
             .try_get("title")
             .unwrap_or_else(|_| "Untitled Conversation".to_string());
-        let marker = if id == current_conv { " (current)" } else { "" };
+        let marker = if id == current_conv {
+            tg_current_marker(lang)
+        } else {
+            ""
+        };
         keyboard.push(json!([
             {
                 "text": format!("{}{}", title, marker),
                 "callback_data": format!("conv_{}", id),
             },
             {
-                "text": "Archive",
+                "text": tg_archive_button(lang),
                 "callback_data": format!("arch_{}", id),
             },
         ]));
@@ -769,7 +1071,7 @@ async fn handle_list_conversations(
         .post(&url)
         .json(&json!({
             "chat_id": chat_id,
-            "text": "Select a conversation:",
+            "text": tg_select_conversation(lang),
             "reply_markup": {
                 "inline_keyboard": keyboard,
             },
@@ -788,6 +1090,7 @@ async fn handle_callback(
     data: &str,
     keyboard_msg_id: Option<i64>,
 ) -> Result<(), String> {
+    let lang = telegram_language(app).await;
     if let Some(conv_id) = data.strip_prefix("conv_") {
         let state = app.state::<AppState>();
         let pool = &state.db;
@@ -802,14 +1105,14 @@ async fn handle_callback(
         match title {
             Some(t) => {
                 set_telegram_context(pool, chat_id, conv_id).await?;
-                let reply = format!("          {}", t);
+                let reply = tg_conversation_selected(lang, &t);
                 if let Some(msg_id) = keyboard_msg_id {
                     edit_message_text(bot_token, chat_id, msg_id, &reply).await
                 } else {
                     send_message(bot_token, chat_id, &reply).await
                 }
             }
-            None => send_message(bot_token, chat_id, "Conversation not found.").await,
+            None => send_message(bot_token, chat_id, tg_conversation_not_found(lang)).await,
         }
     } else if let Some(conv_id) = data.strip_prefix("arch_") {
         let state = app.state::<AppState>();
@@ -826,7 +1129,7 @@ async fn handle_callback(
             return send_message(
                 bot_token,
                 chat_id,
-                "Conversation already archived or not found.",
+                tg_conversation_archived_or_missing(lang),
             )
             .await;
         };
@@ -855,7 +1158,7 @@ async fn handle_callback(
             }
         }
 
-        let reply = format!("Archived conversation: {}", t);
+        let reply = tg_conversation_archived(lang, &t);
         if let Some(msg_id) = keyboard_msg_id {
             edit_message_text(bot_token, chat_id, msg_id, &reply).await
         } else {
@@ -873,20 +1176,19 @@ async fn handle_callback(
                 .map_err(|e| e.to_string())?;
 
         let Some(n) = name else {
-            return send_message(bot_token, chat_id, "Project not found.").await;
+            return send_message(bot_token, chat_id, tg_project_not_found(lang)).await;
         };
 
         set_telegram_project_context(pool, chat_id, proj_id).await?;
 
-        let reply = format!("Current project: {}", n);
+        let reply = tg_current_project(lang, &n);
         if let Some(msg_id) = keyboard_msg_id {
             edit_message_text(bot_token, chat_id, msg_id, &reply).await
         } else {
             send_message(bot_token, chat_id, &reply).await
         }
     } else if data == "new_project" {
-        let reply =
-            "Use /newproject <name> to create a project.\nExample: /newproject InsightCAP MVP";
+        let reply = tg_new_project_hint(lang);
         if let Some(msg_id) = keyboard_msg_id {
             edit_message_text(bot_token, chat_id, msg_id, reply).await
         } else {
@@ -896,7 +1198,7 @@ async fn handle_callback(
         let state = app.state::<AppState>();
         let engine = crate::services::reminder_engine::ReminderEngine::new(state.db.clone());
         engine.update_reminder_status(rmd_id, "completed").await?;
-        let reply = "Reminder marked as completed.";
+        let reply = tg_reminder_completed(lang);
         if let Some(msg_id) = keyboard_msg_id {
             edit_message_text(bot_token, chat_id, msg_id, reply).await
         } else {
@@ -906,7 +1208,7 @@ async fn handle_callback(
         let state = app.state::<AppState>();
         let engine = crate::services::reminder_engine::ReminderEngine::new(state.db.clone());
         engine.update_reminder_status(rmd_id, "dismissed").await?;
-        let reply = "Reminder dismissed.";
+        let reply = tg_reminder_dismissed(lang);
         if let Some(msg_id) = keyboard_msg_id {
             edit_message_text(bot_token, chat_id, msg_id, reply).await
         } else {
@@ -923,14 +1225,15 @@ async fn handle_list_reminders(
     chat_id: i64,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
+    let lang = telegram_language_from_pool(&state.db).await;
     let engine = crate::services::reminder_engine::ReminderEngine::new(state.db.clone());
     let reminders: Vec<Value> = engine.get_active_reminders().await?;
 
     if reminders.is_empty() {
-        return send_message(bot_token, chat_id, "No active reminders.").await;
+        return send_message(bot_token, chat_id, tg_no_reminders(lang)).await;
     }
 
-    send_message(bot_token, chat_id, "Active reminders:").await?;
+    send_message(bot_token, chat_id, tg_active_reminders(lang)).await?;
 
     for item in reminders {
         let id = item["id"].as_str().unwrap_or("");
@@ -1093,8 +1396,9 @@ async fn handle_rename_conversation(
     chat_id: i64,
     new_name: &str,
 ) -> Result<(), String> {
+    let lang = telegram_language(app).await;
     if new_name.is_empty() {
-        return send_message(bot_token, chat_id, "           /rename <  >").await;
+        return send_message(bot_token, chat_id, tg_rename_usage(lang)).await;
     }
 
     let state = app.state::<AppState>();
@@ -1104,12 +1408,7 @@ async fn handle_rename_conversation(
         .await
         .unwrap_or_default();
     if conv_id.is_empty() {
-        return send_message(
-            bot_token,
-            chat_id,
-            "No active conversation. Use /new to create one.",
-        )
-        .await;
+        return send_message(bot_token, chat_id, tg_no_active_conversation(lang)).await;
     }
 
     let now = Utc::now().to_rfc3339();
@@ -1121,17 +1420,13 @@ async fn handle_rename_conversation(
         .await
         .map_err(|e| e.to_string())?;
 
-    send_message(
-        bot_token,
-        chat_id,
-        &format!("Conversation renamed to: {}", new_name),
-    )
-    .await
+    send_message(bot_token, chat_id, &tg_conversation_renamed(lang, new_name)).await
 }
 
 async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
+    let lang = telegram_language_from_pool(pool).await;
 
     let rows = sqlx::query(
         "SELECT title, type, captured_at FROM sources \
@@ -1142,10 +1437,10 @@ async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
     .map_err(|e| e.to_string())?;
 
     if rows.is_empty() {
-        return send_message(bot_token, chat_id, "No captured sources yet.").await;
+        return send_message(bot_token, chat_id, tg_recent_empty(lang)).await;
     }
 
-    let mut msg = String::from("Recent captures:\n\n");
+    let mut msg = String::from(tg_recent_header(lang));
     for row in &rows {
         let title: String = row
             .try_get("title")
@@ -1177,6 +1472,7 @@ async fn handle_list_projects(
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
+    let lang = telegram_language_from_pool(pool).await;
 
     let rows = sqlx::query(
         "SELECT id, name FROM projects WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 15",
@@ -1195,7 +1491,11 @@ async fn handle_list_projects(
         let name: String = row
             .try_get("name")
             .unwrap_or_else(|_| "Untitled Project".to_string());
-        let marker = if id == current_proj { " (current)" } else { "" };
+        let marker = if id == current_proj {
+            tg_current_marker(lang)
+        } else {
+            ""
+        };
         keyboard.push(json!([
             {
                 "text": format!("{}{}", name, marker),
@@ -1205,14 +1505,14 @@ async fn handle_list_projects(
     }
 
     keyboard.push(json!([{
-        "text": "Create New Project",
+        "text": tg_create_project_button(lang),
         "callback_data": "new_project",
     }]));
 
     let text = if rows.is_empty() {
-        "No projects yet. Use /newproject <name> to create one."
+        tg_no_projects(lang)
     } else {
-        "Select a project:"
+        tg_select_project(lang)
     };
 
     let client = Client::new();
@@ -1237,8 +1537,9 @@ async fn handle_new_project(
     chat_id: i64,
     name: &str,
 ) -> Result<(), String> {
+    let lang = telegram_language(app).await;
     if name.is_empty() {
-        return send_message(bot_token, chat_id, "Usage: /newproject <name>").await;
+        return send_message(bot_token, chat_id, tg_new_project_usage(lang)).await;
     }
 
     let state = app.state::<AppState>();
@@ -1266,12 +1567,7 @@ async fn handle_new_project(
 
     set_telegram_project_context(pool, chat_id, &id).await?;
 
-    send_message(
-        bot_token,
-        chat_id,
-        &format!("     {}                   ", name),
-    )
-    .await
+    send_message(bot_token, chat_id, &tg_project_created(lang, name)).await
 }
 
 async fn handle_rag_query(
@@ -1383,12 +1679,8 @@ async fn handle_rag_query(
     let is_ollama = cfg.provider == "ollama";
 
     if api_key.is_empty() && !is_ollama {
-        return send_message(
-            bot_token,
-            chat_id,
-            "AI is not configured. Please set your provider and API key in Settings.",
-        )
-        .await;
+        let lang = TelegramLanguage::from_code(&settings.general.language);
+        return send_message(bot_token, chat_id, tg_ai_not_configured(lang)).await;
     }
 
     let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model, cfg.provider);
