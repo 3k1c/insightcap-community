@@ -51,6 +51,27 @@ async fn telegram_language_from_pool(pool: &SqlitePool) -> TelegramLanguage {
         .unwrap_or(TelegramLanguage::ZhTw)
 }
 
+async fn active_telegram_project(
+    pool: &SqlitePool,
+    chat_id: i64,
+) -> Result<Option<(String, String)>, String> {
+    let project_id = get_telegram_project_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
+    if project_id.is_empty() {
+        return Ok(None);
+    }
+
+    let name: Option<String> =
+        sqlx::query_scalar("SELECT name FROM projects WHERE id = ? AND is_archived = 0")
+            .bind(&project_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    Ok(name.map(|name| (project_id, name)))
+}
+
 fn tg_start_message(lang: TelegramLanguage) -> &'static str {
     match lang {
         TelegramLanguage::ZhTw => {
@@ -58,7 +79,7 @@ fn tg_start_message(lang: TelegramLanguage) -> &'static str {
              我可以幫你把 Telegram 中的文字、網址、圖片與文件擷取到 InsightCAP，並直接用你的知識庫進行問答。\n\n\
              直接傳送問題即可開始 RAG 對話；傳送網址會自動加入擷取佇列。\n\n\
              可用命令：\n\
-             /new - 建立新對話\n\
+             /new [名稱] - 建立新對話\n\
              /list - 選擇或封存對話\n\
              /rename <名稱> - 重新命名目前對話\n\
              /project - 選擇專案\n\
@@ -72,7 +93,7 @@ fn tg_start_message(lang: TelegramLanguage) -> &'static str {
              我可以帮你把 Telegram 中的文字、网址、图片与文件采集到 InsightCAP，并直接用你的知识库进行问答。\n\n\
              直接发送问题即可开始 RAG 对话；发送网址会自动加入采集队列。\n\n\
              可用命令：\n\
-             /new - 建立新对话\n\
+             /new [名称] - 建立新对话\n\
              /list - 选择或归档对话\n\
              /rename <名称> - 重命名当前对话\n\
              /project - 选择项目\n\
@@ -86,7 +107,7 @@ fn tg_start_message(lang: TelegramLanguage) -> &'static str {
              I can capture Telegram text, links, images, and documents into InsightCAP, and answer questions with your knowledge base.\n\n\
              Send a question to start a RAG conversation. Send a URL to add it to the capture queue.\n\n\
              Commands:\n\
-             /new - Start a new conversation\n\
+             /new [name] - Start a new conversation\n\
              /list - Select or archive conversations\n\
              /rename <name> - Rename the current conversation\n\
              /project - Select a project\n\
@@ -136,11 +157,32 @@ fn tg_url_queued(lang: TelegramLanguage, label: &str) -> String {
     }
 }
 
-fn tg_new_conversation(lang: TelegramLanguage) -> &'static str {
+fn tg_default_conversation_title(lang: TelegramLanguage) -> &'static str {
     match lang {
-        TelegramLanguage::ZhTw => "已建立新對話，並設為目前對話。",
-        TelegramLanguage::ZhCn => "已建立新对话，并设为当前对话。",
-        TelegramLanguage::En => "Started a new conversation and set it as current.",
+        TelegramLanguage::ZhTw => "新對話",
+        TelegramLanguage::ZhCn => "新对话",
+        TelegramLanguage::En => "New Conversation",
+    }
+}
+
+fn tg_new_conversation_with_title(
+    lang: TelegramLanguage,
+    title: &str,
+    project_name: Option<&str>,
+) -> String {
+    match (lang, project_name) {
+        (TelegramLanguage::ZhTw, Some(name)) => {
+            format!("已建立新對話「{title}」，並加入專案「{name}」。")
+        }
+        (TelegramLanguage::ZhTw, None) => format!("已建立新對話「{title}」。"),
+        (TelegramLanguage::ZhCn, Some(name)) => {
+            format!("已建立新对话“{title}”，并加入项目“{name}”。")
+        }
+        (TelegramLanguage::ZhCn, None) => format!("已建立新对话“{title}”。"),
+        (TelegramLanguage::En, Some(name)) => {
+            format!("Started new conversation \"{title}\" in project \"{name}\".")
+        }
+        (TelegramLanguage::En, None) => format!("Started new conversation \"{title}\"."),
     }
 }
 
@@ -699,7 +741,10 @@ async fn handle_command(
         "/start" => {
             send_message(bot_token, chat_id, tg_start_message(lang)).await
         }
-        "/new" => handle_new_conversation(app, bot_token, chat_id).await,
+        "/new" => {
+            let name = text.strip_prefix("/new").unwrap_or("").trim();
+            handle_new_conversation(app, bot_token, chat_id, name).await
+        }
         "/list" => handle_list_conversations(app, bot_token, chat_id).await,
         "/rename" => {
             let new_name = text.strip_prefix("/rename").unwrap_or("").trim();
@@ -993,17 +1038,29 @@ async fn handle_new_conversation(
     app: &AppHandle,
     bot_token: &str,
     chat_id: i64,
+    name: &str,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;
+    let lang = telegram_language_from_pool(pool).await;
+    let title = if name.is_empty() {
+        tg_default_conversation_title(lang)
+    } else {
+        name
+    };
+    let active_project = active_telegram_project(pool, chat_id).await?;
+    let project_id_opt = active_project.as_ref().map(|(id, _)| id.as_str());
+    let project_name = active_project.as_ref().map(|(_, name)| name.as_str());
 
     let id = Uuid::now_v7().to_string();
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
-        "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, 'Untitled Conversation', ?, ?)",
+        "INSERT INTO conversations (id, title, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
+    .bind(title)
+    .bind(project_id_opt.as_deref())
     .bind(&now)
     .bind(&now)
     .execute(pool)
@@ -1012,8 +1069,12 @@ async fn handle_new_conversation(
 
     set_telegram_context(pool, chat_id, &id).await?;
 
-    let lang = telegram_language_from_pool(pool).await;
-    send_message(bot_token, chat_id, tg_new_conversation(lang)).await
+    send_message(
+        bot_token,
+        chat_id,
+        &tg_new_conversation_with_title(lang, title, project_name),
+    )
+    .await
 }
 
 async fn handle_list_conversations(
@@ -1597,13 +1658,19 @@ async fn handle_rag_query(
         }
     }
 
+    let lang = telegram_language_from_pool(pool).await;
+    let active_project = active_telegram_project(pool, chat_id).await?;
+    let project_id_opt = active_project.as_ref().map(|(id, _)| id.clone());
+
     let conv_id = if conv_id.is_empty() {
         let new_id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         sqlx::query(
-            "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, 'Untitled Conversation', ?, ?)"
+            "INSERT INTO conversations (id, title, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
         )
         .bind(&new_id)
+        .bind(tg_default_conversation_title(lang))
+        .bind(project_id_opt.as_deref())
         .bind(&now)
         .bind(&now)
         .execute(pool)
@@ -1622,7 +1689,7 @@ async fn handle_rag_query(
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?
-        .unwrap_or_else(|| "Untitled Conversation".to_string());
+        .unwrap_or_else(|| tg_default_conversation_title(lang).to_string());
 
     let history = get_conversation_history(pool, &conv_id, 10).await?;
 
@@ -1633,15 +1700,6 @@ async fn handle_rag_query(
             .await
             .map_err(|e| e.to_string())?
             .and_then(|s: String| if s.is_empty() { None } else { Some(s) });
-
-    let project_id = get_telegram_project_context(pool, chat_id)
-        .await
-        .unwrap_or_default();
-    let project_id_opt = if project_id.is_empty() {
-        None
-    } else {
-        Some(project_id.clone())
-    };
 
     let settings = crate::settings::store::get_settings(pool)
         .await
