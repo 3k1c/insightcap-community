@@ -138,6 +138,7 @@ pub struct TimelineSourceItem {
     pub url: Option<String>,
     pub file_path: Option<String>,
     pub local_doc_path: Option<String>,
+    pub thumbnail: Option<String>,
     pub captured_at: String,
     pub content_preview: String,
     pub capture_count: i64,
@@ -186,7 +187,7 @@ pub async fn get_sources_timeline(
             "SELECT s.id, s.title, s.type, \
              COALESCE(s.source_category, 'captured') as source_category, \
              COALESCE(s.media_type, 'text') as media_type, \
-             s.url, s.file_path, s.local_doc_path, s.captured_at, \
+             s.url, s.file_path, s.local_doc_path, s.thumbnail, s.captured_at, \
              SUBSTR(s.clean_content, 1, 120) as preview, \
              s.capture_count, \
              COALESCE((SELECT GROUP_CONCAT(DISTINCT t.value) FROM captures c, json_each(c.tags) t WHERE c.source_id = s.id AND t.value != ''), '') as agg_tags \
@@ -197,7 +198,7 @@ pub async fn get_sources_timeline(
             "SELECT s.id, s.title, s.type, \
              'captured' as source_category, \
              'text' as media_type, \
-             s.url, s.file_path, NULL as local_doc_path, s.captured_at, \
+             s.url, s.file_path, NULL as local_doc_path, s.thumbnail, s.captured_at, \
              SUBSTR(s.clean_content, 1, 120) as preview, \
              s.capture_count, \
              COALESCE((SELECT GROUP_CONCAT(DISTINCT t.value) FROM captures c, json_each(c.tags) t WHERE c.source_id = s.id AND t.value != ''), '') as agg_tags \
@@ -269,6 +270,7 @@ pub async fn get_sources_timeline(
                 url: r.try_get("url").unwrap_or(None),
                 file_path: r.try_get("file_path").unwrap_or(None),
                 local_doc_path: r.try_get("local_doc_path").unwrap_or(None),
+                thumbnail: r.try_get("thumbnail").unwrap_or(None),
                 captured_at: r.get("captured_at"),
                 content_preview: r.try_get("preview").unwrap_or_default(),
                 capture_count: r.try_get("capture_count").unwrap_or(0),
@@ -322,6 +324,7 @@ pub async fn create_editor_document(
         url: None,
         file_path: None,
         local_doc_path: Some(local_path_str),
+        thumbnail: None,
         captured_at: now,
         content_preview: String::new(),
         capture_count: 0,

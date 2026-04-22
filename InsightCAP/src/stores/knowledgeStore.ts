@@ -20,6 +20,7 @@ export interface TimelineSourceItem {
     url?: string;
     filePath?: string;
     localDocPath?: string;
+    thumbnail?: string;
     capturedAt: string;
     contentPreview: string;
     captureCount: number;

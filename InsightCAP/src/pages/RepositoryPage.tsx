@@ -220,6 +220,8 @@ function getMediaConfig(item: TimelineSourceItem) {
 }
 
 function getVideoThumbnail(item: TimelineSourceItem): string | null {
+    if (item.thumbnail) return item.thumbnail;
+
     const targetUrl = inferOpenUrl(item);
     if (!targetUrl) return null;
 
@@ -946,7 +948,7 @@ export const RepositoryPage: React.FC = () => {
                                                 {group.sourceItems.map((item) => {
                                                     const { iconColor, iconBg, icon, mt } = getMediaConfig(item);
                                                     const embedded = getEmbeddedMedia(item);
-                                                    const isVideoCard = mt === 'video' || embedded !== null;
+                                                    const isVideoCard = mt === 'video' || embedded !== null || Boolean(item.thumbnail);
                                                     const bvid = extractBvidFromItem(item);
                                                     const thumbnailUrl = isVideoCard
                                                         ? (getVideoThumbnail(item) || (bvid ? bilibiliCovers[bvid] || null : null))

@@ -8,6 +8,98 @@ use uuid::Uuid;
 use crate::db::AppState;
 use crate::tray_status::{set_tray_status, TrayStatus};
 
+fn extract_bvid(value: &str) -> Option<String> {
+    let start = value.find("BV")?;
+    let bvid: String = value[start..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .take(12)
+        .collect();
+    if bvid.len() == 12 {
+        Some(bvid)
+    } else {
+        None
+    }
+}
+
+fn youtube_thumbnail_url(url: &str) -> Option<String> {
+    let id = if let Some(pos) = url.find("youtu.be/") {
+        url[pos + 9..]
+            .split(['?', '#', '&', '/', ' '])
+            .next()
+            .unwrap_or("")
+    } else if let Some(pos) = url.find("watch?v=") {
+        url[pos + 8..]
+            .split(['?', '#', '&', '/', ' '])
+            .next()
+            .unwrap_or("")
+    } else if let Some(pos) = url.find("/shorts/") {
+        url[pos + 8..]
+            .split(['?', '#', '&', '/', ' '])
+            .next()
+            .unwrap_or("")
+    } else {
+        ""
+    };
+
+    if id.len() >= 6 {
+        Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id))
+    } else {
+        None
+    }
+}
+
+async fn bilibili_thumbnail_url(url: &str) -> Option<String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .ok()?;
+
+    let bvid = if let Some(bvid) = extract_bvid(url) {
+        bvid
+    } else if url.contains("b23.tv/") {
+        let resolved = client.get(url).send().await.ok()?.url().to_string();
+        extract_bvid(&resolved)?
+    } else {
+        return None;
+    };
+
+    let api_url = format!(
+        "https://api.bilibili.com/x/web-interface/view?bvid={}",
+        bvid
+    );
+    let json = client
+        .get(api_url)
+        .header("Referer", format!("https://www.bilibili.com/video/{}", bvid))
+        .send()
+        .await
+        .ok()?
+        .json::<serde_json::Value>()
+        .await
+        .ok()?;
+
+    let pic = json["data"]["pic"].as_str()?.trim();
+    if pic.is_empty() {
+        None
+    } else if pic.starts_with("//") {
+        Some(format!("https:{}", pic))
+    } else {
+        Some(pic.to_string())
+    }
+}
+
+async fn fetch_source_thumbnail(url: &str) -> Option<String> {
+    let lower = url.to_lowercase();
+    if lower.contains("youtube.com/") || lower.contains("youtu.be/") {
+        return youtube_thumbnail_url(url);
+    }
+    if lower.contains("bilibili.com/video/") || lower.contains("b23.tv/") {
+        return bilibili_thumbnail_url(url).await;
+    }
+    None
+}
+
 async fn cleanup_temp_attachments(pool: &SqlitePool) {
     let cutoff = (Utc::now() - chrono::Duration::days(7)).to_rfc3339();
     match sqlx::query(
@@ -169,6 +261,11 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     } else {
         "clipboard"
     };
+    let thumbnail_url = if content_type == "url" && !source_url.is_empty() {
+        fetch_source_thumbnail(&source_url).await
+    } else {
+        None
+    };
     let existing_source_id: Option<String> = if content_type == "url" && !source_url.is_empty() {
         sqlx::query_scalar("SELECT id FROM sources WHERE source_group_id = ? AND type = 'url' ORDER BY updated_at DESC LIMIT 1")
             .bind(&source_group_id)
@@ -187,24 +284,37 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     };
 
     let source_id = if let Some(existing_id) = existing_source_id {
-        sqlx::query("UPDATE sources SET updated_at = ? WHERE id = ?")
+        if let Some(thumbnail) = thumbnail_url.as_deref() {
+            sqlx::query(
+                "UPDATE sources SET updated_at = ?, thumbnail = COALESCE(NULLIF(thumbnail, ''), ?) WHERE id = ?",
+            )
             .bind(&now)
+            .bind(thumbnail)
             .bind(&existing_id)
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
+        } else {
+            sqlx::query("UPDATE sources SET updated_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(&existing_id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
         println!("[CaptureProcessor] Reusing source: {}", existing_id);
         existing_id
     } else {
         let new_source_id = Uuid::now_v7().to_string();
         sqlx::query(
-            "INSERT INTO sources (id, source_group_id, type, title, url, clean_content, content_hash, captured_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO sources (id, source_group_id, type, title, url, thumbnail, clean_content, content_hash, captured_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&new_source_id)
         .bind(&source_group_id)
         .bind(source_type)
         .bind(&display_title)
         .bind(&source_url)
+        .bind(thumbnail_url.as_deref())
         .bind(&normalized_content)
         .bind(&source_identity.content_hash)
         .bind(&captured_at)
