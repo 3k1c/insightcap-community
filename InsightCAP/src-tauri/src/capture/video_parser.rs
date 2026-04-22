@@ -104,10 +104,11 @@ fn find_ytdlp() -> Option<std::path::PathBuf> {
         let mut dir = current_exe.parent().map(|p| p.to_path_buf());
         for _ in 0..5 {
             if let Some(d) = dir {
-                let candidate = d.join("yt-dlp.exe");
-                if candidate.exists() {
-                    println!("[VIDEO_PARSER] Found yt-dlp at: {:?}", candidate);
-                    return Some(candidate);
+                for candidate in [d.join("yt-dlp.exe"), d.join("resources").join("yt-dlp.exe")] {
+                    if candidate.exists() {
+                        println!("[VIDEO_PARSER] Found yt-dlp at: {:?}", candidate);
+                        return Some(candidate);
+                    }
                 }
                 dir = d.parent().map(|p| p.to_path_buf());
             } else {

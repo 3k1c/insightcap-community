@@ -60,7 +60,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": [
+      "yt-dlp.exe"
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
