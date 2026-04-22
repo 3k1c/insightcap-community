@@ -348,6 +348,7 @@ export const RepositoryPage: React.FC = () => {
     const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
     const [previewChunks, setPreviewChunks] = useState<CaptureDetail[]>([]);
     const [isLoadingChunks, setIsLoadingChunks] = useState(false);
+    const [failedEmbeddedUrls, setFailedEmbeddedUrls] = useState<Set<string>>(() => new Set());
     const [bilibiliCovers, setBilibiliCovers] = useState<Record<string, string>>({});
     const [typeFilter, setTypeFilter] = useState<'all' | 'source' | 'note'>('source');
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -594,6 +595,15 @@ export const RepositoryPage: React.FC = () => {
 
     const handleOpenSource = async (item: TimelineSourceItem) => {
         const path = inferPath(item);
+        const sourceUrl = inferOpenUrl(item);
+        if (sourceUrl) {
+            setFailedEmbeddedUrls((prev) => {
+                if (!prev.has(sourceUrl)) return prev;
+                const next = new Set(prev);
+                next.delete(sourceUrl);
+                return next;
+            });
+        }
 
         if (item.mediaType === 'image' && path) {
             setImagePreview({ src: convertFileSrc(path), title: titleOf(item.title) });
@@ -1226,7 +1236,7 @@ export const RepositoryPage: React.FC = () => {
                                         const isMediaSource = embeddedMedia !== null || (docPreview.sourceItem?.mediaType === 'url') || (docPreview.sourceItem?.mediaType === 'video');
                                         const sourceUrl = docPreview.sourceItem ? inferOpenUrl(docPreview.sourceItem) : null;
                                         const isWebSource = Boolean(docPreview.sourceItem && docPreview.sourceItem.type === 'url' && sourceUrl);
-                                        const shouldEmbedWebSource = isWebSource && embeddedMedia === null;
+                                        const shouldEmbedWebSource = Boolean(isWebSource && embeddedMedia === null && sourceUrl && !failedEmbeddedUrls.has(sourceUrl));
                                         const sourceThumbnail = docPreview.sourceItem?.thumbnail;
 
                                         let display = raw;
@@ -1292,6 +1302,25 @@ export const RepositoryPage: React.FC = () => {
                                                                 className="h-full w-full border-0"
                                                                 referrerPolicy="no-referrer-when-downgrade"
                                                                 allow="clipboard-read; clipboard-write; fullscreen"
+                                                                onError={() => {
+                                                                    setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
+                                                                }}
+                                                                onLoad={(event) => {
+                                                                    window.setTimeout(() => {
+                                                                        try {
+                                                                            const frame = event.currentTarget;
+                                                                            const doc = frame.contentDocument;
+                                                                            if (!doc) return;
+                                                                            const text = doc.body?.innerText?.trim() ?? '';
+                                                                            const title = doc.title.trim();
+                                                                            if (!text && !title) {
+                                                                                setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
+                                                                            }
+                                                                        } catch {
+                                                                            // Cross-origin access is expected for normal websites.
+                                                                        }
+                                                                    }, 600);
+                                                                }}
                                                             />
                                                         </div>
                                                     </div>
