@@ -34,7 +34,10 @@ impl TagEngine {
 
         use crate::providers::llm::LLMProvider;
         let generated_tags = if let Some(llm) = opt_provider {
-            let prompt = format!("Extract 3-5 tags from the following text to represent its core concepts. Return ONLY a comma-separated list of short tags in Traditional Chinese. NO other text.\n\nText:\n{}", &content[..content.len().min(2000)]);
+            let byte_limit = content.len().min(2000);
+            let safe_limit = content.floor_char_boundary(byte_limit);
+            let sample = &content[..safe_limit];
+            let prompt = format!("Extract 3-5 tags from the following text to represent its core concepts. Return ONLY a comma-separated list of short tags in Traditional Chinese. NO other text.\n\nText:\n{}", sample);
             match llm
                 .complete(&prompt, crate::providers::llm::LLMOptions::default())
                 .await
