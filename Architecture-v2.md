@@ -2245,3 +2245,45 @@ AetherCore 支援多種 LLM 原生推理能力，由 `model_caps::detect(model, 
 從 Settings 頁「AI 設定」可測試當前模型連線，未來版本支援推理能力驗證（執行小規模推理任務，驗證輸出格式）。
 
 推理按鈕隱藏 → 檢查 `get_chat_llm_supports_thinking` 回傳值 + 查看 Model Detection 列表
+
+---
+
+## 2.14 UI i18n 規範與落地（2026-04-22）
+
+### 目標
+- 將前端 UI 可見文字全面收斂到 `react-i18next`，避免硬編碼文字造成語系不一致。
+- 建立「新增 UI 文案必須先建 key、再由元件引用 `t('...')`」的開發規範。
+
+### 本次已落地範圍
+- `src/pages/SettingsPage.tsx`
+- `src/pages/RepositoryPage.tsx`
+- `src/components/chat/EditorPane.tsx`
+- `src/components/chat/InputArea.tsx`
+- `src/components/chat/MessageList.tsx`
+- `src/components/memory/PendingConfirmDrawer.tsx`
+- `src/components/chat/extensions/ImageNodeView.tsx`
+
+### 規範更新
+- 禁止在 `title`、`label`、`placeholder`、`aria-label`、`toast` 直接寫死 UI 文案。
+- `AI`、`OCR`、`URL`、`DOC` 這類 badge/短詞也必須由 i18n key 管理。
+- Editor 工具列與 BubbleMenu 的 tooltip 文字統一走 `editor.*` key。
+- Repository 預覽側欄（Source metadata）欄位名稱統一走 `repository.*` key。
+
+### i18n Key 分層建議
+- `settings.*`：設定頁專用文案（按鈕、提示、錯誤訊息、測試訊息）。
+- `repository.*`：來源預覽與來源操作文案。
+- `editor.*`：Editor/Toolbar/BubbleMenu 相關 tooltip 與狀態字串。
+- `chat.*`：聊天輸入區與訊息清單共用短詞與提示。
+- `pending_drawer.*`：待確認抽屜專用文字與可及性標籤。
+
+### 驗證策略
+- 型別檢查：`npx tsc --noEmit`。
+- 靜態掃描：針對 `src/pages/**/*.tsx` 與 `src/components/**/*.tsx` 掃描硬編碼模式：
+  - 英文文字節點
+  - `title="..."` / `label="..."` / `placeholder="..."` / `aria-label="..."`
+  - `toast.*("...")` / `window.confirm("...")`
+- 驗證基準：上述掃描不應再命中可見 UI 硬編碼字串。
+
+### 後續建議
+- 補齊 `zh-TW`、`zh-CN` 新增 key 的在地化翻譯（目前為避免缺 key，部分先用英文占位）。
+- 在 CI 增加 i18n lint（PR 阶段自動攔截新硬編碼 UI 字串）。
