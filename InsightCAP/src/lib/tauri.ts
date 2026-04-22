@@ -212,10 +212,6 @@ export const tauriCmd = {
         return invoke('rebuild_index');
     },
 
-    seedTestData: async (): Promise<void> => {
-        return invoke('seed_test_data');
-    },
-
     initializeWorkspace: async (path: string): Promise<void> => {
         return invoke('initialize_workspace', { path });
     },

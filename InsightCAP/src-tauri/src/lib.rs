@@ -408,8 +408,6 @@ pub fn run() {
             knowledge_source::enterprise::get_external_kbs,
             knowledge_source::enterprise::remove_external_kb,
             commands::bilibili_auth::open_bilibili_login,
-            commands::seed_commands::seed_test_data,
-            commands::seed_commands::clear_seed_data,
             commands::rag_commands::rag_query,
             commands::rag_commands::rag_query_stream,
             commands::reminder_commands::get_active_reminders,
