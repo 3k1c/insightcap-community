@@ -56,11 +56,13 @@ async fn fetch_wbi_keys(
 
     let img_key = extract_key_from_url(img_url);
     let sub_key = extract_key_from_url(sub_url);
+    let img_key_preview: String = img_key.chars().take(8).collect();
+    let sub_key_preview: String = sub_key.chars().take(8).collect();
 
     println!(
         "[WBI] Got keys: img_key={}, sub_key={}",
-        &img_key[..img_key.len().min(8)],
-        &sub_key[..sub_key.len().min(8)]
+        img_key_preview,
+        sub_key_preview
     );
 
     Ok((img_key, sub_key))

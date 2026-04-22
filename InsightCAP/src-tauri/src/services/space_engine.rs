@@ -56,11 +56,15 @@ impl SpaceEngine {
             .await
             .unwrap_or_default();
 
+            let byte_limit = content.len().min(1500);
+            let safe_limit = content.floor_char_boundary(byte_limit);
+            let sample = &content[..safe_limit];
+
             let prompt = if existing_names.is_empty() {
                 format!(
                     "Categorize the following text into one short category/space name (e.g.     ,     ,     ). \
                      Return ONLY the category name in Traditional Chinese. NO punctuation.\n\nText:\n{}",
-                    &content[..content.len().min(1500)]
+                    sample
                 )
             } else {
                 format!(
@@ -71,7 +75,7 @@ impl SpaceEngine {
                      2)                                4     \
                                      \n\nText:\n{}",
                     existing_names.join(" "),
-                    &content[..content.len().min(1500)]
+                    sample
                 )
             };
 

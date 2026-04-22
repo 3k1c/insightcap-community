@@ -233,11 +233,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
                         println!("[DB] Migration {} has idempotent statement, skipped", id);
                         continue;
                     }
+                    let preview_len = trimmed.floor_char_boundary(trimmed.len().min(80));
+                    let sql_preview = &trimmed[..preview_len];
                     return Err(format!(
                         "Migration {} failed: {} | SQL: {}",
                         id,
                         e,
-                        &trimmed[..trimmed.len().min(80)]
+                        sql_preview
                     ));
                 }
             }
