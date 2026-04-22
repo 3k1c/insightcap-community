@@ -227,16 +227,20 @@ fn extract_keyword_tags(content: &str) -> Vec<String> {
         "than", "too", "very", "just", "about", "so", "if", "then", "also", "its", "my", "your",
     ];
     const ZH_STOP: &[&str] = &[
-        "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一個", "上",
-        "也", "很", "到", "說", "要", "去", "你", "會", "著", "沒有", "看", "好", "自己", "這",
-        "他", "她", "它", "們", "那", "被", "從", "把", "讓", "用", "對",
+        "\u{7684}", "\u{4e86}", "\u{5728}", "\u{662f}", "\u{6211}", "\u{6709}",
+        "\u{548c}", "\u{5c31}", "\u{4e0d}", "\u{4eba}", "\u{90fd}", "\u{4e00}",
+        "\u{4e00}\u{500b}", "\u{4e0a}", "\u{4e5f}", "\u{5f88}", "\u{5230}",
+        "\u{8aaa}", "\u{8981}", "\u{53bb}", "\u{4f60}", "\u{6703}", "\u{8457}",
+        "\u{6c92}\u{6709}", "\u{770b}", "\u{597d}", "\u{81ea}\u{5df1}",
+        "\u{9019}", "\u{4ed6}", "\u{5979}", "\u{5b83}", "\u{5011}", "\u{90a3}",
+        "\u{88ab}", "\u{5f9e}", "\u{628a}", "\u{8b93}", "\u{7528}", "\u{5c0d}",
     ];
     let stop: std::collections::HashSet<&str> =
         EN_STOP.iter().chain(ZH_STOP.iter()).copied().collect();
 
     let mut freq: HashMap<String, usize> = HashMap::new();
 
-    let puncts = "\u{3002}\u{FF0C}\u{3001}\u{FF1F}\u{FF01}\u{FF1B}\u{FF1A}\u{FF08}\u{FF09}\u{3010}\u{3011}\u{300A}\u{300B}\u{300C}\u{300D}\u{300E}\u{300F}\u{201C}\u{201D}\u{2018}\u{2019}\u{2026}\u{2014}\u{00B7},.!?;:()[]{}";
+    let puncts = "\u{3002}\u{ff0c}\u{3001}\u{ff1f}\u{ff01}\u{ff1b}\u{ff1a}\u{ff08}\u{ff09}\u{3010}\u{3011}\u{300a}\u{300b}\u{300c}\u{300d}\u{300e}\u{300f}\u{201c}\u{201d}\u{2018}\u{2019}\u{2026}\u{2014}\u{00b7},.!?;:()[]{}";
     for word in
         content.split(|c: char| c.is_whitespace() || c == '"' || c == '\'' || puncts.contains(c))
     {
