@@ -1226,6 +1226,8 @@ export const RepositoryPage: React.FC = () => {
                                         const isMediaSource = embeddedMedia !== null || (docPreview.sourceItem?.mediaType === 'url') || (docPreview.sourceItem?.mediaType === 'video');
                                         const sourceUrl = docPreview.sourceItem ? inferOpenUrl(docPreview.sourceItem) : null;
                                         const isWebSource = Boolean(docPreview.sourceItem && docPreview.sourceItem.type === 'url' && sourceUrl);
+                                        const shouldEmbedWebSource = isWebSource && embeddedMedia === null;
+                                        const sourceThumbnail = docPreview.sourceItem?.thumbnail;
 
                                         let display = raw;
                                         if (isMediaSource && raw) {
@@ -1252,20 +1254,46 @@ export const RepositoryPage: React.FC = () => {
                                         if (!display && !isWebSource) return null;
                                         return (
                                             <div className="space-y-4">
-                                                {isWebSource && sourceUrl && (
-                                                    <div className="rounded-xl border border-accent-default/20 bg-accent-default/10 px-5 py-4 shadow-sm">
-                                                        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-accent-default">
-                                                            <Globe className="h-3.5 w-3.5" />
-                                                            {t('repository.source_meta_url')}
+                                                {shouldEmbedWebSource && sourceUrl && (
+                                                    <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-surface-base shadow-sm">
+                                                        {sourceThumbnail && (
+                                                            <div className="relative h-44 overflow-hidden border-b border-white/[0.06] bg-surface-subtle">
+                                                                <img
+                                                                    src={sourceThumbnail}
+                                                                    alt={docPreview.title}
+                                                                    className="h-full w-full object-cover"
+                                                                    referrerPolicy="no-referrer"
+                                                                />
+                                                                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+                                                                <div className="absolute bottom-3 left-4 right-4">
+                                                                    <div className="line-clamp-2 text-[15px] font-semibold leading-snug text-white">
+                                                                        {docPreview.title}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] bg-surface-layer/60 px-4 py-2.5">
+                                                            <div className="flex min-w-0 items-center gap-2">
+                                                                <Globe className="h-3.5 w-3.5 shrink-0 text-accent-default" />
+                                                                <span className="truncate text-[12px] text-text-secondary">{sourceUrl}</span>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleOpenOriginalFromPreview}
+                                                                className="shrink-0 rounded-lg border border-accent-default/30 bg-accent-default/10 px-3 py-1 text-[11px] font-semibold text-accent-default transition-all hover:border-accent-default/60 hover:bg-accent-default/20"
+                                                            >
+                                                                {t('repository.open_original')}
+                                                            </button>
                                                         </div>
-                                                        <div className="break-all text-[13px] leading-5 text-blue-300">{sourceUrl}</div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleOpenOriginalFromPreview}
-                                                            className="mt-3 rounded-lg border border-accent-default/30 bg-accent-default/10 px-3 py-1.5 text-[12px] font-semibold text-accent-default transition-all hover:border-accent-default/60 hover:bg-accent-default/20"
-                                                        >
-                                                            {t('repository.open_original')}
-                                                        </button>
+                                                        <div className="h-[520px] bg-white">
+                                                            <iframe
+                                                                title={docPreview.title}
+                                                                src={sourceUrl}
+                                                                className="h-full w-full border-0"
+                                                                referrerPolicy="no-referrer-when-downgrade"
+                                                                allow="clipboard-read; clipboard-write; fullscreen"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 )}
                                                 {display && (
