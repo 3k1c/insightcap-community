@@ -1264,6 +1264,22 @@ export const RepositoryPage: React.FC = () => {
                                         if (!display && !isWebSource) return null;
                                         return (
                                             <div className="space-y-4">
+                                                {isWebSource && !shouldEmbedWebSource && sourceThumbnail && (
+                                                    <div className="relative h-56 overflow-hidden rounded-xl border border-white/[0.07] bg-surface-subtle shadow-sm">
+                                                        <img
+                                                            src={sourceThumbnail}
+                                                            alt={docPreview.title}
+                                                            className="h-full w-full object-cover"
+                                                            referrerPolicy="no-referrer"
+                                                        />
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                                                        <div className="absolute bottom-4 left-5 right-5">
+                                                            <div className="line-clamp-2 text-[16px] font-semibold leading-snug text-white">
+                                                                {docPreview.title}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 {shouldEmbedWebSource && sourceUrl && (
                                                     <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-surface-base shadow-sm">
                                                         {sourceThumbnail && (
@@ -1310,14 +1326,17 @@ export const RepositoryPage: React.FC = () => {
                                                                         try {
                                                                             const frame = event.currentTarget;
                                                                             const doc = frame.contentDocument;
-                                                                            if (!doc) return;
+                                                                            if (!doc) {
+                                                                                setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
+                                                                                return;
+                                                                            }
                                                                             const text = doc.body?.innerText?.trim() ?? '';
                                                                             const title = doc.title.trim();
                                                                             if (!text && !title) {
                                                                                 setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
                                                                             }
                                                                         } catch {
-                                                                            // Cross-origin access is expected for normal websites.
+                                                                            setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
                                                                         }
                                                                     }, 600);
                                                                 }}
