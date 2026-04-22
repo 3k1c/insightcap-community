@@ -1502,7 +1502,7 @@ async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
     }
 
     let mut msg = String::from(tg_recent_header(lang));
-    for row in &rows {
+    for (idx, row) in rows.iter().enumerate() {
         let title: String = row
             .try_get("title")
             .unwrap_or_else(|_| "Untitled Source".to_string());
@@ -1516,7 +1516,8 @@ async fn handle_recent(app: &AppHandle, bot_token: &str, chat_id: i64) -> Result
             _ => "[ITEM]",
         };
         msg.push_str(&format!(
-            "{} {} @ {}\n",
+            "{}. {} {} @ {}\n",
+            idx + 1,
             type_emoji,
             title,
             &captured_at[..10]
