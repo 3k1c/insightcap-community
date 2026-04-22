@@ -137,9 +137,67 @@ function extractPlainText(raw: string): string {
         if (doc && doc.type === 'doc' && Array.isArray(doc.content)) {
             return walkNodes(doc.content).trim();
         }
+        const extracted = extractReadableJsonText(doc);
+        if (extracted) return extracted;
     } catch {
     }
     return raw;
+}
+
+function extractReadableJsonText(value: unknown): string {
+    const seen = new Set<string>();
+    const lines: string[] = [];
+
+    const add = (text: string) => {
+        const cleaned = text.replace(/\s+/g, ' ').trim();
+        if (!cleaned || cleaned.length < 2 || seen.has(cleaned)) return;
+        seen.add(cleaned);
+        lines.push(cleaned);
+    };
+
+    const visit = (node: unknown, depth = 0) => {
+        if (lines.length >= 80 || depth > 10 || node == null) return;
+
+        if (typeof node === 'string') {
+            add(node);
+            return;
+        }
+
+        if (typeof node === 'number' || typeof node === 'boolean') return;
+
+        if (Array.isArray(node)) {
+            for (const item of node) visit(item, depth + 1);
+            return;
+        }
+
+        if (typeof node === 'object') {
+            const obj = node as Record<string, unknown>;
+            const priorityKeys = [
+                'title',
+                'name',
+                'description',
+                'summary',
+                'content',
+                'text',
+                'prompt',
+                'structure',
+                'position',
+                'background',
+            ];
+
+            for (const key of priorityKeys) {
+                if (key in obj) visit(obj[key], depth + 1);
+            }
+
+            for (const [key, child] of Object.entries(obj)) {
+                if (priorityKeys.includes(key)) continue;
+                visit(child, depth + 1);
+            }
+        }
+    };
+
+    visit(value);
+    return lines.join('\n');
 }
 
 function walkNodes(nodes: unknown[]): string {
@@ -1166,6 +1224,8 @@ export const RepositoryPage: React.FC = () => {
                                     {(() => {
                                         const raw = docPreview.content ?? '';
                                         const isMediaSource = embeddedMedia !== null || (docPreview.sourceItem?.mediaType === 'url') || (docPreview.sourceItem?.mediaType === 'video');
+                                        const sourceUrl = docPreview.sourceItem ? inferOpenUrl(docPreview.sourceItem) : null;
+                                        const isWebSource = Boolean(docPreview.sourceItem && docPreview.sourceItem.type === 'url' && sourceUrl);
 
                                         let display = raw;
                                         if (isMediaSource && raw) {
@@ -1189,10 +1249,30 @@ export const RepositoryPage: React.FC = () => {
                                             display = lines.slice(startIdx).join('\n').trim();
                                         }
 
-                                        if (!display) return null;
+                                        if (!display && !isWebSource) return null;
                                         return (
-                                            <div className="rounded-xl border border-white/[0.07] bg-surface-subtle/40 px-5 py-4 shadow-sm">
-                                                <pre className="whitespace-pre-wrap text-[13.5px] leading-[1.8] text-text-secondary">{display}</pre>
+                                            <div className="space-y-4">
+                                                {isWebSource && sourceUrl && (
+                                                    <div className="rounded-xl border border-accent-default/20 bg-accent-default/10 px-5 py-4 shadow-sm">
+                                                        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-accent-default">
+                                                            <Globe className="h-3.5 w-3.5" />
+                                                            {t('repository.source_meta_url')}
+                                                        </div>
+                                                        <div className="break-all text-[13px] leading-5 text-blue-300">{sourceUrl}</div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleOpenOriginalFromPreview}
+                                                            className="mt-3 rounded-lg border border-accent-default/30 bg-accent-default/10 px-3 py-1.5 text-[12px] font-semibold text-accent-default transition-all hover:border-accent-default/60 hover:bg-accent-default/20"
+                                                        >
+                                                            {t('repository.open_original')}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {display && (
+                                                    <div className="rounded-xl border border-white/[0.07] bg-surface-subtle/40 px-5 py-4 shadow-sm">
+                                                        <pre className="whitespace-pre-wrap text-[13.5px] leading-[1.8] text-text-secondary">{display}</pre>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })()}
