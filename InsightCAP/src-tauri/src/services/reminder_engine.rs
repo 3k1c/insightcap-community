@@ -12,6 +12,89 @@ pub struct ReminderEngine {
     pool: SqlitePool,
 }
 
+#[derive(Clone, Copy)]
+enum ReminderMessageLanguage {
+    ZhTw,
+    ZhCn,
+    En,
+}
+
+impl ReminderMessageLanguage {
+    fn from_code(language: &str) -> Self {
+        match language {
+            "zh-CN" => Self::ZhCn,
+            "en" => Self::En,
+            _ => Self::ZhTw,
+        }
+    }
+}
+
+fn reminder_event_type_label(lang: ReminderMessageLanguage, event_type: &str) -> &str {
+    match (lang, event_type) {
+        (ReminderMessageLanguage::ZhTw, "meeting") => "會議",
+        (ReminderMessageLanguage::ZhTw, "deliverable") => "交付物",
+        (ReminderMessageLanguage::ZhTw, "event") => "事件",
+        (ReminderMessageLanguage::ZhTw, "appointment") => "預約",
+        (ReminderMessageLanguage::ZhCn, "meeting") => "会议",
+        (ReminderMessageLanguage::ZhCn, "deliverable") => "交付物",
+        (ReminderMessageLanguage::ZhCn, "event") => "事件",
+        (ReminderMessageLanguage::ZhCn, "appointment") => "预约",
+        (_, _) => event_type,
+    }
+}
+
+fn reminder_status_label(lang: ReminderMessageLanguage, status: &str) -> &str {
+    match (lang, status) {
+        (ReminderMessageLanguage::ZhTw, "cancelled") => "已取消",
+        (ReminderMessageLanguage::ZhTw, "completed") => "已完成",
+        (ReminderMessageLanguage::ZhCn, "cancelled") => "已取消",
+        (ReminderMessageLanguage::ZhCn, "completed") => "已完成",
+        (_, _) => status,
+    }
+}
+
+fn reminder_status_updated_message(
+    lang: ReminderMessageLanguage,
+    title: &str,
+    status: &str,
+) -> String {
+    let status = reminder_status_label(lang, status);
+    match lang {
+        ReminderMessageLanguage::ZhTw => {
+            format!("提醒狀態已更新\n\n標題：{}\n狀態：{}", title, status)
+        }
+        ReminderMessageLanguage::ZhCn => {
+            format!("提醒状态已更新\n\n标题：{}\n状态：{}", title, status)
+        }
+        ReminderMessageLanguage::En => {
+            format!("Reminder status updated\n\nTitle: {}\nStatus: {}", title, status)
+        }
+    }
+}
+
+fn reminder_created_message(
+    lang: ReminderMessageLanguage,
+    title: &str,
+    time_display: &str,
+    event_type: &str,
+) -> String {
+    let event_type = reminder_event_type_label(lang, event_type);
+    match lang {
+        ReminderMessageLanguage::ZhTw => format!(
+            "提醒已建立\n\n標題：{}\n時間：{}\n類型：{}\n\n請在程式內檢查或編輯。",
+            title, time_display, event_type
+        ),
+        ReminderMessageLanguage::ZhCn => format!(
+            "提醒已建立\n\n标题：{}\n时间：{}\n类型：{}\n\n请在程序内检查或编辑。",
+            title, time_display, event_type
+        ),
+        ReminderMessageLanguage::En => format!(
+            "Reminder created\n\nTitle: {}\nTime: {}\nType: {}\n\nPlease review or edit it in the app.",
+            title, time_display, event_type
+        ),
+    }
+}
+
 impl ReminderEngine {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -152,21 +235,25 @@ impl ReminderEngine {
                         "[ReminderEngine] Updated reminder status to {}: {}",
                         db_status, title
                     );
-                    if settings.telegram.enabled {
+                    if settings.telegram.enabled
+                        && !settings.telegram.bot_token.is_empty()
+                        && !settings.telegram.allowed_user_ids.is_empty()
+                    {
                         let op_text = if status_req == "cancelled" {
                             "cancelled"
                         } else {
                             "completed"
                         };
-                        let _ = crate::background::telegram_bot::send_message(
-                            &settings.telegram.bot_token,
-                            settings.telegram.allowed_user_ids[0],
-                            &format!(
-                                "Reminder status updated\n\nTitle: {}\nStatus: {}",
-                                title, op_text
-                            ),
-                        )
-                        .await;
+                        let lang = ReminderMessageLanguage::from_code(&settings.general.language);
+                        let msg = reminder_status_updated_message(lang, title, op_text);
+                        for &user_id in &settings.telegram.allowed_user_ids {
+                            let _ = crate::background::telegram_bot::send_message(
+                                &settings.telegram.bot_token,
+                                user_id,
+                                &msg,
+                            )
+                            .await;
+                        }
                     }
                 }
                 continue;
@@ -265,15 +352,17 @@ impl ReminderEngine {
                 && !settings.telegram.bot_token.is_empty()
                 && !settings.telegram.allowed_user_ids.is_empty()
             {
+                let lang = ReminderMessageLanguage::from_code(&settings.general.language);
                 let time_display = match (&event_date, &event_time) {
                     (d, Some(t)) if !d.is_empty() => format!("{} {}", d, t),
                     (d, None) if !d.is_empty() => d.to_string(),
-                    _ => "not set".to_string(),
+                    _ => match lang {
+                        ReminderMessageLanguage::ZhTw => "未設定".to_string(),
+                        ReminderMessageLanguage::ZhCn => "未设置".to_string(),
+                        ReminderMessageLanguage::En => "not set".to_string(),
+                    },
                 };
-                let confirm_msg = format!(
-                    "Reminder created\n\nTitle: {}\nTime: {}\nType: {}\n\nPlease review or edit it in the app.",
-                    title, time_display, event_type
-                );
+                let confirm_msg = reminder_created_message(lang, title, &time_display, event_type);
 
                 let bot_token = settings.telegram.bot_token.clone();
                 for &user_id in &settings.telegram.allowed_user_ids {

@@ -324,6 +324,42 @@ fn tg_reminder_dismissed(lang: TelegramLanguage) -> &'static str {
     }
 }
 
+fn tg_reminder_type_label(lang: TelegramLanguage, event_type: &str) -> &'static str {
+    match (lang, event_type) {
+        (TelegramLanguage::ZhTw, "meeting") => "[會議]",
+        (TelegramLanguage::ZhTw, "deliverable") => "[交付物]",
+        (TelegramLanguage::ZhTw, "event") => "[事件]",
+        (TelegramLanguage::ZhTw, "appointment") => "[預約]",
+        (TelegramLanguage::ZhTw, _) => "[提醒]",
+        (TelegramLanguage::ZhCn, "meeting") => "[会议]",
+        (TelegramLanguage::ZhCn, "deliverable") => "[交付物]",
+        (TelegramLanguage::ZhCn, "event") => "[事件]",
+        (TelegramLanguage::ZhCn, "appointment") => "[预约]",
+        (TelegramLanguage::ZhCn, _) => "[提醒]",
+        (TelegramLanguage::En, "meeting") => "[Meeting]",
+        (TelegramLanguage::En, "deliverable") => "[Deliverable]",
+        (TelegramLanguage::En, "event") => "[Event]",
+        (TelegramLanguage::En, "appointment") => "[Appointment]",
+        (TelegramLanguage::En, _) => "[Reminder]",
+    }
+}
+
+fn tg_reminder_done_button(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "完成",
+        TelegramLanguage::ZhCn => "完成",
+        TelegramLanguage::En => "Done",
+    }
+}
+
+fn tg_reminder_dismiss_button(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "取消",
+        TelegramLanguage::ZhCn => "取消",
+        TelegramLanguage::En => "Dismiss",
+    }
+}
+
 fn tg_rename_usage(lang: TelegramLanguage) -> &'static str {
     match lang {
         TelegramLanguage::ZhTw => "用法：/rename <名稱>",
@@ -1306,20 +1342,14 @@ async fn handle_list_reminders(
         } else {
             format!("{} {}", date, time)
         };
-        let event_type = match item["eventType"].as_str().unwrap_or("") {
-            "meeting" => "[Meeting]",
-            "deliverable" => "[Deliverable]",
-            "event" => "[Event]",
-            "appointment" => "[Appointment]",
-            _ => "[Reminder]",
-        };
+        let event_type = tg_reminder_type_label(lang, item["eventType"].as_str().unwrap_or(""));
 
         let msg = format!("{}\n   {}\n  {}", event_type, title, time_display);
 
         let keyboard = json!([
             [
-                { "text": "Done", "callback_data": format!("rmd_done_{}", id) },
-                { "text": "Dismiss", "callback_data": format!("rmd_cancel_{}", id) }
+                { "text": tg_reminder_done_button(lang), "callback_data": format!("rmd_done_{}", id) },
+                { "text": tg_reminder_dismiss_button(lang), "callback_data": format!("rmd_cancel_{}", id) }
             ]
         ]);
 

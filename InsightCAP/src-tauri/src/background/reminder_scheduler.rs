@@ -13,6 +13,95 @@ use crate::settings::store::get_settings;
 
 const POLL_INTERVAL_SECS: u64 = 60;
 
+#[derive(Clone, Copy)]
+enum ReminderLanguage {
+    ZhTw,
+    ZhCn,
+    En,
+}
+
+impl ReminderLanguage {
+    fn from_code(language: &str) -> Self {
+        match language {
+            "zh-CN" => Self::ZhCn,
+            "en" => Self::En,
+            _ => Self::ZhTw,
+        }
+    }
+}
+
+fn reminder_intent_label(lang: ReminderLanguage, intent: &str) -> &'static str {
+    match (lang, intent) {
+        (ReminderLanguage::ZhTw, "start") => "提醒：開始處理",
+        (ReminderLanguage::ZhTw, "midcheck") => "提醒：進度檢查",
+        (ReminderLanguage::ZhTw, "urgent") => "緊急提醒",
+        (ReminderLanguage::ZhTw, "final") => "最後提醒",
+        (ReminderLanguage::ZhTw, "prepare") => "準備提醒",
+        (ReminderLanguage::ZhTw, "imminent") => "即將開始",
+        (ReminderLanguage::ZhTw, "now") => "正在發生",
+        (ReminderLanguage::ZhTw, "confirm_date") => "日期確認提醒",
+        (ReminderLanguage::ZhTw, _) => "提醒",
+        (ReminderLanguage::ZhCn, "start") => "提醒：开始处理",
+        (ReminderLanguage::ZhCn, "midcheck") => "提醒：进度检查",
+        (ReminderLanguage::ZhCn, "urgent") => "紧急提醒",
+        (ReminderLanguage::ZhCn, "final") => "最后提醒",
+        (ReminderLanguage::ZhCn, "prepare") => "准备提醒",
+        (ReminderLanguage::ZhCn, "imminent") => "即将开始",
+        (ReminderLanguage::ZhCn, "now") => "正在发生",
+        (ReminderLanguage::ZhCn, "confirm_date") => "日期确认提醒",
+        (ReminderLanguage::ZhCn, _) => "提醒",
+        (ReminderLanguage::En, "start") => "Reminder: get started",
+        (ReminderLanguage::En, "midcheck") => "Reminder: progress check",
+        (ReminderLanguage::En, "urgent") => "Urgent reminder",
+        (ReminderLanguage::En, "final") => "Final reminder",
+        (ReminderLanguage::En, "prepare") => "Preparation reminder",
+        (ReminderLanguage::En, "imminent") => "Imminent reminder",
+        (ReminderLanguage::En, "now") => "Happening now",
+        (ReminderLanguage::En, "confirm_date") => "Date confirmation reminder",
+        (ReminderLanguage::En, _) => "Reminder",
+    }
+}
+
+fn reminder_type_label(lang: ReminderLanguage, event_type: &str) -> &str {
+    match (lang, event_type) {
+        (ReminderLanguage::ZhTw, "meeting") => "會議",
+        (ReminderLanguage::ZhTw, "deliverable") => "交付物",
+        (ReminderLanguage::ZhTw, "event") => "事件",
+        (ReminderLanguage::ZhTw, "appointment") => "預約",
+        (ReminderLanguage::ZhCn, "meeting") => "会议",
+        (ReminderLanguage::ZhCn, "deliverable") => "交付物",
+        (ReminderLanguage::ZhCn, "event") => "事件",
+        (ReminderLanguage::ZhCn, "appointment") => "预约",
+        (_, _) => event_type,
+    }
+}
+
+fn reminder_message(
+    lang: ReminderLanguage,
+    intent: &str,
+    title: &str,
+    time_str: &str,
+    event_type: &str,
+) -> String {
+    let intent_display = reminder_intent_label(lang, intent);
+    let type_display = reminder_type_label(lang, event_type);
+
+    match lang {
+        ReminderLanguage::ZhTw => format!(
+            "[{}]\n標題：{}\n時間：{}\n類型：{}",
+            intent_display, title, time_str, type_display
+        ),
+        ReminderLanguage::ZhCn => format!(
+            "[{}]\n标题：{}\n时间：{}\n类型：{}",
+            intent_display, title, time_str, type_display
+        ),
+        ReminderLanguage::En => format!(
+            "[{}]\nTitle: {}\nTime: {}\nType: {}",
+            intent_display, title, time_str, type_display
+        ),
+    }
+}
+
 pub fn start_reminder_scheduler(app: AppHandle) {
     let shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -95,6 +184,7 @@ pub async fn process_due_notifications(app: &AppHandle, force: bool) -> Result<u
     );
 
     for row in &rows {
+        let lang = ReminderLanguage::from_code(&settings.general.language);
         let notif_id: String = row.get("id");
         let reminder_id: String = row.get("reminder_id");
         let intent: String = row.get("intent");
@@ -110,17 +200,7 @@ pub async fn process_due_notifications(app: &AppHandle, force: bool) -> Result<u
             continue;
         }
 
-        let intent_display = match intent.as_str() {
-            "start" => "Reminder: get started",
-            "midcheck" => "Reminder: progress check",
-            "urgent" => "Urgent reminder",
-            "final" => "Final reminder",
-            "prepare" => "Preparation reminder",
-            "imminent" => "Imminent reminder",
-            "now" => "Happening now",
-            "confirm_date" => "Date confirmation reminder",
-            _ => "Reminder",
-        };
+        let intent_display = reminder_intent_label(lang, &intent);
 
         let time_str = match (&event_date, &event_time) {
             (Some(d), Some(t)) => format!("{} {}", d, t),
@@ -128,10 +208,7 @@ pub async fn process_due_notifications(app: &AppHandle, force: bool) -> Result<u
             _ => "".to_string(),
         };
 
-        let full_msg = format!(
-            "[{}]\nTitle: {}\nTime: {}\nType: {}",
-            intent_display, title, time_str, event_type
-        );
+        let full_msg = reminder_message(lang, &intent, &title, &time_str, &event_type);
 
         let _ = app.emit(
             "reminder-notification",
