@@ -190,7 +190,7 @@ pub async fn get_sources_timeline(
              s.url, s.file_path, s.local_doc_path, s.thumbnail, s.captured_at, \
              SUBSTR(s.clean_content, 1, 120) as preview, \
              s.capture_count, \
-             COALESCE((SELECT GROUP_CONCAT(DISTINCT t.value) FROM captures c, json_each(c.tags) t WHERE c.source_id = s.id AND t.value != ''), '') as agg_tags \
+             COALESCE((SELECT GROUP_CONCAT(DISTINCT t.value) FROM (SELECT tags FROM captures WHERE source_id = s.id AND tags IS NOT NULL UNION ALL SELECT tags FROM sources WHERE id = s.id AND tags IS NOT NULL) raw, json_each(raw.tags) t WHERE t.value != '' AND t.value != 'untagged'), '') as agg_tags \
              FROM sources s WHERE 1=1"
         )
     } else {
@@ -201,7 +201,7 @@ pub async fn get_sources_timeline(
              s.url, s.file_path, NULL as local_doc_path, s.thumbnail, s.captured_at, \
              SUBSTR(s.clean_content, 1, 120) as preview, \
              s.capture_count, \
-             COALESCE((SELECT GROUP_CONCAT(DISTINCT t.value) FROM captures c, json_each(c.tags) t WHERE c.source_id = s.id AND t.value != ''), '') as agg_tags \
+             COALESCE((SELECT GROUP_CONCAT(DISTINCT t.value) FROM (SELECT tags FROM captures WHERE source_id = s.id AND tags IS NOT NULL UNION ALL SELECT tags FROM sources WHERE id = s.id AND tags IS NOT NULL) raw, json_each(raw.tags) t WHERE t.value != '' AND t.value != 'untagged'), '') as agg_tags \
              FROM sources s WHERE 1=1"
         )
     };

@@ -242,10 +242,11 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         result.push_str(&format!("\n   {}", channel));
     }
     if !transcript.is_empty() {
-        result.push_str(&format!("\n     \n{}", transcript));
+        let coalesced = coalesce_subtitle_lines(&transcript);
+        result.push_str(&format!("\n字幕内容\n{}", coalesced));
     } else if !description.is_empty() {
         let desc_preview: String = description.chars().take(2000).collect();
-        result.push_str(&format!("\n     \n{}", desc_preview));
+        result.push_str(&format!("\n描述\n{}", desc_preview));
     }
     result.push_str(&format!("\n   {}", url));
 
@@ -339,6 +340,75 @@ fn sanitize_subtitle_text(text: &str) -> String {
         .replace("&gt;", ">")
         .trim()
         .to_string()
+}
+
+/// 將一行行的短字幕合並成多個段落，並去除逶字重複
+/// - 去除和上一行完全相同的行（遮罩字幕瀻片的重覆）
+/// - 將短行展開為連續文字，每 MAX_PARA_CHARS 等字就换行
+fn coalesce_subtitle_lines(raw: &str) -> String {
+    const MAX_PARA_CHARS: usize = 300;
+
+    let mut deduped: Vec<String> = Vec::new();
+    let mut prev = String::new();
+
+    for line in raw.lines() {
+        let t = line.trim().to_string();
+        if t.is_empty() {
+            continue;
+        }
+        // 如果與上一行完全相同就跳過
+        if t == prev {
+            continue;
+        }
+        // 如果上一行包含此行內容，也跳過（逆序重覆筆話字幕）
+        if !prev.is_empty() && prev.contains(t.as_str()) {
+            continue;
+        }
+
+        deduped.push(t.clone());
+        prev = t;
+    }
+
+    // 將短行展開為連續文字，每 MAX_PARA_CHARS 換行
+    let mut result = String::new();
+    let mut current_para = String::new();
+
+    for segment in deduped {
+        if current_para.is_empty() {
+            current_para.push_str(&segment);
+        } else {
+            // 假如上一節末尾是句号結尾，直接換行
+            let ends_sentence = current_para
+                .chars()
+                .last()
+                .map(|c| matches!(c, '.' | '!' | '?' | '。' | '！' | '？'))
+                .unwrap_or(false);
+
+            if current_para.chars().count() >= MAX_PARA_CHARS || ends_sentence {
+                result.push_str(&current_para);
+                result.push('\n');
+                current_para = segment;
+            } else {
+                // 將短行展開為連續文字
+                let is_cjk = segment.chars().next().map(|c| {
+                    (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF
+                        || (c as u32) >= 0x3040 && (c as u32) <= 0x30FF
+                }).unwrap_or(false);
+                if is_cjk {
+                    current_para.push_str(&segment);
+                } else {
+                    current_para.push(' ');
+                    current_para.push_str(&segment);
+                }
+            }
+        }
+    }
+
+    if !current_para.is_empty() {
+        result.push_str(&current_para);
+    }
+
+    result.trim().to_string()
 }
 
 pub async fn fetch_bilibili_subtitles(
@@ -609,11 +679,12 @@ pub async fn fetch_bilibili_subtitles(
     result.push_str(&format!("\nUP  {}", owner));
 
     if found_sub && !transcript.trim().is_empty() {
-        result.push_str("\n     \n");
-        result.push_str(transcript.trim());
+        let coalesced = coalesce_subtitle_lines(transcript.trim());
+        result.push_str("\n字幕內容\n");
+        result.push_str(&coalesced);
     } else {
         let desc = view_json["data"]["desc"].as_str().unwrap_or("");
-        result.push_str("\n(        )      \n");
+        result.push_str("\n(無字幕，以下為影片簡介)\n");
         result.push_str(desc);
     }
 

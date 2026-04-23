@@ -94,6 +94,7 @@
         "source_meta_media": "媒體",
         "source_meta_category": "分類",
         "source_meta_captured": "擷取時間",
+        "source_meta_tags": "標籤",
         "source_meta_url": "URL",
         "source_meta_file": "檔案",
         "source_meta_excerpt": "摘要",

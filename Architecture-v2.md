@@ -1,4 +1,4 @@
-# AetherCore — 架構文件
+# InsightCAP — 架構文件
 
 > 本文件是開發的唯一架構依據。
 
@@ -6,7 +6,7 @@
 
 ## 核心定義
 
-AetherCore 是**經驗調用系統**。
+InsightCAP 是**經驗調用系統**。
 
 知識管理系統讓你找到資料；經驗調用系統在你需要的時候，主動把正確的過去經驗帶進當前工作。
 
@@ -30,13 +30,13 @@ AetherCore 是**經驗調用系統**。
 
 ## 產品形態
 
-### AetherCore Personal（個人版）
+### InsightCAP Personal（個人版）
 - 單用戶，本地優先
 - 知識源：sources + captures + memory_chunks
 - 向量索引：通用 MultilingualE5Small（384 維）
 - 登入：本地密碼 + Argon2id + Keychain
 
-### AetherCore Enterprise（商業版）
+### InsightCAP Enterprise（商業版）
 - 單用戶，本地優先（每人各自安裝，知識庫完全私有）
 - 知識源：sources + captures + memory_chunks + Knowledge Builder 產出的外部 KB
 - 向量索引：個人部分同個人版；外部 KB 使用專業模型（可為 768 維）
@@ -208,7 +208,7 @@ PatternPromotion 掃描：
 - **用戶段（可選）**：風格/語氣偏好，從 `settings` 表中的 `chat_prompt_instruction` 鍵讀取（後端 `store.rs` 負責 persistence），留空時不插入
 
 ```
-你是 AetherCore，一個本地優先的 AI 助理。
+你是 InsightCAP，一個本地優先的 AI 助理。
 
 {% if compiled_knowledge %}
 ## 已編譯核心知識（最高優先）
@@ -1708,7 +1708,7 @@ mobile/
 
 1. **Share Target**: 
    - 透過 `AndroidManifest.xml` 註冊 `SEND` Intent。
-   - 用戶在手機瀏覽器或其他 App 選取「分享到 AetherCore」時，會自動調出 `CaptureScreen`。
+   - 用戶在手機瀏覽器或其他 App 選取「分享到 InsightCAP」時，會自動調出 `CaptureScreen`。
 2. **Native Bridge**:
    - `ShareIntentModule` 負責在 React Native 啟動或 Resume 時抓取 Intent 內容（文字或連結），並在傳遞後自動清除防止重啟重複讀取。
 
@@ -2183,7 +2183,7 @@ kb_path/
 
 ### 推理模式檢測與適配
 
-AetherCore 支援多種 LLM 原生推理能力，由 `model_caps::detect(model, provider)` 在執行時自動偵測：
+InsightCAP 支援多種 LLM 原生推理能力，由 `model_caps::detect(model, provider)` 在執行時自動偵測：
 
 | 推理模式 | 模型 | Provider | 激活方式 | 輸出格式 |
 |---------|------|----------|---------|---------|

@@ -1011,7 +1011,7 @@ export const RepositoryPage: React.FC = () => {
                                                 ref={(el) => {
                                                     firstRowRefs.current[group.dateKey] = el;
                                                 }}
-                                                className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4"
+                                                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
                                             >
                                                 {group.sourceItems.map((item) => {
                                                     const { iconColor, iconBg, icon, mt } = getMediaConfig(item);
@@ -1026,7 +1026,7 @@ export const RepositoryPage: React.FC = () => {
                                                             key={item.id}
                                                             type="button"
                                                             onClick={() => handleOpenSource(item)}
-                                                            className="text-left group/card relative flex h-full min-h-[130px] flex-col overflow-hidden rounded-xl border border-stroke-card bg-surface-layer p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)] cursor-pointer"
+                                                            className="text-left group/card relative flex h-full min-h-[160px] flex-col overflow-hidden rounded-xl border border-stroke-card bg-surface-layer p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)] cursor-pointer"
                                                         >
                                                             {isVideoCard ? (
                                                                 <div className="flex flex-1 flex-col gap-3 w-full">
@@ -1051,18 +1051,28 @@ export const RepositoryPage: React.FC = () => {
                                                                         <p className="line-clamp-2 text-[13.5px] font-medium text-text-primary leading-snug break-words">
                                                                             {titleOf(item.title)}
                                                                         </p>
+                                                                        {item.contentPreview && (
+                                                                            <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-text-tertiary break-words">
+                                                                                {item.contentPreview.replace(/\s+/g, ' ').trim()}
+                                                                            </p>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex items-center gap-4 flex-1 w-full">
-                                                                    <div className={`shrink-0 flex h-14 w-14 items-center justify-center rounded-2xl ${iconBg} ${iconColor}`}>
-                                                                        <span className="scale-125">{icon}</span>
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0 pr-1">
-                                                                        <p className="line-clamp-3 text-[13.5px] font-medium text-text-primary leading-snug break-words">
+                                                                <div className="flex flex-col flex-1 w-full gap-2">
+                                                                    <div className="flex items-center gap-2.5">
+                                                                        <div className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-lg ${iconBg} ${iconColor}`}>
+                                                                            <span className="scale-90">{icon}</span>
+                                                                        </div>
+                                                                        <p className="line-clamp-2 text-[13.5px] font-semibold text-text-primary leading-snug break-words flex-1 min-w-0">
                                                                             {titleOf(item.title)}
                                                                         </p>
                                                                     </div>
+                                                                    {item.contentPreview && (
+                                                                        <p className="line-clamp-4 text-[12px] leading-relaxed text-text-tertiary break-words flex-1">
+                                                                            {item.contentPreview.replace(/\s+/g, ' ').trim()}
+                                                                        </p>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                             <div className="mt-4 flex flex-nowrap items-center gap-1.5 overflow-hidden w-full h-[24px] pr-6">
@@ -1112,7 +1122,7 @@ export const RepositoryPage: React.FC = () => {
                                                 ref={group.sourceItems.length === 0 ? (el) => {
                                                     firstRowRefs.current[group.dateKey] = el;
                                                 } : undefined}
-                                                className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4"
+                                                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
                                             >
                                                 {group.noteItems.map((note) => {
                                                     return (
@@ -1236,8 +1246,6 @@ export const RepositoryPage: React.FC = () => {
                                         const isMediaSource = embeddedMedia !== null || (docPreview.sourceItem?.mediaType === 'url') || (docPreview.sourceItem?.mediaType === 'video');
                                         const sourceUrl = docPreview.sourceItem ? inferOpenUrl(docPreview.sourceItem) : null;
                                         const isWebSource = Boolean(docPreview.sourceItem && docPreview.sourceItem.type === 'url' && sourceUrl);
-                                        const shouldEmbedWebSource = Boolean(isWebSource && embeddedMedia === null && sourceUrl && !failedEmbeddedUrls.has(sourceUrl));
-                                        const sourceThumbnail = docPreview.sourceItem?.thumbnail;
 
                                         let display = raw;
                                         if (isMediaSource && raw) {
@@ -1264,86 +1272,6 @@ export const RepositoryPage: React.FC = () => {
                                         if (!display && !isWebSource) return null;
                                         return (
                                             <div className="space-y-4">
-                                                {isWebSource && !shouldEmbedWebSource && sourceThumbnail && (
-                                                    <div className="relative h-56 overflow-hidden rounded-xl border border-white/[0.07] bg-surface-subtle shadow-sm">
-                                                        <img
-                                                            src={sourceThumbnail}
-                                                            alt={docPreview.title}
-                                                            className="h-full w-full object-cover"
-                                                            referrerPolicy="no-referrer"
-                                                        />
-                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-                                                        <div className="absolute bottom-4 left-5 right-5">
-                                                            <div className="line-clamp-2 text-[16px] font-semibold leading-snug text-white">
-                                                                {docPreview.title}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                {shouldEmbedWebSource && sourceUrl && (
-                                                    <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-surface-base shadow-sm">
-                                                        {sourceThumbnail && (
-                                                            <div className="relative h-44 overflow-hidden border-b border-white/[0.06] bg-surface-subtle">
-                                                                <img
-                                                                    src={sourceThumbnail}
-                                                                    alt={docPreview.title}
-                                                                    className="h-full w-full object-cover"
-                                                                    referrerPolicy="no-referrer"
-                                                                />
-                                                                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-                                                                <div className="absolute bottom-3 left-4 right-4">
-                                                                    <div className="line-clamp-2 text-[15px] font-semibold leading-snug text-white">
-                                                                        {docPreview.title}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] bg-surface-layer/60 px-4 py-2.5">
-                                                            <div className="flex min-w-0 items-center gap-2">
-                                                                <Globe className="h-3.5 w-3.5 shrink-0 text-accent-default" />
-                                                                <span className="truncate text-[12px] text-text-secondary">{sourceUrl}</span>
-                                                            </div>
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleOpenOriginalFromPreview}
-                                                                className="shrink-0 rounded-lg border border-accent-default/30 bg-accent-default/10 px-3 py-1 text-[11px] font-semibold text-accent-default transition-all hover:border-accent-default/60 hover:bg-accent-default/20"
-                                                            >
-                                                                {t('repository.open_original')}
-                                                            </button>
-                                                        </div>
-                                                        <div className="h-[520px] bg-white">
-                                                            <iframe
-                                                                title={docPreview.title}
-                                                                src={sourceUrl}
-                                                                className="h-full w-full border-0"
-                                                                referrerPolicy="no-referrer-when-downgrade"
-                                                                allow="clipboard-read; clipboard-write; fullscreen"
-                                                                onError={() => {
-                                                                    setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
-                                                                }}
-                                                                onLoad={(event) => {
-                                                                    window.setTimeout(() => {
-                                                                        try {
-                                                                            const frame = event.currentTarget;
-                                                                            const doc = frame.contentDocument;
-                                                                            if (!doc) {
-                                                                                setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
-                                                                                return;
-                                                                            }
-                                                                            const text = doc.body?.innerText?.trim() ?? '';
-                                                                            const title = doc.title.trim();
-                                                                            if (!text && !title) {
-                                                                                setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
-                                                                            }
-                                                                        } catch {
-                                                                            setFailedEmbeddedUrls((prev) => new Set(prev).add(sourceUrl));
-                                                                        }
-                                                                    }, 600);
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
                                                 {display && (
                                                     <div className="rounded-xl border border-white/[0.07] bg-surface-subtle/40 px-5 py-4 shadow-sm">
                                                         <pre className="whitespace-pre-wrap text-[13.5px] leading-[1.8] text-text-secondary">{display}</pre>
@@ -1403,8 +1331,20 @@ export const RepositoryPage: React.FC = () => {
                                                                 <div key={chunk.id} className="rounded-xl border border-white/[0.07] bg-surface-subtle/50 p-4 shadow-sm">
                                                                     <div className="mb-2.5 flex items-center gap-2">
                                                                         <span className="rounded-md bg-accent-default/12 px-2 py-0.5 text-[11px] font-bold tracking-wide text-accent-default">{`#${idx + 1}`}</span>
-                                                                        <div className="ml-auto">
-                                                                            {!isEditing ? (
+                                                                        {!isEditing && (
+                                                                            <div className="ml-auto flex items-center gap-2">
+                                                                                {spaceName && (
+                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs text-accent-default">
+                                                                                        <Layers size={10} />
+                                                                                        {spaceName}
+                                                                                    </span>
+                                                                                )}
+                                                                                {parsedTags.map(tag => (
+                                                                                    <span key={tag} className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-secondary">#{tag}</span>
+                                                                                ))}
+                                                                                {!spaceName && parsedTags.length === 0 && (
+                                                                                    <span className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-tertiary">{t('repository.no_tags')}</span>
+                                                                                )}
                                                                                 <button
                                                                                     onClick={() => startEditChunk(chunk)}
                                                                                     className="flex items-center gap-1 rounded-md border border-stroke-control px-2.5 py-1 text-fs-xs text-text-tertiary transition-colors hover:bg-surface-card hover:text-text-primary"
@@ -1412,45 +1352,29 @@ export const RepositoryPage: React.FC = () => {
                                                                                     <Pencil size={11} />
                                                                                     {t('repository.chunk_edit_tags')}
                                                                                 </button>
-                                                                            ) : (
-                                                                                <div className="flex items-center gap-1">
-                                                                                    <button
-                                                                                        onClick={cancelEditChunk}
-                                                                                        className="rounded px-2 py-0.5 text-fs-xs text-text-tertiary hover:bg-surface-card transition-colors"
-                                                                                    >
-                                                                                        {t('repository.chunk_cancel')}
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => saveEditChunk(chunk.id)}
-                                                                                        disabled={isSavingChunk}
-                                                                                        className="flex items-center gap-1 rounded px-2 py-0.5 text-fs-xs bg-accent-default text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                                                                                    >
-                                                                                        <Check size={11} />
-                                                                                        {t('repository.chunk_save')}
-                                                                                    </button>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {isEditing && (
+                                                                            <div className="ml-auto flex items-center gap-1">
+                                                                                <button
+                                                                                    onClick={cancelEditChunk}
+                                                                                    className="rounded px-2 py-0.5 text-fs-xs text-text-tertiary hover:bg-surface-card transition-colors"
+                                                                                >
+                                                                                    {t('repository.chunk_cancel')}
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => saveEditChunk(chunk.id)}
+                                                                                    disabled={isSavingChunk}
+                                                                                    className="flex items-center gap-1 rounded px-2 py-0.5 text-fs-xs bg-accent-default text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                                                                >
+                                                                                    <Check size={11} />
+                                                                                    {t('repository.chunk_save')}
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
 
                                                                     <pre className="mb-3 whitespace-pre-wrap text-[13.5px] leading-6 text-text-primary">{extractPlainText(chunk.cleanContent || '')}</pre>
-
-                                                                    {!isEditing && (
-                                                                        <div className="flex flex-wrap items-center gap-1.5">
-                                                                            {spaceName && (
-                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs text-accent-default">
-                                                                                    <Layers size={10} />
-                                                                                    {spaceName}
-                                                                                </span>
-                                                                            )}
-                                                                            {parsedTags.map(tag => (
-                                                                                <span key={tag} className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-secondary">#{tag}</span>
-                                                                            ))}
-                                                                            {!spaceName && parsedTags.length === 0 && (
-                                                                                <span className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-tertiary">{t('repository.no_tags')}</span>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
 
                                                                     {isEditing && (
                                                                         <div className="mt-2 space-y-2 border-t border-stroke-divider pt-2">
@@ -1506,37 +1430,50 @@ export const RepositoryPage: React.FC = () => {
                                         {t('repository.no_structured_source_metadata')}
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
-                                        <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface-base/50">
-                                            <div className="space-y-0 divide-y divide-white/[0.04]">
-                                                {[
-                                                    { label: t('repository.source_meta_type'), value: docPreview.sourceItem.type },
-                                                    { label: t('repository.source_meta_media'), value: docPreview.sourceItem.mediaType },
-                                                    { label: t('repository.source_meta_category'), value: docPreview.sourceItem.sourceCategory },
-                                                    { label: t('repository.source_meta_captured'), value: docPreview.sourceItem.capturedAt },
-                                                ].map(({ label, value }) => value ? (
-                                                    <div key={label} className="px-3 py-2">
-                                                        <div className="text-[10px] text-text-tertiary">{label}</div>
-                                                        <div className="mt-0.5 break-words text-[11px] font-medium text-text-primary">{value}</div>
-                                                    </div>
-                                                ) : null)}
-                                            </div>
-                                        </div>
-
-                                        {docPreview.sourceItem.url && (
+                                    <div className="space-y-3">
+                                        {/* 擷取時間 */}
+                                        {docPreview.sourceItem.capturedAt && (
                                             <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface-base/50 px-3 py-2">
-                                                <div className="mb-1 text-[10px] text-text-tertiary">{t('repository.source_meta_url')}</div>
-                                                <div className="break-all text-[11px] leading-4 text-blue-400">{docPreview.sourceItem.url}</div>
+                                                <div className="mb-0.5 text-[10px] text-text-tertiary">{t('repository.source_meta_captured')}</div>
+                                                <div className="text-[11px] font-medium text-text-primary">
+                                                    {new Date(docPreview.sourceItem.capturedAt).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                </div>
                                             </div>
                                         )}
 
+                                        {/* 標籤 */}
+                                        {docPreview.sourceItem.tags && docPreview.sourceItem.tags.length > 0 && (
+                                            <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface-base/50 px-3 py-2">
+                                                <div className="mb-1.5 text-[10px] text-text-tertiary">{t('repository.source_meta_tags')}</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {docPreview.sourceItem.tags.map(tag => (
+                                                        <span key={tag} className="rounded-full bg-surface-card px-2 py-0.5 text-[11px] text-text-secondary">#{tag}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* URL */}
+                                        {docPreview.sourceItem.url && (
+                                            <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface-base/50 px-3 py-2">
+                                                <div className="mb-0.5 text-[10px] text-text-tertiary">{t('repository.source_meta_url')}</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleOpenOriginalFromPreview}
+                                                    className="break-all text-left text-[11px] leading-4 text-blue-400 hover:text-blue-300 transition-colors"
+                                                >
+                                                    {docPreview.sourceItem.url}
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* 本機路徑 */}
                                         {(docPreview.sourceItem.localDocPath || docPreview.sourceItem.filePath) && (
                                             <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface-base/50 px-3 py-2">
-                                                <div className="mb-1 text-[10px] text-text-tertiary">{t('repository.source_meta_file')}</div>
+                                                <div className="mb-0.5 text-[10px] text-text-tertiary">{t('repository.source_meta_file')}</div>
                                                 <div className="break-all font-mono text-[10px] leading-4 text-text-secondary">{docPreview.sourceItem.localDocPath || docPreview.sourceItem.filePath}</div>
                                             </div>
                                         )}
-
                                     </div>
                                 )}
                             </aside>
