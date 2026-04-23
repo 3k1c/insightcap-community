@@ -170,6 +170,14 @@ fn tg_default_conversation_title(lang: TelegramLanguage) -> &'static str {
     }
 }
 
+fn tg_display_conversation_title(lang: TelegramLanguage, title: String) -> String {
+    if title.trim().is_empty() || title == "Untitled Conversation" {
+        tg_default_conversation_title(lang).to_string()
+    } else {
+        title
+    }
+}
+
 fn tg_new_conversation_with_title(
     lang: TelegramLanguage,
     title: &str,
@@ -1312,9 +1320,10 @@ async fn handle_list_conversations(
     let mut keyboard: Vec<Value> = Vec::new();
     for row in &rows {
         let id: String = row.get("id");
-        let title: String = row
-            .try_get("title")
-            .unwrap_or_else(|_| "Untitled Conversation".to_string());
+        let title: String = tg_display_conversation_title(
+            lang,
+            row.try_get("title").unwrap_or_default(),
+        );
         let marker = if id == current_conv {
             tg_current_marker(lang)
         } else {
@@ -1980,6 +1989,7 @@ async fn handle_rag_query(
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?
+        .map(|title| tg_display_conversation_title(lang, title))
         .unwrap_or_else(|| tg_default_conversation_title(lang).to_string());
 
     let history = get_conversation_history(pool, &conv_id, 10).await?;

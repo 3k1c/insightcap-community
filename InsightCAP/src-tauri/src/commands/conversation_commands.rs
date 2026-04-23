@@ -8,6 +8,26 @@ use crate::db::AppState;
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
 
+fn default_conversation_title(language: &str) -> &'static str {
+    match language {
+        "zh-CN" => "新对话",
+        "en" => "New Conversation",
+        _ => "新對話",
+    }
+}
+
+fn is_default_conversation_title(title: &str) -> bool {
+    matches!(title, "Untitled Conversation" | "New Conversation" | "新對話" | "新对话")
+}
+
+fn display_conversation_title(title: String, language: &str) -> String {
+    if title.trim().is_empty() || title == "Untitled Conversation" {
+        default_conversation_title(language).to_string()
+    } else {
+        title
+    }
+}
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Conversation {
@@ -49,11 +69,16 @@ pub async fn get_conversations(pool: State<'_, SqlitePool>) -> Result<Vec<Conver
     .await
     .map_err(|e| e.to_string())?;
 
+    let settings = crate::settings::store::get_settings(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+    let language = settings.general.language;
+
     let convs = rows
         .into_iter()
         .map(|r| Conversation {
             id: r.get("id"),
-            title: r.try_get("title").unwrap_or_default(),
+            title: display_conversation_title(r.try_get("title").unwrap_or_default(), &language),
             summary: r.try_get("summary").unwrap_or_default(),
             project_id: r.try_get("project_id").ok(),
             is_pinned: r.try_get::<i32, _>("is_pinned").unwrap_or(0) != 0,
@@ -72,7 +97,10 @@ pub async fn create_conversation(
     project_id: Option<String>,
 ) -> Result<String, String> {
     let id = Uuid::now_v7().to_string();
-    let title = "Untitled Conversation";
+    let settings = crate::settings::store::get_settings(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+    let title = default_conversation_title(&settings.general.language);
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
@@ -310,7 +338,7 @@ pub async fn auto_title_conversation(
         .map_err(|e| e.to_string())?
         .unwrap_or_default();
 
-    if current_title != "Untitled Conversation" {
+    if !is_default_conversation_title(&current_title) {
         return Ok(current_title);
     }
 
