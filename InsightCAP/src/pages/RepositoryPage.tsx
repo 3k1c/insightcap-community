@@ -121,7 +121,7 @@ function getEmbeddedMedia(item: TimelineSourceItem | undefined): EmbeddedMedia |
 
     const bvId = targetUrl.match(/(?:bilibili\.com\/video\/)?(BV[0-9A-Za-z]{10})/i)?.[1];
     if (bvId) {
-        return { kind: 'bilibili', src: `https://player.bilibili.com/player.html?bvid=${bvId}&high_quality=1&danmaku=0` };
+        return { kind: 'bilibili', src: `https://player.bilibili.com/player.html?bvid=${bvId}&high_quality=1&danmaku=0&autoplay=0` };
     }
 
     if (/\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(targetUrl)) {
@@ -796,7 +796,7 @@ export const RepositoryPage: React.FC = () => {
 
     return (
         <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface-base">
-            <div className="sticky top-0 z-10 border-b border-stroke-divider bg-surface-base/80 px-6 pb-4 pt-6 backdrop-blur-md">
+            <div className="sticky top-0 z-10 border-b border-stroke-divider bg-surface-base px-6 pb-4 pt-6">
                 <div className="w-full">
                     <div className="mb-4 flex items-center gap-3">
                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-light2">

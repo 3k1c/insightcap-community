@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 const BATCH_SIZE: usize = 50;
-const ASSIGN_THRESHOLD: f32 = 0.45;
-const MERGE_THRESHOLD: f32 = 0.82;
+const ASSIGN_THRESHOLD: f32 = 0.81;
+const MERGE_THRESHOLD: f32 = 0.91;
 
 pub struct SpaceEngine {
     pool: SqlitePool,
@@ -63,17 +63,18 @@ impl SpaceEngine {
 
             let prompt = if existing_names.is_empty() {
                 format!(
-                    "Categorize the following text into one short category or Space name. \
+                    "Create a highly specific, short category or Space name for the following text. \
                      Return ONLY the category name in {output_language}. No punctuation.\n\nText:\n{}",
                     sample
                 )
             } else {
                 format!(
                     "Existing Space names:\n{}\n\n\
-                     Categorize the following text into the best existing Space if appropriate. \
-                     If none fits, create one short new Space name in {output_language}. \
+                     Categorize the following text. If it VERY STRICTLY belongs to one of the existing Spaces, return that Space name. \
+                     Otherwise, create a NEW, highly specific short Space name in {output_language}. \
+                     Do NOT default to an existing space if the topic is even slightly different. \
                      Return ONLY the Space name. No punctuation.\n\nText:\n{}",
-                    existing_names.join(" "),
+                    existing_names.join(", "),
                     sample
                 )
             };
