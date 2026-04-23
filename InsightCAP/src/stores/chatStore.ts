@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
+import i18n from '../i18n';
 
 function recentAssistantContext(messages: Message[]): string {
     return messages
@@ -349,7 +350,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         [conversationId]: true,
                     },
                 }));
-                toast.success(`Created ${ids.length} reminder item(s) from this conversation.`);
+                toast.success(i18n.t('chat.reminder_created_count', { count: ids.length }));
             }
         } catch (e) {
             console.error('[UrgentReminder] Failed:', e);
@@ -380,7 +381,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 /\u8a2d\u5b9a\u6703\u8b70\u63d0\u9192/,
             ];
             if (REMINDER_ACK_PATTERNS.some((p) => p.test(answer))) {
-                toast.success('Reminder has been added to your schedule.');
+                toast.success(i18n.t('chat.reminder_added_to_schedule'));
             }
         };
 

@@ -53,7 +53,7 @@ export function ReminderToast() {
             setNotification(null);
         } catch (e) {
             console.error('Failed to complete reminder:', e);
-            toast.error('Failed to mark reminder as completed');
+            toast.error(t('reminder.error_complete_failed'));
         }
         setProcessing(false);
     }
@@ -66,7 +66,7 @@ export function ReminderToast() {
             setNotification(null);
         } catch (e) {
             console.error('Failed to snooze reminder:', e);
-            toast.error('Failed to snooze reminder');
+            toast.error(t('reminder.error_snooze_failed'));
         }
         setProcessing(false);
     }
@@ -79,7 +79,7 @@ export function ReminderToast() {
             setNotification(null);
         } catch (e) {
             console.error('Failed to dismiss reminder:', e);
-            toast.error('Failed to dismiss reminder');
+            toast.error(t('reminder.error_dismiss_failed'));
         }
         setProcessing(false);
     }

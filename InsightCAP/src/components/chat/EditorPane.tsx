@@ -984,9 +984,9 @@ export const EditorPane: React.FC = () => {
             openDocumentFromPath(selected, content);
         } catch (error) {
             console.error('Open document failed:', error);
-            window.alert('Unable to open document. Please check file format and permissions.');
+            window.alert(t('editor.open_document_failed'));
         }
-    }, [editor, openDocumentFromPath]);
+    }, [editor, openDocumentFromPath, t]);
 
     const restoreHistory = useCallback((entry: HistoryEntry) => {
         if (!editor) return;

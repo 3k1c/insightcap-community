@@ -517,7 +517,8 @@
         "snapshot_every_5min": "每 5 分钟创建一份快照",
         "snapshot_number": "快照 #{{count}}",
         "image_drag_to_resize": "拖拽以调整大小",
-        "image_uploaded_alt": "已上传"
+        "image_uploaded_alt": "已上传",
+        "open_document_failed": "无法打开文档。请检查文件格式与权限。"
     },
     "decision": {
         "review_title": "决策回顾",
@@ -644,7 +645,9 @@
         "ocr": "OCR",
         "file_type_url": "URL",
         "file_type_doc": "DOC",
-        "assistant_badge": "AI"
+        "assistant_badge": "AI",
+        "reminder_created_count": "已从此对话建立 {{count}} 个提醒。",
+        "reminder_added_to_schedule": "提醒已加入你的日程。"
     },
     "reminder": {
         "notification_title": "⏰ 提醒",
@@ -665,7 +668,10 @@
         "type_appointment": "预约",
         "snooze_30min": "30 分钟后",
         "snooze_1hr": "1 小时后",
-        "snooze_3hr": "3 小时后"
+        "snooze_3hr": "3 小时后",
+        "error_complete_failed": "无法标记提醒为完成",
+        "error_snooze_failed": "无法延后提醒",
+        "error_dismiss_failed": "无法关闭提醒"
     },
     "capture": {
         "quick_input_placeholder": "输入想法、链接、或任何内容… (Enter 送出, Esc 取消)",

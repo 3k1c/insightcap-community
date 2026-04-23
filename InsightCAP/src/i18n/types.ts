@@ -298,6 +298,7 @@ export interface TranslationKeys {
         ai_apply: string;
         ai_discard: string;
         ai_retry: string;
+        open_document_failed: string;
     };
 
     reminder: {
@@ -320,5 +321,8 @@ export interface TranslationKeys {
         snooze_30min: string;
         snooze_1hr: string;
         snooze_3hr: string;
+        error_complete_failed: string;
+        error_snooze_failed: string;
+        error_dismiss_failed: string;
     };
 }

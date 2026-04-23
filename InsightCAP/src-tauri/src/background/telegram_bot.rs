@@ -1,4 +1,3 @@
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -151,9 +150,15 @@ fn tg_url_exists(lang: TelegramLanguage, label: &str) -> String {
 
 fn tg_url_queued(lang: TelegramLanguage, label: &str) -> String {
     match lang {
-        TelegramLanguage::ZhTw => format!("{label} 連結已加入擷取佇列。可用 /recent 查看最近擷取。"),
-        TelegramLanguage::ZhCn => format!("{label} 链接已加入采集队列。可用 /recent 查看最近采集。"),
-        TelegramLanguage::En => format!("{label} link queued successfully. Use /recent to view latest captures."),
+        TelegramLanguage::ZhTw => {
+            format!("{label} 連結已加入擷取佇列。可用 /recent 查看最近擷取。")
+        }
+        TelegramLanguage::ZhCn => {
+            format!("{label} 链接已加入采集队列。可用 /recent 查看最近采集。")
+        }
+        TelegramLanguage::En => {
+            format!("{label} link queued successfully. Use /recent to view latest captures.")
+        }
     }
 }
 
@@ -284,8 +289,12 @@ fn tg_current_project(lang: TelegramLanguage, name: &str) -> String {
 
 fn tg_new_project_hint(lang: TelegramLanguage) -> &'static str {
     match lang {
-        TelegramLanguage::ZhTw => "請使用 /newproject <名稱> 建立專案。\n例：/newproject InsightCAP MVP",
-        TelegramLanguage::ZhCn => "请使用 /newproject <名称> 建立项目。\n例：/newproject InsightCAP MVP",
+        TelegramLanguage::ZhTw => {
+            "請使用 /newproject <名稱> 建立專案。\n例：/newproject InsightCAP MVP"
+        }
+        TelegramLanguage::ZhCn => {
+            "请使用 /newproject <名称> 建立项目。\n例：/newproject InsightCAP MVP"
+        }
         TelegramLanguage::En => {
             "Use /newproject <name> to create a project.\nExample: /newproject InsightCAP MVP"
         }
@@ -434,6 +443,104 @@ fn tg_ai_not_configured(lang: TelegramLanguage) -> &'static str {
     }
 }
 
+fn tg_access_enabled(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "已為此使用者啟用 Telegram 存取。",
+        TelegramLanguage::ZhCn => "已为此用户启用 Telegram 访问。",
+        TelegramLanguage::En => "Telegram access enabled for this user.",
+    }
+}
+
+fn tg_request_failed(lang: TelegramLanguage, kind: &str, error: &str) -> String {
+    match (lang, kind) {
+        (TelegramLanguage::ZhTw, "photo") => format!("圖片擷取失敗：{error}"),
+        (TelegramLanguage::ZhTw, "document") => format!("文件擷取失敗：{error}"),
+        (TelegramLanguage::ZhTw, _) => format!("請求失敗：{error}"),
+        (TelegramLanguage::ZhCn, "photo") => format!("图片采集失败：{error}"),
+        (TelegramLanguage::ZhCn, "document") => format!("文档采集失败：{error}"),
+        (TelegramLanguage::ZhCn, _) => format!("请求失败：{error}"),
+        (TelegramLanguage::En, "photo") => format!("Photo capture failed: {error}"),
+        (TelegramLanguage::En, "document") => format!("Document capture failed: {error}"),
+        (TelegramLanguage::En, _) => format!("Request failed: {error}"),
+    }
+}
+
+fn tg_ocr_processing(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "已收到圖片，正在進行 OCR...",
+        TelegramLanguage::ZhCn => "已收到图片，正在进行 OCR...",
+        TelegramLanguage::En => "Image received. Running OCR...",
+    }
+}
+
+fn tg_ocr_queued(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "圖片已加入 OCR 處理佇列。可用 /recent 查看最近擷取。",
+        TelegramLanguage::ZhCn => "图片已加入 OCR 处理队列。可用 /recent 查看最近采集。",
+        TelegramLanguage::En => {
+            "Image has been queued for OCR processing. Use /recent to view latest captures."
+        }
+    }
+}
+
+fn tg_file_too_large(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "檔案超過 20MB，Telegram Bot 暫時無法處理。",
+        TelegramLanguage::ZhCn => "文件超过 20MB，Telegram Bot 暂时无法处理。",
+        TelegramLanguage::En => {
+            "File is larger than 20MB and cannot be processed by the Telegram Bot."
+        }
+    }
+}
+
+fn tg_unsupported_file(lang: TelegramLanguage, ext: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("不支援的檔案格式：{ext}\n目前支援 PDF、DOCX、Office、圖片與常見文字/程式碼檔案。"),
+        TelegramLanguage::ZhCn => format!("不支持的文件格式：{ext}\n目前支持 PDF、DOCX、Office、图片与常见文本/代码文件。"),
+        TelegramLanguage::En => format!("Unsupported file type: {ext}\nSupported formats include PDF, DOCX, Office files, images, and common text/code files."),
+    }
+}
+
+fn tg_file_processing(lang: TelegramLanguage, label: &str, file_name: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("正在處理{}：{}...", label, file_name),
+        TelegramLanguage::ZhCn => format!("正在处理{}：{}...", label, file_name),
+        TelegramLanguage::En => format!("Processing {label} {file_name}..."),
+    }
+}
+
+fn tg_image_label(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "圖片",
+        TelegramLanguage::ZhCn => "图片",
+        TelegramLanguage::En => "image",
+    }
+}
+
+fn tg_document_label(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "文件",
+        TelegramLanguage::ZhCn => "文档",
+        TelegramLanguage::En => "document",
+    }
+}
+
+fn tg_document_empty(lang: TelegramLanguage, file_name: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("無法從「{file_name}」擷取可用文字。"),
+        TelegramLanguage::ZhCn => format!("无法从“{file_name}”采集可用文本。"),
+        TelegramLanguage::En => format!("No usable text could be extracted from {file_name}."),
+    }
+}
+
+fn tg_document_queued(lang: TelegramLanguage, file_name: &str) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("文件「{file_name}」已加入擷取佇列。"),
+        TelegramLanguage::ZhCn => format!("文档“{file_name}”已加入采集队列。"),
+        TelegramLanguage::En => format!("Document {file_name} has been queued for processing."),
+    }
+}
+
 pub fn start_telegram_bot(app: AppHandle) {
     if POLLING_ACTIVE.swap(true, Ordering::SeqCst) {
         println!("[TelegramBot] Already running, skipping duplicate start");
@@ -570,6 +677,7 @@ async fn telegram_poll_loop(app: AppHandle) {
                 let state = app.state::<AppState>();
                 if let Ok(mut settings) = crate::settings::store::get_settings(&state.db).await {
                     if !settings.telegram.allowed_user_ids.contains(&user_id) {
+                        let language = settings.general.language.clone();
                         settings.telegram.allowed_user_ids.push(user_id);
                         if let Err(e) =
                             crate::settings::store::save_settings(&state.db, settings).await
@@ -578,13 +686,11 @@ async fn telegram_poll_loop(app: AppHandle) {
                         } else {
                             allowed_ids.push(user_id);
                             let token_clone = bot_token.clone();
+                            let lang = TelegramLanguage::from_code(&language);
                             tokio::spawn(async move {
-                                let _ = send_message(
-                                    &token_clone,
-                                    chat_id,
-                                    "Telegram access enabled for this user.",
-                                )
-                                .await;
+                                let _ =
+                                    send_message(&token_clone, chat_id, tg_access_enabled(lang))
+                                        .await;
                             });
                         }
                     }
@@ -626,8 +732,9 @@ async fn telegram_poll_loop(app: AppHandle) {
                         handle_photo_capture(&app_clone, &token, chat_id, &file_id, &label).await
                     {
                         eprintln!("[TelegramBot]       : {}", e);
+                        let lang = telegram_language(&app_clone).await;
                         let _ =
-                            send_message(&token, chat_id, &format!("Photo capture failed: {}", e))
+                            send_message(&token, chat_id, &tg_request_failed(lang, "photo", &e))
                                 .await;
                     }
                 });
@@ -649,12 +756,10 @@ async fn telegram_poll_loop(app: AppHandle) {
                     .await
                     {
                         eprintln!("[TelegramBot]       : {}", e);
-                        let _ = send_message(
-                            &token,
-                            chat_id,
-                            &format!("Document capture failed: {}", e),
-                        )
-                        .await;
+                        let lang = telegram_language(&app_clone).await;
+                        let _ =
+                            send_message(&token, chat_id, &tg_request_failed(lang, "document", &e))
+                                .await;
                     }
                 });
             } else {
@@ -662,8 +767,10 @@ async fn telegram_poll_loop(app: AppHandle) {
                 tokio::spawn(async move {
                     if let Err(e) = handle_message(&app_clone, &token, chat_id, &text_clone).await {
                         eprintln!("[TelegramBot]       : {}", e);
+                        let lang = telegram_language(&app_clone).await;
                         let _ =
-                            send_message(&token, chat_id, &format!("Request failed: {}", e)).await;
+                            send_message(&token, chat_id, &tg_request_failed(lang, "request", &e))
+                                .await;
                     }
                 });
             }
@@ -774,9 +881,7 @@ async fn handle_command(
         .unwrap_or("");
 
     match cmd {
-        "/start" => {
-            send_message(bot_token, chat_id, tg_start_message(lang)).await
-        }
+        "/start" => send_message(bot_token, chat_id, tg_start_message(lang)).await,
         "/new" => {
             let name = text.strip_prefix("/new").unwrap_or("").trim();
             handle_new_conversation(app, bot_token, chat_id, name).await
@@ -794,9 +899,7 @@ async fn handle_command(
         "/status" => handle_status(app, bot_token, chat_id).await,
         "/recent" => handle_recent(app, bot_token, chat_id).await,
         "/reminders" => handle_list_reminders(app, bot_token, chat_id).await,
-        _ => {
-            send_message(bot_token, chat_id, tg_unknown_command_message(lang)).await
-        }
+        _ => send_message(bot_token, chat_id, tg_unknown_command_message(lang)).await,
     }
 }
 
@@ -807,7 +910,8 @@ async fn handle_photo_capture(
     file_id: &str,
     caption: &str,
 ) -> Result<(), String> {
-    send_message(bot_token, chat_id, "                 OCR   ...").await?;
+    let lang = telegram_language(app).await;
+    send_message(bot_token, chat_id, tg_ocr_processing(lang)).await?;
 
     let client = Client::new();
 
@@ -868,7 +972,7 @@ async fn handle_photo_capture(
     .await
     .map_err(|e| format!("   inbox   : {}", e))?;
 
-    send_message(bot_token, chat_id, "        OCR          /recent    ").await
+    send_message(bot_token, chat_id, tg_ocr_queued(lang)).await
 }
 
 async fn handle_document_capture(
@@ -878,6 +982,7 @@ async fn handle_document_capture(
     document: &Value,
     caption: &str,
 ) -> Result<(), String> {
+    let lang = telegram_language(app).await;
     let file_name = document["file_name"]
         .as_str()
         .unwrap_or("document")
@@ -890,7 +995,7 @@ async fn handle_document_capture(
     let file_size = document["file_size"].as_i64().unwrap_or(0);
 
     if file_size > 20 * 1024 * 1024 {
-        return send_message(bot_token, chat_id, "        (   20MB) Bot              ").await;
+        return send_message(bot_token, chat_id, tg_file_too_large(lang)).await;
     }
 
     let ext = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
@@ -927,23 +1032,18 @@ async fn handle_document_capture(
     );
 
     if !is_image && !is_supported_doc {
-        return send_message(
-            bot_token,
-            chat_id,
-            &format!(
-                "          : {}\n\
-                       PDF, DOCX, Office                ",
-                ext
-            ),
-        )
-        .await;
+        return send_message(bot_token, chat_id, &tg_unsupported_file(lang, &ext)).await;
     }
 
-    let label = if is_image { "image" } else { "document" };
+    let label = if is_image {
+        tg_image_label(lang)
+    } else {
+        tg_document_label(lang)
+    };
     send_message(
         bot_token,
         chat_id,
-        &format!("     {} {}    ...", label, file_name),
+        &tg_file_processing(lang, label, &file_name),
     )
     .await?;
 
@@ -1009,7 +1109,7 @@ async fn handle_document_capture(
         .await
         .map_err(|e| format!("   inbox   : {}", e))?;
 
-        send_message(bot_token, chat_id, "Image has been queued for processing.").await
+        send_message(bot_token, chat_id, tg_ocr_queued(lang)).await
     } else {
         let temp_path = std::env::temp_dir().join(format!("tg_{}_{}", inbox_id, file_name));
         std::fs::write(&temp_path, &file_bytes).map_err(|e| format!("        : {}", e))?;
@@ -1041,12 +1141,7 @@ async fn handle_document_capture(
             .map_err(|e| format!("     {}   : {}", file_name, e))?;
 
         if extracted_text.trim().is_empty() {
-            return send_message(
-                bot_token,
-                chat_id,
-                &format!("      {}              ", file_name),
-            )
-            .await;
+            return send_message(bot_token, chat_id, &tg_document_empty(lang, &file_name)).await;
         }
 
         sqlx::query(
@@ -1061,12 +1156,7 @@ async fn handle_document_capture(
         .await
         .map_err(|e| format!("   inbox   : {}", e))?;
 
-        send_message(
-            bot_token,
-            chat_id,
-            &format!("     {}             ", file_name),
-        )
-        .await
+        send_message(bot_token, chat_id, &tg_document_queued(lang, &file_name)).await
     }
 }
 
@@ -1897,7 +1987,6 @@ async fn handle_rag_query(
     Ok(())
 }
 
-
 pub async fn send_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
     send_long_message(bot_token, chat_id, text).await
 }
@@ -2011,7 +2100,6 @@ fn split_message(text: &str, limit: usize) -> Vec<String> {
     parts
 }
 
-
 async fn ensure_telegram_table(pool: &SqlitePool) -> Result<(), String> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS telegram_state (\
@@ -2095,7 +2183,6 @@ async fn get_telegram_project_context(pool: &SqlitePool, chat_id: i64) -> Result
             .map_err(|e| e.to_string())?;
     Ok(row.unwrap_or_default())
 }
-
 
 async fn get_conversation_history(
     pool: &SqlitePool,

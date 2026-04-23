@@ -1031,7 +1031,8 @@ export const SettingsPage: React.FC = () => {
                                             try {
                                                 await invoke('test_telegram_notification', {
                                                     botToken: settings.telegram.botToken,
-                                                    userIds: settings.telegram.allowedUserIds
+                                                    userIds: settings.telegram.allowedUserIds,
+                                                    language: settings.general.language
                                                 });
                                                 toast.success(t('settings.telegram_test_success'));
                                             } catch (e) {

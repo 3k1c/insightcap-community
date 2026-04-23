@@ -517,7 +517,8 @@
         "snapshot_every_5min": "A snapshot is created every 5 minutes",
         "snapshot_number": "Snapshot #{{count}}",
         "image_drag_to_resize": "Drag to resize",
-        "image_uploaded_alt": "Uploaded"
+        "image_uploaded_alt": "Uploaded",
+        "open_document_failed": "Unable to open document. Please check file format and permissions."
     },
     "decision": {
         "review_title": "Decision Review",
@@ -645,7 +646,9 @@
         "unpin": "Unpin",
         "lock": "Lock",
         "unlock": "Unlock",
-        "change_color": "Change Color"
+        "change_color": "Change Color",
+        "reminder_created_count": "Created {{count}} reminder item(s) from this conversation.",
+        "reminder_added_to_schedule": "Reminder has been added to your schedule."
     },
     "reminder": {
         "notification_title": "⏰ Reminder",
@@ -666,7 +669,10 @@
         "type_appointment": "Appointment",
         "snooze_30min": "In 30 minutes",
         "snooze_1hr": "In 1 hour",
-        "snooze_3hr": "In 3 hours"
+        "snooze_3hr": "In 3 hours",
+        "error_complete_failed": "Failed to mark reminder as completed",
+        "error_snooze_failed": "Failed to snooze reminder",
+        "error_dismiss_failed": "Failed to dismiss reminder"
     },
     "capture": {
         "quick_input_placeholder": "Type ideas, links, or anything... (Enter to send, Esc to cancel)",
