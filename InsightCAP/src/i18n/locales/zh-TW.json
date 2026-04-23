@@ -419,7 +419,9 @@
         "password_required": "請輸入密碼",
         "password_changing": "正在變更密碼...",
         "recovery_generating": "正在產生新的恢復碼...",
-        "confirmation_failed": "確認失敗"
+        "confirmation_failed": "確認失敗",
+        "hotkey_recording": "請按下組合鍵...",
+        "hotkey_none": "未設定"
     },
     "turn_into": {
         "label": "轉換為",

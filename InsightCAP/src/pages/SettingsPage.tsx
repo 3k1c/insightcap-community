@@ -229,6 +229,7 @@ const InputField: React.FC<{ value: string; onChange: (v: string) => void; place
 );
 
 const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; className?: string }> = ({ value, onChange, className }) => {
+    const t = useT();
     const [recording, setRecording] = React.useState(false);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -268,7 +269,7 @@ const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; clas
             onKeyDown={handleKeyDown}
             onBlur={() => setRecording(false)}
         >
-            {recording ? 'Press key combination...' : (value || 'None')}
+            {recording ? t('settings.hotkey_recording') : (value || t('settings.hotkey_none'))}
         </button>
     );
 };

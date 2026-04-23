@@ -416,7 +416,9 @@
         "password_required": "Please enter password",
         "password_changing": "Changing password...",
         "recovery_generating": "Generating new recovery code...",
-        "confirmation_failed": "Confirmation failed"
+        "confirmation_failed": "Confirmation failed",
+        "hotkey_recording": "Press key combination...",
+        "hotkey_none": "None"
     },
     "turn_into": {
         "label": "Turn into",

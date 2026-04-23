@@ -416,7 +416,9 @@
         "password_required": "请输入密码",
         "password_changing": "正在更改密码...",
         "recovery_generating": "正在生成新的恢复码...",
-        "confirmation_failed": "确认失败"
+        "confirmation_failed": "确认失败",
+        "hotkey_recording": "请按下组合键...",
+        "hotkey_none": "未设置"
     },
     "turn_into": {
         "label": "转换为",
