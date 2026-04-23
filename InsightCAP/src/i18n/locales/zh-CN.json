@@ -190,14 +190,14 @@
     },
     "theme": {
         "label": "主题风格",
-        "frost": "磨砂玻璃",
-        "frost_desc": "亮色・冰蓝",
-        "void": "深邃靛紫",
-        "void_desc": "暗色・靛紫",
-        "warm": "暖阳羊皮",
-        "warm_desc": "亮色・琥珀",
-        "sage": "清风草地",
-        "sage_desc": "亮色・草地绿"
+        "frost": "极简白",
+        "frost_desc": "明亮清晰",
+        "void": "星空黑",
+        "void_desc": "暗色护眼",
+        "warm": "复古黄",
+        "warm_desc": "温暖柔和",
+        "sage": "薄荷绿",
+        "sage_desc": "舒适自然"
     },
     "language": {
         "label": "界面语言",

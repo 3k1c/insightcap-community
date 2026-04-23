@@ -228,6 +228,51 @@ const InputField: React.FC<{ value: string; onChange: (v: string) => void; place
     />
 );
 
+const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; className?: string }> = ({ value, onChange, className }) => {
+    const [recording, setRecording] = React.useState(false);
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!recording) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.key === 'Escape') {
+            setRecording(false);
+            return;
+        }
+
+        if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+            return;
+        }
+
+        const mods = [];
+        if (e.ctrlKey || e.metaKey) mods.push('CommandOrControl');
+        if (e.altKey) mods.push('Alt');
+        if (e.shiftKey) mods.push('Shift');
+
+        let key = e.key.toUpperCase();
+        if (e.code.startsWith('Key')) key = e.code.replace('Key', '');
+        else if (e.code.startsWith('Digit')) key = e.code.replace('Digit', '');
+        else if (key === ' ') key = 'Space';
+
+        const hotkey = [...mods, key].join('+');
+        onChange(hotkey);
+        setRecording(false);
+    };
+
+    return (
+        <button
+            type="button"
+            className={`text-left px-3 py-1.5 rounded-lg text-fs-sm border transition-colors focus:outline-none w-full ${recording ? 'bg-accent-default/10 border-accent-default text-accent-default' : 'bg-surface-base border-stroke-divider text-text-primary hover:border-accent-default/50'} ${className ?? ''}`}
+            onClick={() => setRecording(true)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setRecording(false)}
+        >
+            {recording ? 'Press key combination...' : (value || 'None')}
+        </button>
+    );
+};
+
 const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
     openai: [
         { value: 'gpt-4.1', label: 'GPT-4.1' },
@@ -611,10 +656,10 @@ export const SettingsPage: React.FC = () => {
 
                 <SectionCard title={t('settings.hotkeys')}>
                     <SettingRow label={t('settings.capture_clipboard')} desc={t('settings.global_hotkey')}>
-                        <InputField value={settings.hotkeys.captureClipboard} onChange={v => updateSettings(s => { s.hotkeys.captureClipboard = v; })} className="w-40" />
+                        <HotkeyInput value={settings.hotkeys.captureClipboard} onChange={v => updateSettings(s => { s.hotkeys.captureClipboard = v; })} className="w-48" />
                     </SettingRow>
                     <SettingRow label={t('settings.quick_input')} desc={t('settings.global_hotkey')}>
-                        <InputField value={settings.hotkeys.quickInput} onChange={v => updateSettings(s => { s.hotkeys.quickInput = v; })} className="w-40" />
+                        <HotkeyInput value={settings.hotkeys.quickInput} onChange={v => updateSettings(s => { s.hotkeys.quickInput = v; })} className="w-48" />
                     </SettingRow>
                 </SectionCard>
 

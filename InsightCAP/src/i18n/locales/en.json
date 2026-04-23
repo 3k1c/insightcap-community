@@ -190,14 +190,14 @@
     },
     "theme": {
         "label": "Theme Style",
-        "frost": "Frost Glass",
-        "frost_desc": "Light · Ice Blue",
-        "void": "Deep Void",
-        "void_desc": "Dark · Indigo",
-        "warm": "Warm Parchment",
-        "warm_desc": "Light · Amber",
-        "sage": "Sage Breeze",
-        "sage_desc": "Light · Sage Green"
+        "frost": "Minimal White",
+        "frost_desc": "Bright and Clean",
+        "void": "Night Black",
+        "void_desc": "Dark and Easy on Eyes",
+        "warm": "Vintage Yellow",
+        "warm_desc": "Warm and Soft",
+        "sage": "Mint Green",
+        "sage_desc": "Natural and Comfortable"
     },
     "language": {
         "label": "Interface Language",

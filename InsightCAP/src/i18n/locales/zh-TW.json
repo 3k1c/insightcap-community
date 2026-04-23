@@ -192,14 +192,14 @@
     },
     "theme": {
         "label": "主題風格",
-        "frost": "磨砂玻璃",
-        "frost_desc": "亮色・冰藍",
-        "void": "深邃靛紫",
-        "void_desc": "暗色・靛紫",
-        "warm": "暖陽羊皮",
-        "warm_desc": "亮色・琥珀",
-        "sage": "清風草地",
-        "sage_desc": "亮色・草地綠"
+        "frost": "極簡白",
+        "frost_desc": "明亮清晰",
+        "void": "星空黑",
+        "void_desc": "暗色護眼",
+        "warm": "復古黃",
+        "warm_desc": "溫暖柔和",
+        "sage": "薄荷綠",
+        "sage_desc": "舒適自然"
     },
     "language": {
         "label": "介面語言",
