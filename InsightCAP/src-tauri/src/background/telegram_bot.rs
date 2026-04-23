@@ -369,6 +369,36 @@ fn tg_reminder_dismiss_button(lang: TelegramLanguage) -> &'static str {
     }
 }
 
+fn tg_reminder_extracting(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => "收到提醒請求，正在建立提醒...",
+        TelegramLanguage::ZhCn => "收到提醒请求，正在建立提醒...",
+        TelegramLanguage::En => "Reminder request received. Creating reminder...",
+    }
+}
+
+fn tg_reminder_created_count(lang: TelegramLanguage, count: usize) -> String {
+    match lang {
+        TelegramLanguage::ZhTw => format!("已建立 {count} 個提醒。可用 /reminders 查看。"),
+        TelegramLanguage::ZhCn => format!("已建立 {count} 个提醒。可用 /reminders 查看。"),
+        TelegramLanguage::En => format!("Created {count} reminder(s). Use /reminders to view them."),
+    }
+}
+
+fn tg_reminder_not_created(lang: TelegramLanguage) -> &'static str {
+    match lang {
+        TelegramLanguage::ZhTw => {
+            "我未能從這段文字建立提醒。請包含日期或時間，例如：提醒我今日下午 2:30 提交錄音。"
+        }
+        TelegramLanguage::ZhCn => {
+            "我未能从这段文字建立提醒。请包含日期或时间，例如：提醒我今天下午 2:30 提交录音。"
+        }
+        TelegramLanguage::En => {
+            "I could not create a reminder from this message. Please include a date or time, for example: remind me today at 2:30 PM to submit the recording."
+        }
+    }
+}
+
 fn tg_rename_usage(lang: TelegramLanguage) -> &'static str {
     match lang {
         TelegramLanguage::ZhTw => "用法：/rename <名稱>",
@@ -796,7 +826,57 @@ async fn handle_message(
         return handle_url_capture(app, bot_token, chat_id, &url).await;
     }
 
+    if is_reminder_request(text) {
+        return handle_reminder_request(app, bot_token, chat_id, text).await;
+    }
+
     handle_rag_query(app, bot_token, chat_id, text).await
+}
+
+fn is_reminder_request(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let has_trigger = [
+        "提醒",
+        "提我",
+        "鬧鐘",
+        "闹钟",
+        "通知我",
+        "提早通知",
+        "remind",
+        "reminder",
+        "deadline",
+        "due",
+    ]
+    .iter()
+    .any(|kw| lower.contains(kw));
+
+    let has_time_hint = [
+        "今日",
+        "今天",
+        "明日",
+        "明天",
+        "下午",
+        "上午",
+        "今晚",
+        "早上",
+        "中午",
+        "晚上",
+        "點",
+        "点",
+        ":",
+        "：",
+        "am",
+        "pm",
+        "a.m.",
+        "p.m.",
+        "tomorrow",
+        "today",
+        "tonight",
+    ]
+    .iter()
+    .any(|kw| lower.contains(kw));
+
+    has_trigger && has_time_hint
 }
 
 fn extract_url(text: &str) -> Option<String> {
@@ -1750,6 +1830,96 @@ async fn handle_new_project(
     set_telegram_project_context(pool, chat_id, &id).await?;
 
     send_message(bot_token, chat_id, &tg_project_created(lang, name)).await
+}
+
+async fn ensure_telegram_conversation(
+    pool: &SqlitePool,
+    chat_id: i64,
+    lang: TelegramLanguage,
+) -> Result<(String, Option<String>), String> {
+    let conv_id_raw = get_telegram_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
+    let mut conv_id = conv_id_raw.clone();
+
+    if !conv_id.is_empty() {
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT id FROM conversations WHERE id = ?")
+                .bind(&conv_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+
+        if exists.is_none() {
+            conv_id.clear();
+        }
+    }
+
+    let project_id = get_telegram_project_context(pool, chat_id)
+        .await
+        .unwrap_or_default();
+    let valid_project_id = if project_id.is_empty() {
+        None
+    } else {
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT id FROM projects WHERE id = ? AND is_archived = 0")
+                .bind(&project_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        exists
+    };
+
+    if conv_id.is_empty() {
+        let new_id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO conversations (id, title, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(&new_id)
+        .bind(tg_default_conversation_title(lang))
+        .bind(valid_project_id.as_deref())
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        set_telegram_context(pool, chat_id, &new_id).await?;
+        conv_id = new_id;
+    }
+
+    Ok((conv_id, valid_project_id))
+}
+
+async fn handle_reminder_request(
+    app: &AppHandle,
+    bot_token: &str,
+    chat_id: i64,
+    text: &str,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let pool = &state.db;
+    let lang = telegram_language_from_pool(pool).await;
+    let (conv_id, project_id) = ensure_telegram_conversation(pool, chat_id, lang).await?;
+
+    send_message(bot_token, chat_id, tg_reminder_extracting(lang)).await?;
+    save_message(pool, &conv_id, "user", text).await?;
+
+    let engine = crate::services::reminder_engine::ReminderEngine::new(pool.clone());
+    let now = Utc::now().to_rfc3339();
+    let ids = engine
+        .extract_reminders(&conv_id, "", text, &now, project_id.as_deref())
+        .await?;
+
+    let reply = if ids.is_empty() {
+        tg_reminder_not_created(lang).to_string()
+    } else {
+        tg_reminder_created_count(lang, ids.len())
+    };
+    send_message(bot_token, chat_id, &reply).await?;
+    save_message(pool, &conv_id, "assistant", &reply).await?;
+
+    Ok(())
 }
 
 async fn handle_rag_query(
