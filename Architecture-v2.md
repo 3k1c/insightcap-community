@@ -177,7 +177,7 @@ MemoryEngine.process_conversation_summary
     ↓ （非阻塞 spawn，以下三步平行/串行背景執行）
     SpaceEngine.assign_memory_chunk_to_space
         → 對 memory_chunk content 做 Embedding
-        → 向量相似度 >= 0.45 → 更新 memory_chunks.space_id
+        → 向量相似度 >= 0.81 → 更新 memory_chunks.space_id
     ChunkRelationEngine.analyze_for_chunk
         → 分析此 chunk 與既有 chunk 的語意關聯
         → 寫入 chunk_relations（references / contradicts / extends）
@@ -266,7 +266,7 @@ PatternPromotion 掃描：
 
 ## 全域快捷鍵
 
-兩個獨立快捷鍵，功能完全不同，均可在設定頁自訂：
+由兩個獨立快捷鍵組成，功能完全不同。設定頁面採用 **互動式錄製模式**，用戶點擊按鍵後直接按下組合鍵即可完成設定，系統會自動轉換為 Tauri 相容格式（如 `CommandOrControl+Shift+S`），避免手動輸入錯誤：
 
 | 設定鍵名 | 預設值 | 觸發行為 |
 |---------|--------|---------|
@@ -299,7 +299,7 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 |---------|------|------|
 | 一般網頁 | HTTP GET + Readability 正文萃取 | 無降級 |
 | YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | yt-dlp 不存在時爬取頁面標題+描述 |
-| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 需要 SESSDATA Cookie（AI 設置頁彈出視窗登入） |
+| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 預覽模式自動加入 `&autoplay=0` 以提升載入順序與靜後。需要 SESSDATA Cookie（AI 設置頁彈出視窗登入）。 |
 
 **Bilibili 登入驗證機制（原生彈出視窗）：**
 - 於設定頁（AI 設置分頁）點擊登入，呼叫 Rust command `open_bilibili_login`。
@@ -319,7 +319,8 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 
 - 由 AI 自動生成名稱和聚類內容，用戶可修正名稱
-- 每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度，**自動合併相似空間（embedding cosine similarity >= 0.82）**，動態重新聚合
+- 每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度，**自動合併相似空間（需相似度 >= 0.91）**，動態重新聚合。
+- **嚴格分類原則**：調高了匹配門檻（Assign >= 0.81）與合併門檻（Merge >= 0.91），並透過 LLM 指引強制要求 AI 建立更具體、更獨特的空間名稱，防止所有文件被吸入單一寬泛空間。
 - 用戶不需要手動管理 chunk 屬於哪個 Space
 - 空 Space 自動歸檔（`is_archived = 1`），不顯示於 UI
 - 前台僅作為 chunk 分類篩選，在儲存庫頁的 chunk 編輯面板與 header Space dropdown 使用
@@ -339,7 +340,7 @@ Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 ## 標籤系統
 
 **兩種來源：**
-- AI 自動生成：內容入庫時 Tagger 提取，寫入 tags 表
+- AI 自動生成：內容入庫時 Tagger 提取，寫入 tags 表。**檢索邏輯優化**：系統現在會自動聚合底層 `captures` 與 `sources` 的所有標籤，確保即使是未分塊的文件也能在儲存庫頁面正確顯示標籤。
 - 用戶手動加入：對話輸入框輸入 `#標籤`，或在儲存庫頁 chunk 編輯面板中手動編輯
 
 **對話時的知識範圍控制（@ 來源 與 # 標籤）：**
