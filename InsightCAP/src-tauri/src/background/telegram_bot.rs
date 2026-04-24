@@ -2114,9 +2114,11 @@ async fn handle_rag_query(
     };
 
     let answer = {
-        // Step 1: Send "thinking" placeholder
+        // Step 1: Send "thinking" placeholder using native sendMessageDraft
+        // sendMessageDraft requires a draft_id to animate updates for the same draft.
         let thinking_display = format!("{}{}", prefix, thinking_text);
-        let draft_id = send_message_draft(bot_token, chat_id, &thinking_display).await.ok();
+        let draft_id = 1;
+        let _ = send_message_draft(bot_token, chat_id, draft_id, &thinking_display).await.ok();
 
         // Step 2: Get the complete LLM answer
         let stream_result = llm
@@ -2138,36 +2140,29 @@ async fn handle_rag_query(
         }
         full_content.push_str(&stream_result.content);
 
-        // Step 3: Progressive streaming via editMessageText
+        // Step 3: Progressive streaming via sendMessageDraft
         let chars: Vec<char> = full_content.chars().collect();
         let total = chars.len();
 
-        // We avoid exceeding Telegram's single-message limit in the draft (4096)
-        let draft_limit = 4000;
-        let streamable = total.min(draft_limit);
+        let streamable = total.min(4000); // Drafts are also limited to 4096 chars
 
         if streamable > 0 {
-            if let Some(mid) = draft_id {
-                let step = 80usize;  // chunks per edit
-                let delay_ms = 400u64;  // throttle to avoid rate limits 
+            let step = 80usize;  // chunks per edit
+            let delay_ms = 400u64;
 
-                let mut shown = step.min(streamable);
-                while shown < streamable {
-                    let partial: String = chars[..shown].iter().collect();
-                    let display = format!("{}{}", prefix, partial);
-                    let _ = edit_message_text_plain(bot_token, chat_id, mid, &display).await;
-                    sleep(Duration::from_millis(delay_ms)).await;
-                    shown = (shown + step).min(streamable);
-                }
+            let mut shown = step.min(streamable);
+            while shown < streamable {
+                let partial: String = chars[..shown].iter().collect();
+                let display = format!("{}{}", prefix, partial);
+                let _ = send_message_draft(bot_token, chat_id, draft_id, &display).await;
+                sleep(Duration::from_millis(delay_ms)).await;
+                shown = (shown + step).min(streamable);
             }
         }
 
-        // Step 4: Finalize
+        // Step 4: Finalize by sending the permanent message
+        // Once a standard message covers the draft context, the client clears the draft automatically.
         let final_reply = format!("{}{}", prefix, full_content);
-        if let Some(mid) = draft_id {
-            // Delete the draft so we can use send_long_message safely for Markdown handling and chunking
-            delete_message(bot_token, chat_id, mid).await;
-        }
         send_long_message(bot_token, chat_id, &final_reply).await?;
 
         stream_result.content 
@@ -2186,61 +2181,29 @@ pub async fn send_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(
 async fn send_message_draft(
     bot_token: &str,
     chat_id: i64,
+    draft_id: i64,
     text: &str,
-) -> Result<i64, String> {
+) -> Result<(), String> {
     let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
+    let url = format!("https://api.telegram.org/bot{}/sendMessageDraft", bot_token);
     let resp = client
         .post(&url)
         .json(&json!({
             "chat_id": chat_id,
+            "draft_id": draft_id,
             "text": text,
         }))
         .send()
         .await
-        .map_err(|e| format!("send_message_draft: {}", e))?;
+        .map_err(|e| format!("send_message_draft error: {}", e))?;
 
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     if body["ok"].as_bool() != Some(true) {
         return Err(body["description"].as_str().unwrap_or("unknown").to_string());
     }
-    body["result"]["message_id"]
-        .as_i64()
-        .ok_or_else(|| "send_message_draft message_id".to_string())
-}
-
-async fn edit_message_text_plain(
-    bot_token: &str,
-    chat_id: i64,
-    message_id: i64,
-    text: &str,
-) -> Result<(), String> {
-    let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/editMessageText", bot_token);
-    let _ = client
-        .post(&url)
-        .json(&json!({
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-        }))
-        .send()
-        .await;
     Ok(())
 }
 
-async fn delete_message(bot_token: &str, chat_id: i64, message_id: i64) {
-    let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/deleteMessage", bot_token);
-    let _ = client
-        .post(&url)
-        .json(&json!({
-            "chat_id": chat_id,
-            "message_id": message_id,
-        }))
-        .send()
-        .await;
-}
 
 async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
     let client = Client::new();
