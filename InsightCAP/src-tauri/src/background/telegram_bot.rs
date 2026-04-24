@@ -2089,170 +2089,91 @@ async fn handle_rag_query(
     };
 
     let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model, cfg.provider);
-    let use_streaming = true; // Always true for interactive character-by-character UI
     let prefix = format!("[{}]   \n", conv_title);
+    let thinking_text = if is_think {
+        match lang {
+            TelegramLanguage::ZhTw => "深度思考中...",
+            TelegramLanguage::ZhCn => "深度思考中...",
+            TelegramLanguage::En => "Thinking deeply...",
+        }
+    } else {
+        "Thinking..."
+    };
+    let llm_opts = if is_think {
+        LLMOptions {
+            temperature: 0.6,
+            max_tokens: 8192,
+            think_mode: Some(true),
+            ..LLMOptions::default()
+        }
+    } else {
+        LLMOptions {
+            think_mode: Some(false),
+            ..LLMOptions::default()
+        }
+    };
 
-    let answer = if use_streaming {
-        let token_str = bot_token.to_string();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        const DRAFT_ID: i64 = 1;
-        let thinking_text = if is_think {
-            match lang {
-                TelegramLanguage::ZhTw => "深度思考中...",
-                TelegramLanguage::ZhCn => "深度思考中...",
-                TelegramLanguage::En => "Thinking deeply...",
-            }
-        } else {
-            "Thinking..."
-        };
-        let initial_draft = format!("{}{}", prefix, thinking_text);
-        let draft_message_id = send_message_draft(&token_str, chat_id, DRAFT_ID, &initial_draft)
+    let answer = {
+        // Step 1: Show immediate "thinking" placeholder
+        let draft_message_id = send_message_draft(bot_token, chat_id, 1, &format!("{}{}", prefix, thinking_text))
             .await
             .ok();
+        eprintln!("[TG-STREAM] draft_message_id = {:?}", draft_message_id);
 
-        let bot_token_draft = token_str.clone();
-        let prefix_draft = prefix.clone();
-        let has_draft = draft_message_id.is_some();
-        let draft_task = tokio::spawn(async move {
-            let mut accumulated = prefix_draft;
-            let mut last_sent = std::time::Instant::now();
-            let mut overflow = false;
-
-            while let Some(chunk) = rx.recv().await {
-                if overflow {
-                    continue;
-                }
-                accumulated.push_str(&chunk);
-
-                if accumulated.len() > TELEGRAM_MSG_LIMIT {
-                    overflow = true;
-                    if has_draft {
-                        if let Some(mid) = draft_message_id {
-                            let _ = edit_message_text(
-                                &bot_token_draft,
-                                chat_id,
-                                mid,
-                                "Response is too long for draft mode. Sending full message...",
-                            )
-                            .await;
-                        }
-                    }
-                    continue;
-                }
-
-                if has_draft && last_sent.elapsed().as_millis() as u64 >= DRAFT_THROTTLE_MS {
-                    if let Some(mid) = draft_message_id {
-                        // Use plain text during streaming to avoid Markdown validation failures
-                        let _ =
-                            edit_message_text_plain(&bot_token_draft, chat_id, mid, &accumulated).await;
-                    }
-                    last_sent = std::time::Instant::now();
-                }
-            }
-
-            if has_draft && !overflow {
-                if let Some(mid) = draft_message_id {
-                    // Final update: also plain text to stay consistent
-                    let _ = edit_message_text_plain(&bot_token_draft, chat_id, mid, &accumulated).await;
-                }
-            }
-            overflow
-        });
-
-        let llm_opts = if is_think {
-            LLMOptions {
-                temperature: 0.6,
-                max_tokens: 8192,
-                think_mode: Some(true),
-                ..LLMOptions::default()
-            }
-        } else {
-            LLMOptions {
-                think_mode: Some(false),
-                ..LLMOptions::default()
-            }
-        };
-
+        // Step 2: Run complete_stream to get full content
+        // (Most LLM APIs deliver all tokens in one burst, so real-time streaming is unreliable)
         let stream_result = llm
             .complete_stream(
                 &final_system_prompt,
                 &history_vec,
                 final_query,
                 llm_opts,
+                // Track reasoning vs content for workflow display
                 {
-                    let tx = tx.clone();
                     let in_reasoning = std::sync::atomic::AtomicBool::new(false);
-                    move |token| {
-                        match token {
-                            StreamToken::Reasoning(r) => {
-                                if !r.is_empty() {
-                                    if !in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
-                                        in_reasoning.store(true, std::sync::atomic::Ordering::SeqCst);
-                                        // Use plain text prefix — no Markdown symbols mid-stream
-                                        let _ = tx.send("[工作流程]\n".to_string());
-                                    }
-                                    let _ = tx.send(r);
-                                }
-                            }
-                            StreamToken::Content(c) => {
-                                if !c.is_empty() {
-                                    if in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
-                                        in_reasoning.store(false, std::sync::atomic::Ordering::SeqCst);
-                                        let _ = tx.send("\n[解答]\n".to_string());
-                                    }
-                                    let _ = tx.send(c);
-                                }
-                            }
-                        }
+                    move |_token| {
+                        // No-op: we use stream_result.content after completion
+                        let _ = &in_reasoning;
                     }
                 },
             )
             .await
             .map_err(|e| e.to_string())?;
 
-        // CRITICAL: Drop the original tx so rx.recv() in draft_task returns None
-        // and the draft_task loop can exit. Without this, draft_task deadlocks forever.
-        drop(tx);
+        eprintln!("[TG-STREAM] complete_stream done. content_len={}", stream_result.content.len());
 
-        let overflow = draft_task.await.unwrap_or(true);
-        if overflow || draft_message_id.is_none() {
-            // Streaming failed or was too long: send the complete answer all at once
-            let final_reply = format!("{}{}", prefix, stream_result.content);
+        // Step 3: Simulate progressive typing by revealing text in chunks
+        let content = &stream_result.content;
+        if let Some(mid) = draft_message_id {
+            let chars: Vec<char> = content.chars().collect();
+            let total = chars.len();
+            if total == 0 {
+                let _ = edit_message_text_plain(bot_token, chat_id, mid, &format!("{}\u{200B}", prefix)).await;
+            } else {
+                // Reveal in steps: start with small chunks, grow as text accumulates
+                let step = 80usize; // characters per update
+                let delay_ms = 250u64; // delay between edits
+                let mut shown = step.min(total);
+                while shown < total {
+                    let partial: String = chars[..shown].iter().collect();
+                    let display = format!("{}{}", prefix, partial);
+                    eprintln!("[TG-STREAM] progressive edit at {} chars", shown);
+                    let _ = edit_message_text_plain(bot_token, chat_id, mid, &display).await;
+                    sleep(Duration::from_millis(delay_ms)).await;
+                    shown = (shown + step).min(total);
+                }
+                // Final full content
+                let final_display = format!("{}{}", prefix, content);
+                eprintln!("[TG-STREAM] final edit ({} chars)", total);
+                let _ = edit_message_text_plain(bot_token, chat_id, mid, &final_display).await;
+            }
+        } else {
+            // No draft message (rate limited etc), send in full
+            let final_reply = format!("{}{}", prefix, content);
             send_long_message(bot_token, chat_id, &final_reply).await?;
         }
-        // If streaming succeeded, the draft task already updated the message continuously; do not overwrite.
+
         stream_result.content
-    } else {
-        let engine2 = RagEngine::new(
-            pool.clone(),
-            state.vector_store.clone(),
-            state.embedder.clone(),
-        );
-        let result = engine2
-            .generate_answer(
-                final_query,
-                history_vec
-                    .iter()
-                    .map(|(r, c)| (r.clone(), c.clone()))
-                    .collect(),
-                summary,
-                project_id_opt,
-                None,
-                None,
-                true,
-                None,
-                is_think,
-                None,
-                telegram_override.clone(),
-            )
-            .await?;
-        let answer = result["answer"]
-            .as_str()
-            .unwrap_or("No answer generated.")
-            .to_string();
-        let final_reply = format!("{}{}", prefix, answer);
-        send_long_message(bot_token, chat_id, &final_reply).await?;
-        answer
     };
 
     save_message(pool, &conv_id, "user", final_query).await?;
