@@ -2114,24 +2114,22 @@ async fn handle_rag_query(
     };
 
     let answer = {
-        // Step 1: Send "thinking" placeholder immediately via sendMessageDraft
+        // Step 1: Send "thinking" placeholder
         let thinking_display = format!("{}{}", prefix, thinking_text);
-        let _ = send_message_draft_streaming(bot_token, chat_id, &thinking_display).await;
+        let draft_id = send_message_draft(bot_token, chat_id, &thinking_display).await.ok();
 
-        // Step 2: Get the complete LLM answer (non-streaming internally, avoids SSE delivery issues)
-        // We use complete_stream with a no-op closure to get both reasoning and content in StreamResult
+        // Step 2: Get the complete LLM answer
         let stream_result = llm
             .complete_stream(
                 &final_system_prompt,
                 &history_vec,
                 final_query,
                 llm_opts,
-                |_token| {}, // No-op: we process the final assembled string
+                |_token| {}, 
             )
             .await
             .map_err(|e| e.to_string())?;
 
-        // Reconstruct formatting with reasoning blocks if present
         let mut full_content = String::new();
         if !stream_result.reasoning.is_empty() {
             full_content.push_str("[工作流程]\n");
@@ -2140,31 +2138,39 @@ async fn handle_rag_query(
         }
         full_content.push_str(&stream_result.content);
 
-        eprintln!("[TG-STREAM] LLM done. content_len={}, reasoning_len={}", stream_result.content.len(), stream_result.reasoning.len());
-
-        // Step 3: Progressive streaming on Telegram side using sendMessageDraft
+        // Step 3: Progressive streaming via editMessageText
         let chars: Vec<char> = full_content.chars().collect();
         let total = chars.len();
 
-        if total > 0 {
-            let step = 60usize;  // characters per draft update
-            let delay_ms = 300u64;  // ms between updates for smooth UX
+        // We avoid exceeding Telegram's single-message limit in the draft (4096)
+        let draft_limit = 4000;
+        let streamable = total.min(draft_limit);
 
-            let mut shown = step.min(total);
-            while shown < total {
-                let partial: String = chars[..shown].iter().collect();
-                let display = format!("{}{}", prefix, partial);
-                let _ = send_message_draft_streaming(bot_token, chat_id, &display).await;
-                sleep(Duration::from_millis(delay_ms)).await;
-                shown = (shown + step).min(total);
+        if streamable > 0 {
+            if let Some(mid) = draft_id {
+                let step = 80usize;  // chunks per edit
+                let delay_ms = 400u64;  // throttle to avoid rate limits 
+
+                let mut shown = step.min(streamable);
+                while shown < streamable {
+                    let partial: String = chars[..shown].iter().collect();
+                    let display = format!("{}{}", prefix, partial);
+                    let _ = edit_message_text_plain(bot_token, chat_id, mid, &display).await;
+                    sleep(Duration::from_millis(delay_ms)).await;
+                    shown = (shown + step).min(streamable);
+                }
             }
         }
 
-        // Step 4: Finalize — send the complete answer as a real persistent message
+        // Step 4: Finalize
         let final_reply = format!("{}{}", prefix, full_content);
+        if let Some(mid) = draft_id {
+            // Delete the draft so we can use send_long_message safely for Markdown handling and chunking
+            delete_message(bot_token, chat_id, mid).await;
+        }
         send_long_message(bot_token, chat_id, &final_reply).await?;
 
-        stream_result.content // Save only the answer content to history
+        stream_result.content 
     };
 
     save_message(pool, &conv_id, "user", final_query).await?;
@@ -2177,16 +2183,14 @@ pub async fn send_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(
     send_long_message(bot_token, chat_id, text).await
 }
 
-/// Streams partial bot reply using Telegram's native sendMessageDraft API (Bot API 9.5+).
-/// Call repeatedly with accumulating text; finalize with sendMessage.
-async fn send_message_draft_streaming(
+async fn send_message_draft(
     bot_token: &str,
     chat_id: i64,
     text: &str,
-) -> Result<(), String> {
+) -> Result<i64, String> {
     let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/sendMessageDraft", bot_token);
-    let _ = client
+    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
+    let resp = client
         .post(&url)
         .json(&json!({
             "chat_id": chat_id,
@@ -2194,8 +2198,48 @@ async fn send_message_draft_streaming(
         }))
         .send()
         .await
-        .map_err(|e| format!("sendMessageDraft: {}", e))?;
+        .map_err(|e| format!("send_message_draft: {}", e))?;
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    if body["ok"].as_bool() != Some(true) {
+        return Err(body["description"].as_str().unwrap_or("unknown").to_string());
+    }
+    body["result"]["message_id"]
+        .as_i64()
+        .ok_or_else(|| "send_message_draft message_id".to_string())
+}
+
+async fn edit_message_text_plain(
+    bot_token: &str,
+    chat_id: i64,
+    message_id: i64,
+    text: &str,
+) -> Result<(), String> {
+    let client = Client::new();
+    let url = format!("https://api.telegram.org/bot{}/editMessageText", bot_token);
+    let _ = client
+        .post(&url)
+        .json(&json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }))
+        .send()
+        .await;
     Ok(())
+}
+
+async fn delete_message(bot_token: &str, chat_id: i64, message_id: i64) {
+    let client = Client::new();
+    let url = format!("https://api.telegram.org/bot{}/deleteMessage", bot_token);
+    let _ = client
+        .post(&url)
+        .json(&json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+        }))
+        .send()
+        .await;
 }
 
 async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
