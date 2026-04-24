@@ -17,7 +17,7 @@ use crate::services::rag_engine::RagEngine;
 const POLL_TIMEOUT_SECS: u64 = 30;
 const RETRY_DELAY_SECS: u64 = 10;
 const TELEGRAM_MSG_LIMIT: usize = 4096;
-const DRAFT_THROTTLE_MS: u64 = 300;
+const DRAFT_THROTTLE_MS: u64 = 1500; // Telegram rate limit requires ~1s between edits
 
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -1937,6 +1937,19 @@ async fn handle_rag_query(
     chat_id: i64,
     query: &str,
 ) -> Result<(), String> {
+    let (is_think, final_query) = if query.starts_with("??") {
+        (true, query[2..].trim())
+    } else if query.starts_with("？？") {
+        (true, query[6..].trim())
+    } else if query.starts_with("? ") {
+        (true, query[2..].trim())
+    } else if query.starts_with("？") {
+        // Full-width question mark doesn't strictly need a space after it
+        (true, query[3..].trim())
+    } else {
+        (false, query)
+    };
+
     let state = app.state::<AppState>();
     let pool = &state.db;
 
@@ -2021,7 +2034,7 @@ async fn handle_rag_query(
 
     let (base_prompt, history_vec, _citation_sources, _context_hints) = engine
         .build_prompt(
-            query,
+            final_query,
             history,
             summary.clone(),
             project_id_opt.clone(),
@@ -2042,15 +2055,34 @@ async fn handle_rag_query(
         return send_message(bot_token, chat_id, tg_ai_not_configured(lang)).await;
     }
 
-    let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model, cfg.provider);
-    let use_streaming = settings.telegram.streaming == "partial";
+    let reasoning_style = crate::providers::llm::model_caps::detect(&cfg.model, &cfg.provider);
+    let has_native_reasoning =
+        reasoning_style != crate::providers::llm::model_caps::ReasoningStyle::None;
 
+    let final_system_prompt = if is_think && !has_native_reasoning {
+        format!("{}{}", crate::prompts::THINK_MODE_PREFIX, base_prompt)
+    } else {
+        base_prompt.clone()
+    };
+
+    let llm = OpenAiProvider::new(api_key, cfg.base_url.clone(), cfg.model, cfg.provider);
+    let use_streaming = true; // Always true for interactive character-by-character UI
     let prefix = format!("[{}]   \n", conv_title);
+
     let answer = if use_streaming {
         let token_str = bot_token.to_string();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         const DRAFT_ID: i64 = 1;
-        let initial_draft = format!("{}{}", prefix, "Thinking...");
+        let thinking_text = if is_think {
+            match lang {
+                TelegramLanguage::ZhTw => "深度思考中 (漏洞修正)...",
+                TelegramLanguage::ZhCn => "深度思考中 (漏洞修正)...",
+                TelegramLanguage::En => "Thinking deeply (Self-Correction)...",
+            }
+        } else {
+            "Thinking..."
+        };
+        let initial_draft = format!("{}{}", prefix, thinking_text);
         let draft_message_id = send_message_draft(&token_str, chat_id, DRAFT_ID, &initial_draft)
             .await
             .ok();
@@ -2102,15 +2134,26 @@ async fn handle_rag_query(
             overflow
         });
 
+        let llm_opts = if is_think {
+            LLMOptions {
+                temperature: 0.6,
+                max_tokens: 8192,
+                think_mode: Some(true),
+                ..LLMOptions::default()
+            }
+        } else {
+            LLMOptions {
+                think_mode: Some(false),
+                ..LLMOptions::default()
+            }
+        };
+
         let stream_result = llm
             .complete_stream(
-                &base_prompt,
+                &final_system_prompt,
                 &history_vec,
-                query,
-                LLMOptions {
-                    think_mode: Some(false),
-                    ..LLMOptions::default()
-                },
+                final_query,
+                llm_opts,
                 move |token| {
                     if let StreamToken::Content(c) = token {
                         let _ = tx.send(c);
@@ -2136,7 +2179,7 @@ async fn handle_rag_query(
         );
         let result = engine2
             .generate_answer(
-                query,
+                final_query,
                 history_vec
                     .iter()
                     .map(|(r, c)| (r.clone(), c.clone()))
@@ -2147,7 +2190,7 @@ async fn handle_rag_query(
                 None,
                 true,
                 None,
-                false,
+                is_think,
                 None,
                 telegram_override.clone(),
             )
@@ -2161,7 +2204,7 @@ async fn handle_rag_query(
         answer
     };
 
-    save_message(pool, &conv_id, "user", query).await?;
+    save_message(pool, &conv_id, "user", final_query).await?;
     save_message(pool, &conv_id, "assistant", &answer).await?;
 
     Ok(())
