@@ -2210,6 +2210,10 @@ async fn handle_rag_query(
             .await
             .map_err(|e| e.to_string())?;
 
+        // CRITICAL: Drop the original tx so rx.recv() in draft_task returns None
+        // and the draft_task loop can exit. Without this, draft_task deadlocks forever.
+        drop(tx);
+
         let overflow = draft_task.await.unwrap_or(true);
         if overflow || draft_message_id.is_none() {
             // Streaming failed or was too long: send the complete answer all at once
