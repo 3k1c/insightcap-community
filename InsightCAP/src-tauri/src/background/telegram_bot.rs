@@ -17,7 +17,7 @@ use crate::services::rag_engine::RagEngine;
 const POLL_TIMEOUT_SECS: u64 = 30;
 const RETRY_DELAY_SECS: u64 = 10;
 const TELEGRAM_MSG_LIMIT: usize = 4096;
-const DRAFT_THROTTLE_MS: u64 = 1500; // Telegram rate limit requires ~1s between edits
+const DRAFT_THROTTLE_MS: u64 = 800; // Increased frequency for smoother character-by-character streaming
 
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -2075,9 +2075,9 @@ async fn handle_rag_query(
         const DRAFT_ID: i64 = 1;
         let thinking_text = if is_think {
             match lang {
-                TelegramLanguage::ZhTw => "深度思考中 (漏洞修正)...",
-                TelegramLanguage::ZhCn => "深度思考中 (漏洞修正)...",
-                TelegramLanguage::En => "Thinking deeply (Self-Correction)...",
+                TelegramLanguage::ZhTw => "深度思考中...",
+                TelegramLanguage::ZhCn => "深度思考中...",
+                TelegramLanguage::En => "Thinking deeply...",
             }
         } else {
             "Thinking..."
