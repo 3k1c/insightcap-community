@@ -2114,89 +2114,57 @@ async fn handle_rag_query(
     };
 
     let answer = {
-        // Step 1: Immediately send a "thinking" placeholder via sendMessageDraft
-        // so the user sees visual feedback right away.
+        // Step 1: Send "thinking" placeholder immediately via sendMessageDraft
         let thinking_display = format!("{}{}", prefix, thinking_text);
         let _ = send_message_draft_streaming(bot_token, chat_id, &thinking_display).await;
-        eprintln!("[TG-STREAM] sent initial thinking draft");
 
-        // Step 2: Set up mpsc channel – LLM tokens flow from on_token → draft_task
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        let token_str = bot_token.to_string();
-
-        let draft_task = tokio::spawn(async move {
-            let mut accumulated = String::new();
-            let mut last_sent = std::time::Instant::now();
-            const THROTTLE_MS: u64 = 300; // sendMessageDraft is designed for this frequency
-            let mut update_count = 0u32;
-
-            while let Some(chunk) = rx.recv().await {
-                accumulated.push_str(&chunk);
-
-                // Push draft update every 300ms
-                if last_sent.elapsed().as_millis() as u64 >= THROTTLE_MS {
-                    update_count += 1;
-                    eprintln!("[TG-STREAM] draft update #{} ({} chars)", update_count, accumulated.len());
-                    let _ = send_message_draft_streaming(&token_str, chat_id, &accumulated).await;
-                    last_sent = std::time::Instant::now();
-                }
-            }
-
-            eprintln!("[TG-STREAM] stream complete, total_updates={}, final_len={}", update_count, accumulated.len());
-            accumulated
-        });
-
-        // Step 3: Run LLM streaming – relay each token to draft_task
+        // Step 2: Get the complete LLM answer (non-streaming internally, avoids SSE delivery issues)
+        // We use complete_stream with a no-op closure to get both reasoning and content in StreamResult
         let stream_result = llm
             .complete_stream(
                 &final_system_prompt,
                 &history_vec,
                 final_query,
                 llm_opts,
-                {
-                    let tx = tx.clone();
-                    let in_reasoning = std::sync::atomic::AtomicBool::new(false);
-                    move |token| {
-                        match token {
-                            StreamToken::Reasoning(r) => {
-                                if !r.is_empty() {
-                                    if !in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
-                                        in_reasoning.store(true, std::sync::atomic::Ordering::SeqCst);
-                                        let _ = tx.send("[工作流程]\n".to_string());
-                                    }
-                                    let _ = tx.send(r);
-                                }
-                            }
-                            StreamToken::Content(c) => {
-                                if !c.is_empty() {
-                                    if in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
-                                        in_reasoning.store(false, std::sync::atomic::Ordering::SeqCst);
-                                        let _ = tx.send("\n[解答]\n".to_string());
-                                    }
-                                    let _ = tx.send(c);
-                                }
-                            }
-                        }
-                    }
-                },
+                |_token| {}, // No-op: we process the final assembled string
             )
             .await
             .map_err(|e| e.to_string())?;
 
-        eprintln!("[TG-STREAM] complete_stream done. content_len={}", stream_result.content.len());
+        // Reconstruct formatting with reasoning blocks if present
+        let mut full_content = String::new();
+        if !stream_result.reasoning.is_empty() {
+            full_content.push_str("[工作流程]\n");
+            full_content.push_str(&stream_result.reasoning);
+            full_content.push_str("\n\n[解答]\n");
+        }
+        full_content.push_str(&stream_result.content);
 
-        // Drop tx so draft_task's rx loop exits
-        drop(tx);
-        eprintln!("[TG-STREAM] tx dropped, awaiting draft_task...");
+        eprintln!("[TG-STREAM] LLM done. content_len={}, reasoning_len={}", stream_result.content.len(), stream_result.reasoning.len());
 
-        let _accumulated = draft_task.await.unwrap_or_default();
-        eprintln!("[TG-STREAM] draft_task done");
+        // Step 3: Progressive streaming on Telegram side using sendMessageDraft
+        let chars: Vec<char> = full_content.chars().collect();
+        let total = chars.len();
 
-        // Step 4: Finalize – send the complete answer as a real message
-        let final_reply = format!("{}{}", prefix, stream_result.content);
+        if total > 0 {
+            let step = 60usize;  // characters per draft update
+            let delay_ms = 300u64;  // ms between updates for smooth UX
+
+            let mut shown = step.min(total);
+            while shown < total {
+                let partial: String = chars[..shown].iter().collect();
+                let display = format!("{}{}", prefix, partial);
+                let _ = send_message_draft_streaming(bot_token, chat_id, &display).await;
+                sleep(Duration::from_millis(delay_ms)).await;
+                shown = (shown + step).min(total);
+            }
+        }
+
+        // Step 4: Finalize — send the complete answer as a real persistent message
+        let final_reply = format!("{}{}", prefix, full_content);
         send_long_message(bot_token, chat_id, &final_reply).await?;
 
-        stream_result.content
+        stream_result.content // Save only the answer content to history
     };
 
     save_message(pool, &conv_id, "user", final_query).await?;
