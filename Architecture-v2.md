@@ -84,7 +84,7 @@ InsightCAP 是**經驗調用系統**。
 │  │  IC Design System（四主題 Token：frost/void/warm/sage）│  │
 │  │  i18n（react-i18next，繁中/簡中/英文）                 │  │
 │  │                                                      │  │
-│  │  Chat Page（含右側 Editor Panel）| 儲存庫頁 | Settings │  │
+│  │  Chat Page（含右側 Editor Panel）| 儲存庫頁 | 提醒頁 | Settings │  │
 │  │  Quick Capture Page（獨立視窗）                      │  │
 │  │         ↕ Zustand（統一狀態管理）                    │  │
 │  └───────────────────────┬──────────────────────────────┘  │
@@ -433,6 +433,38 @@ toast 顯示導入成功 / 失敗結果
 - 截圖：「截圖 YYYY-MM-DD HH:mm」+ 縮圖
 - 剪貼簿：來源應用名稱或「剪貼簿擷取」
 - 快速輸入：「手動輸入」
+
+---
+
+## 提醒管理頁 UX (Schedule Page)
+
+### 核心原則
+
+- **Timeline 導向**：提醒事項按日期分組顯示，提供直觀的時間軸導航。
+- **狀態區分**：明確區分「活躍（Active）」與「待確認（Pending）」提醒，支援批次與單項管理。
+- **Premium UI 規範**：遵循應用的高階設計語言，使用漸層背景、磨砂玻璃效果（Backdrop Blur）及流暢的動畫。
+
+### 介面結構
+
+- **左側：時間軸導軌 (Timeline Rail)**
+  - 顯示日期（月/日）與星期。
+  - 支援點擊捲動至對應日期區塊。
+  - 具備 Active 狀態標識。
+- **頂部：控制列**
+  - 統計摘要：顯示當前活躍與待確認總數。
+  - 搜尋與過濾：支援關鍵字搜尋及按事件類型（會議、交付物、事件、預約）過濾。
+- **右側：提醒卡片區**
+  - 按日期分組。
+  - **待確認（Pending）**：顯示於組頂部，包含確認/取消動作。
+  - **活躍（Active）**：顯示於下方，包含完成/取消動作。
+  - **新增入口**：當前日期區塊提供顯眼的「新增提醒」卡片。
+
+### 新增提醒彈窗 (Add Reminder Modal)
+
+- **客製化組件**：為了避開瀏覽器原生組件的樣式不一致，全面採用客製化 UI：
+  - **Custom Select**：主題感知（Theme-aware）的下拉選單，具備正確的深色/亮色樣式與動畫。
+  - **Theme-aware Input**：針對 `type="date"` 與 `type="time"`，動態切換 `color-scheme` 以確保系統原生選擇器與應用主題（如 Void 深色模式）保持一致。
+- **i18n 全面支持**：所有標籤、提示與驗證訊息（Toast）均透過 i18n 系統管理，禁止寫死文字。
 
 ---
 
@@ -1481,6 +1513,7 @@ src/
 ├── pages/
 │   ├── ChatPage.tsx
 │   ├── RepositoryPage.tsx
+│   ├── SchedulePage.tsx
 │   ├── SettingsPage.tsx
 │   ├── LoginPage.tsx
 │   ├── SetupPage.tsx

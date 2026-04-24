@@ -5,6 +5,15 @@ use crate::background::reminder_scheduler::process_due_notifications;
 use crate::db::AppState;
 use crate::services::reminder_engine::ReminderEngine;
 
+#[derive(serde::Deserialize)]
+pub struct CreateReminderInput {
+    title: String,
+    description: Option<String>,
+    event_type: String,
+    event_date: String,
+    event_time: Option<String>,
+}
+
 #[derive(Clone, Copy)]
 enum CommandLanguage {
     ZhTw,
@@ -108,6 +117,23 @@ pub async fn get_pending_reminders(
 ) -> Result<Vec<serde_json::Value>, String> {
     let engine = ReminderEngine::new(state.db.clone());
     engine.get_pending_reminders().await
+}
+
+#[tauri::command]
+pub async fn create_reminder(
+    state: State<'_, AppState>,
+    input: CreateReminderInput,
+) -> Result<String, String> {
+    let engine = ReminderEngine::new(state.db.clone());
+    engine
+        .create_reminder(
+            &input.title,
+            input.description.as_deref(),
+            &input.event_type,
+            &input.event_date,
+            input.event_time.as_deref(),
+        )
+        .await
 }
 
 #[tauri::command]

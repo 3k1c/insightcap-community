@@ -412,6 +412,7 @@ pub fn run() {
             commands::rag_commands::rag_query_stream,
             commands::reminder_commands::get_active_reminders,
             commands::reminder_commands::get_pending_reminders,
+            commands::reminder_commands::create_reminder,
             commands::reminder_commands::confirm_reminder,
             commands::reminder_commands::update_reminder_status,
             commands::reminder_commands::snooze_reminder,

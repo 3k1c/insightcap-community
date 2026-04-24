@@ -100,6 +100,109 @@ impl ReminderEngine {
         Self { pool }
     }
 
+    pub async fn create_reminder(
+        &self,
+        title: &str,
+        description: Option<&str>,
+        event_type: &str,
+        event_date: &str,
+        event_time_raw: Option<&str>,
+    ) -> Result<String, String> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("Title is required".to_string());
+        }
+
+        if !matches!(event_type, "meeting" | "deliverable" | "event" | "appointment") {
+            return Err("Invalid event type".to_string());
+        }
+
+        NaiveDate::parse_from_str(event_date, "%Y-%m-%d")
+            .map_err(|_| "Invalid event date".to_string())?;
+
+        let (event_time, event_time_parse_failed) =
+            normalize_event_time_with_status(event_time_raw.unwrap_or(""));
+        if event_time_parse_failed {
+            return Err("Invalid event time".to_string());
+        }
+
+        let duplicate_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM reminders \
+             WHERE title = ? AND event_type = ? AND event_date = ? \
+             AND ((event_time IS NULL AND ? IS NULL) OR event_time = ?) \
+             AND status = 'active'",
+        )
+        .bind(title)
+        .bind(event_type)
+        .bind(event_date)
+        .bind(event_time.as_deref())
+        .bind(event_time.as_deref())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if duplicate_count > 0 {
+            return Err("Duplicate reminder already exists".to_string());
+        }
+
+        let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        let daily_time = &settings.reminders.daily_reminder_time;
+        let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let reminder_id = Uuid::now_v7().to_string();
+        let description = description
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+
+        sqlx::query(
+            "INSERT INTO reminders (id, conversation_id, space_id, project_id, title, description, \
+             event_type, date_status, event_date, event_date_end, event_time, confidence, \
+             status, pending_confirm, created_at, updated_at) \
+             VALUES (?, NULL, NULL, NULL, ?, ?, ?, 'confirmed', ?, NULL, ?, 1.0, 'active', 0, ?, ?)",
+        )
+        .bind(&reminder_id)
+        .bind(title)
+        .bind(description)
+        .bind(event_type)
+        .bind(event_date)
+        .bind(event_time.as_deref())
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut schedule = generate_notification_schedule(
+            event_type,
+            "confirmed",
+            event_date,
+            event_time.as_deref(),
+            daily_time,
+        );
+        if schedule.is_empty() {
+            if let Some(fallback) = generate_imminent_fallback(event_date, event_time.as_deref()) {
+                schedule.push(fallback);
+            }
+        }
+
+        for (intent, scheduled_at) in &schedule {
+            let notif_id = Uuid::now_v7().to_string();
+            sqlx::query(
+                "INSERT INTO reminder_notifications (id, reminder_id, intent, scheduled_at, channel, created_at) \
+                 VALUES (?, ?, ?, ?, 'both', ?)",
+            )
+            .bind(&notif_id)
+            .bind(&reminder_id)
+            .bind(intent)
+            .bind(scheduled_at)
+            .bind(&now)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        Ok(reminder_id)
+    }
+
     pub async fn extract_reminders(
         &self,
         conversation_id: &str,

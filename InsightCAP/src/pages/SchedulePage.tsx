@@ -1,10 +1,77 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../hooks/useT';
-import { Calendar, Clock, Check, X, Bell, Plus, Search, Tag, FileText, Layers } from 'lucide-react';
+import { useThemeStore } from '../stores/themeStore';
+import { Calendar, Clock, Check, X, Bell, Plus, Search, Tag, FileText, Layers, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
+// --- Sub-components ---
+
+const CustomSelect: React.FC<{
+    value: string;
+    options: { value: string; label: string }[];
+    onChange: (value: any) => void;
+    icon: React.ReactNode;
+}> = ({ value, options, onChange, icon }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const selectedOption = options.find(o => o.value === value) || options[0];
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex h-12 w-full items-center justify-between rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all hover:bg-surface-control-hover focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+            >
+                <div className="flex items-center gap-3">
+                    <span className="text-text-tertiary">{icon}</span>
+                    <span>{selectedOption.label}</span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-text-tertiary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOpen && (
+                <div className="absolute left-0 top-full z-[100] mt-2 w-full animate-in fade-in zoom-in-95 duration-200">
+                    <div className="overflow-hidden rounded-2xl border border-stroke-divider bg-surface-flyout p-1.5 shadow-xl ring-1 ring-black/5">
+                        {options.map((opt) => (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => {
+                                    onChange(opt.value);
+                                    setIsOpen(false);
+                                }}
+                                className={`flex w-full items-center px-3 py-2.5 text-fs-sm rounded-xl transition-colors ${opt.value === value
+                                    ? 'bg-accent-default text-white'
+                                    : 'text-text-primary hover:bg-surface-subtle'
+                                    }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- Main Page ---
+
 interface Reminder {
+    // ... existing interface ...
     id: string;
     title: string;
     description: string | null;
@@ -13,6 +80,14 @@ interface Reminder {
     eventTime: string | null;
     status: string;
     pendingConfirm: number;
+}
+
+interface ReminderDraft {
+    title: string;
+    description: string;
+    eventType: 'meeting' | 'deliverable' | 'event' | 'appointment';
+    eventDate: string;
+    eventTime: string;
 }
 
 function formatDateLabel(key: string, t: (key: string) => string): string {
@@ -55,12 +130,24 @@ function safeDateKey(value: string | number | undefined | null): string {
 
 export const SchedulePage: React.FC = () => {
     const t = useT();
+    const { theme } = useThemeStore();
+    const isDark = theme === 'void';
+
     const [activeReminders, setActiveReminders] = useState<Reminder[]>([]);
     const [pendingReminders, setPendingReminders] = useState<Reminder[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
     const [query, setQuery] = useState('');
     const [typeFilter, setTypeFilter] = useState<'all' | 'meeting' | 'deliverable' | 'event' | 'appointment'>('all');
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [draft, setDraft] = useState<ReminderDraft>({
+        title: '',
+        description: '',
+        eventType: 'event',
+        eventDate: new Date().toISOString().slice(0, 10),
+        eventTime: '',
+    });
 
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -102,6 +189,56 @@ export const SchedulePage: React.FC = () => {
         } catch (error) {
             console.error('Update status failed:', error);
             toast.error(t('common.error'));
+        }
+    };
+
+    const openCreateReminder = (dateKey?: string) => {
+        setDraft({
+            title: '',
+            description: '',
+            eventType: 'event',
+            eventDate: dateKey && dateKey !== 'unknown' ? dateKey : todayKey,
+            eventTime: '',
+        });
+        setIsCreateOpen(true);
+    };
+
+    const closeCreateReminder = () => {
+        if (isSubmitting) return;
+        setIsCreateOpen(false);
+    };
+
+    const handleCreateReminder = async () => {
+        if (!draft.title.trim()) {
+            toast.error(t('schedule.toast_title_required'));
+            return;
+        }
+
+        if (!draft.eventDate) {
+            toast.error(t('schedule.toast_date_required'));
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            await invoke('create_reminder', {
+                input: {
+                    title: draft.title.trim(),
+                    description: draft.description.trim() || null,
+                    event_type: draft.eventType,
+                    event_date: draft.eventDate,
+                    event_time: draft.eventTime || null,
+                },
+            });
+            toast.success(t('schedule.toast_create_success'));
+            setIsCreateOpen(false);
+            await loadReminders();
+            setSelectedDateKey(draft.eventDate);
+        } catch (error) {
+            console.error('Create reminder failed:', error);
+            toast.error(typeof error === 'string' ? error : t('schedule.toast_create_failed'));
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -393,9 +530,7 @@ export const SchedulePage: React.FC = () => {
                                         {group.dateKey === todayKey && (
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    toast.info('Feature coming soon');
-                                                }}
+                                                onClick={() => openCreateReminder(group.dateKey)}
                                                 className="group/card relative flex h-full min-h-[120px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-accent-default/5 text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-accent-default/10 hover:shadow-[var(--shadow-card-hover)]"
                                             >
                                                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-accent-default/25 bg-accent-default/12 transition-transform duration-200 group-hover/card:scale-105">
@@ -412,6 +547,151 @@ export const SchedulePage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {isCreateOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition-all duration-300 animate-in fade-in"
+                    onClick={closeCreateReminder}
+                >
+                    <div
+                        className="w-full max-w-xl overflow-hidden rounded-3xl border border-stroke-divider bg-surface-layer shadow-[0_20px_50px_-12px_rgba(0,0,0,0.3)] animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header with gradient background */}
+                        <div className="relative bg-gradient-to-br from-accent-default/10 via-transparent to-transparent px-8 pt-8 pb-6">
+                            <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                    <h2 className="text-2xl font-bold tracking-tight text-text-primary">
+                                        {t('schedule.add_title')}
+                                    </h2>
+                                    <p className="text-fs-sm text-text-tertiary">
+                                        {t('schedule.add_subtitle')}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={closeCreateReminder}
+                                    className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-subtle text-text-tertiary transition-all hover:bg-surface-control hover:text-text-primary"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="px-8 pb-8 space-y-6">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-fs-sm font-semibold text-text-secondary">
+                                        <FileText className="h-4 w-4" />
+                                        {t('schedule.title_label')}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={draft.title}
+                                        onChange={(e) => setDraft((current) => ({ ...current, title: e.target.value }))}
+                                        placeholder={t('schedule.title_placeholder')}
+                                        className="h-12 w-full rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all placeholder:text-text-tertiary focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-fs-sm font-semibold text-text-secondary">
+                                        <Layers className="h-4 w-4" />
+                                        {t('schedule.desc_label')}
+                                    </label>
+                                    <textarea
+                                        value={draft.description}
+                                        onChange={(e) => setDraft((current) => ({ ...current, description: e.target.value }))}
+                                        rows={3}
+                                        placeholder={t('schedule.desc_placeholder')}
+                                        className="w-full rounded-2xl border border-stroke-control bg-surface-control px-4 py-3 text-fs-base text-text-primary outline-none transition-all placeholder:text-text-tertiary focus:border-accent-default focus:ring-4 focus:ring-accent-default/10 resize-none"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-fs-sm font-semibold text-text-secondary">
+                                            <Tag className="h-4 w-4" />
+                                            {t('schedule.type_label')}
+                                        </label>
+                                        <CustomSelect
+                                            value={draft.eventType}
+                                            options={[
+                                                { value: 'event', label: t('reminder.type_event') },
+                                                { value: 'meeting', label: t('reminder.type_meeting') },
+                                                { value: 'deliverable', label: t('reminder.type_deliverable') },
+                                                { value: 'appointment', label: t('reminder.type_appointment') },
+                                            ]}
+                                            onChange={(val) => setDraft((c) => ({ ...c, eventType: val }))}
+                                            icon={<Tag className="h-4 w-4" />}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-fs-sm font-semibold text-text-secondary">
+                                            <Calendar className="h-4 w-4" />
+                                            {t('schedule.date_label')}
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={draft.eventDate}
+                                            onChange={(e) => setDraft((current) => ({ ...current, eventDate: e.target.value }))}
+                                            style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                                            className="h-12 w-full rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-fs-sm font-semibold text-text-secondary">
+                                        <Clock className="h-4 w-4" />
+                                        {t('schedule.time_label')}
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={draft.eventTime}
+                                        onChange={(e) => setDraft((current) => ({ ...current, eventTime: e.target.value }))}
+                                        style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                                        className="h-12 w-full rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+                                    />
+                                    <div className="flex items-center gap-1.5 px-1 py-1 text-fs-xs text-text-tertiary">
+                                        <Bell className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                                        <span>{t('schedule.time_hint')}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={closeCreateReminder}
+                                    className="h-11 rounded-2xl px-6 text-fs-base font-semibold text-text-secondary transition-all hover:bg-surface-subtle hover:text-text-primary"
+                                >
+                                    {t('common.cancel')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCreateReminder}
+                                    disabled={isSubmitting}
+                                    className="group relative flex h-11 items-center gap-2 overflow-hidden rounded-2xl bg-accent-default px-8 text-fs-base font-bold text-white shadow-lg transition-all hover:bg-accent-hover hover:shadow-accent-default/20 disabled:scale-[0.98] disabled:opacity-60 disabled:shadow-none"
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                                            <span>{t('schedule.creating')}</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus className="h-4.5 w-4.5 transition-transform group-hover:rotate-90" />
+                                            <span>{t('schedule.create_button')}</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
