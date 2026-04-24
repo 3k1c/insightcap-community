@@ -2185,12 +2185,12 @@ async fn handle_rag_query(
             .map_err(|e| e.to_string())?;
 
         let overflow = draft_task.await.unwrap_or(true);
-        let final_reply = format!("{}{}", prefix, stream_result.content);
         if overflow || draft_message_id.is_none() {
+            // Streaming failed or was too long: send the complete answer all at once
+            let final_reply = format!("{}{}", prefix, stream_result.content);
             send_long_message(bot_token, chat_id, &final_reply).await?;
-        } else if let Some(mid) = draft_message_id {
-            let _ = edit_message_text(bot_token, chat_id, mid, &final_reply).await;
         }
+        // If streaming succeeded, the draft task already updated the message continuously; do not overwrite.
         stream_result.content
     } else {
         let engine2 = RagEngine::new(
