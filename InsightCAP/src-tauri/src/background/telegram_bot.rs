@@ -1589,6 +1589,29 @@ async fn edit_message_text(
     Ok(())
 }
 
+/// Used during live streaming — sends plain text without parse_mode to avoid
+/// Markdown validation failures from unbalanced symbols mid-stream.
+async fn edit_message_text_plain(
+    bot_token: &str,
+    chat_id: i64,
+    message_id: i64,
+    text: &str,
+) -> Result<(), String> {
+    let client = Client::new();
+    let url = format!("https://api.telegram.org/bot{}/editMessageText", bot_token);
+    let _ = client
+        .post(&url)
+        .json(&json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("editMessageText (plain): {}", e))?;
+    Ok(())
+}
+
 async fn send_chat_action(bot_token: &str, chat_id: i64) {
     let client = Client::new();
     let url = format!("https://api.telegram.org/bot{}/sendChatAction", bot_token);
@@ -2119,8 +2142,9 @@ async fn handle_rag_query(
 
                 if has_draft && last_sent.elapsed().as_millis() as u64 >= DRAFT_THROTTLE_MS {
                     if let Some(mid) = draft_message_id {
+                        // Use plain text during streaming to avoid Markdown validation failures
                         let _ =
-                            edit_message_text(&bot_token_draft, chat_id, mid, &accumulated).await;
+                            edit_message_text_plain(&bot_token_draft, chat_id, mid, &accumulated).await;
                     }
                     last_sent = std::time::Instant::now();
                 }
@@ -2128,7 +2152,8 @@ async fn handle_rag_query(
 
             if has_draft && !overflow {
                 if let Some(mid) = draft_message_id {
-                    let _ = edit_message_text(&bot_token_draft, chat_id, mid, &accumulated).await;
+                    // Final update: also plain text to stay consistent
+                    let _ = edit_message_text_plain(&bot_token_draft, chat_id, mid, &accumulated).await;
                 }
             }
             overflow
@@ -2163,7 +2188,8 @@ async fn handle_rag_query(
                                 if !r.is_empty() {
                                     if !in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
                                         in_reasoning.store(true, std::sync::atomic::Ordering::SeqCst);
-                                        let _ = tx.send("💭 *工作流程*：\n```text\n".to_string());
+                                        // Use plain text prefix — no Markdown symbols mid-stream
+                                        let _ = tx.send("[工作流程]\n".to_string());
                                     }
                                     let _ = tx.send(r);
                                 }
@@ -2172,7 +2198,7 @@ async fn handle_rag_query(
                                 if !c.is_empty() {
                                     if in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
                                         in_reasoning.store(false, std::sync::atomic::Ordering::SeqCst);
-                                        let _ = tx.send("\n```\n\n💡 *解答*：\n".to_string());
+                                        let _ = tx.send("\n[解答]\n".to_string());
                                     }
                                     let _ = tx.send(c);
                                 }
