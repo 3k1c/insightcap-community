@@ -2154,9 +2154,30 @@ async fn handle_rag_query(
                 &history_vec,
                 final_query,
                 llm_opts,
-                move |token| {
-                    if let StreamToken::Content(c) = token {
-                        let _ = tx.send(c);
+                {
+                    let tx = tx.clone();
+                    let mut in_reasoning = false;
+                    move |token| {
+                        match token {
+                            StreamToken::Reasoning(r) => {
+                                if !r.is_empty() {
+                                    if !in_reasoning {
+                                        in_reasoning = true;
+                                        let _ = tx.send("💭 *工作流程*：\n```text\n".to_string());
+                                    }
+                                    let _ = tx.send(r);
+                                }
+                            }
+                            StreamToken::Content(c) => {
+                                if !c.is_empty() {
+                                    if in_reasoning {
+                                        in_reasoning = false;
+                                        let _ = tx.send("\n```\n\n💡 *解答*：\n".to_string());
+                                    }
+                                    let _ = tx.send(c);
+                                }
+                            }
+                        }
                     }
                 },
             )
