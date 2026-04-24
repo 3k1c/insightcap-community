@@ -2156,13 +2156,13 @@ async fn handle_rag_query(
                 llm_opts,
                 {
                     let tx = tx.clone();
-                    let mut in_reasoning = false;
+                    let in_reasoning = std::sync::atomic::AtomicBool::new(false);
                     move |token| {
                         match token {
                             StreamToken::Reasoning(r) => {
                                 if !r.is_empty() {
-                                    if !in_reasoning {
-                                        in_reasoning = true;
+                                    if !in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
+                                        in_reasoning.store(true, std::sync::atomic::Ordering::SeqCst);
                                         let _ = tx.send("💭 *工作流程*：\n```text\n".to_string());
                                     }
                                     let _ = tx.send(r);
@@ -2170,8 +2170,8 @@ async fn handle_rag_query(
                             }
                             StreamToken::Content(c) => {
                                 if !c.is_empty() {
-                                    if in_reasoning {
-                                        in_reasoning = false;
+                                    if in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
+                                        in_reasoning.store(false, std::sync::atomic::Ordering::SeqCst);
                                         let _ = tx.send("\n```\n\n💡 *解答*：\n".to_string());
                                     }
                                     let _ = tx.send(c);
