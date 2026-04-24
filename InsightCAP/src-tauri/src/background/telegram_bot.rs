@@ -2114,26 +2114,69 @@ async fn handle_rag_query(
     };
 
     let answer = {
-        // Step 1: Show immediate "thinking" placeholder
-        let draft_message_id = send_message_draft(bot_token, chat_id, 1, &format!("{}{}", prefix, thinking_text))
-            .await
-            .ok();
-        eprintln!("[TG-STREAM] draft_message_id = {:?}", draft_message_id);
+        // Step 1: Immediately send a "thinking" placeholder via sendMessageDraft
+        // so the user sees visual feedback right away.
+        let thinking_display = format!("{}{}", prefix, thinking_text);
+        let _ = send_message_draft_streaming(bot_token, chat_id, &thinking_display).await;
+        eprintln!("[TG-STREAM] sent initial thinking draft");
 
-        // Step 2: Run complete_stream to get full content
-        // (Most LLM APIs deliver all tokens in one burst, so real-time streaming is unreliable)
+        // Step 2: Set up mpsc channel – LLM tokens flow from on_token → draft_task
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let token_str = bot_token.to_string();
+
+        let draft_task = tokio::spawn(async move {
+            let mut accumulated = String::new();
+            let mut last_sent = std::time::Instant::now();
+            const THROTTLE_MS: u64 = 300; // sendMessageDraft is designed for this frequency
+            let mut update_count = 0u32;
+
+            while let Some(chunk) = rx.recv().await {
+                accumulated.push_str(&chunk);
+
+                // Push draft update every 300ms
+                if last_sent.elapsed().as_millis() as u64 >= THROTTLE_MS {
+                    update_count += 1;
+                    eprintln!("[TG-STREAM] draft update #{} ({} chars)", update_count, accumulated.len());
+                    let _ = send_message_draft_streaming(&token_str, chat_id, &accumulated).await;
+                    last_sent = std::time::Instant::now();
+                }
+            }
+
+            eprintln!("[TG-STREAM] stream complete, total_updates={}, final_len={}", update_count, accumulated.len());
+            accumulated
+        });
+
+        // Step 3: Run LLM streaming – relay each token to draft_task
         let stream_result = llm
             .complete_stream(
                 &final_system_prompt,
                 &history_vec,
                 final_query,
                 llm_opts,
-                // Track reasoning vs content for workflow display
                 {
+                    let tx = tx.clone();
                     let in_reasoning = std::sync::atomic::AtomicBool::new(false);
-                    move |_token| {
-                        // No-op: we use stream_result.content after completion
-                        let _ = &in_reasoning;
+                    move |token| {
+                        match token {
+                            StreamToken::Reasoning(r) => {
+                                if !r.is_empty() {
+                                    if !in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
+                                        in_reasoning.store(true, std::sync::atomic::Ordering::SeqCst);
+                                        let _ = tx.send("[工作流程]\n".to_string());
+                                    }
+                                    let _ = tx.send(r);
+                                }
+                            }
+                            StreamToken::Content(c) => {
+                                if !c.is_empty() {
+                                    if in_reasoning.load(std::sync::atomic::Ordering::SeqCst) {
+                                        in_reasoning.store(false, std::sync::atomic::Ordering::SeqCst);
+                                        let _ = tx.send("\n[解答]\n".to_string());
+                                    }
+                                    let _ = tx.send(c);
+                                }
+                            }
+                        }
                     }
                 },
             )
@@ -2142,36 +2185,16 @@ async fn handle_rag_query(
 
         eprintln!("[TG-STREAM] complete_stream done. content_len={}", stream_result.content.len());
 
-        // Step 3: Simulate progressive typing by revealing text in chunks
-        let content = &stream_result.content;
-        if let Some(mid) = draft_message_id {
-            let chars: Vec<char> = content.chars().collect();
-            let total = chars.len();
-            if total == 0 {
-                let _ = edit_message_text_plain(bot_token, chat_id, mid, &format!("{}\u{200B}", prefix)).await;
-            } else {
-                // Reveal in steps: start with small chunks, grow as text accumulates
-                let step = 80usize; // characters per update
-                let delay_ms = 250u64; // delay between edits
-                let mut shown = step.min(total);
-                while shown < total {
-                    let partial: String = chars[..shown].iter().collect();
-                    let display = format!("{}{}", prefix, partial);
-                    eprintln!("[TG-STREAM] progressive edit at {} chars", shown);
-                    let _ = edit_message_text_plain(bot_token, chat_id, mid, &display).await;
-                    sleep(Duration::from_millis(delay_ms)).await;
-                    shown = (shown + step).min(total);
-                }
-                // Final full content
-                let final_display = format!("{}{}", prefix, content);
-                eprintln!("[TG-STREAM] final edit ({} chars)", total);
-                let _ = edit_message_text_plain(bot_token, chat_id, mid, &final_display).await;
-            }
-        } else {
-            // No draft message (rate limited etc), send in full
-            let final_reply = format!("{}{}", prefix, content);
-            send_long_message(bot_token, chat_id, &final_reply).await?;
-        }
+        // Drop tx so draft_task's rx loop exits
+        drop(tx);
+        eprintln!("[TG-STREAM] tx dropped, awaiting draft_task...");
+
+        let _accumulated = draft_task.await.unwrap_or_default();
+        eprintln!("[TG-STREAM] draft_task done");
+
+        // Step 4: Finalize – send the complete answer as a real message
+        let final_reply = format!("{}{}", prefix, stream_result.content);
+        send_long_message(bot_token, chat_id, &final_reply).await?;
 
         stream_result.content
     };
@@ -2186,15 +2209,16 @@ pub async fn send_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(
     send_long_message(bot_token, chat_id, text).await
 }
 
-async fn send_message_draft(
+/// Streams partial bot reply using Telegram's native sendMessageDraft API (Bot API 9.5+).
+/// Call repeatedly with accumulating text; finalize with sendMessage.
+async fn send_message_draft_streaming(
     bot_token: &str,
     chat_id: i64,
-    _draft_id: i64,
     text: &str,
-) -> Result<i64, String> {
+) -> Result<(), String> {
     let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
-    let resp = client
+    let url = format!("https://api.telegram.org/bot{}/sendMessageDraft", bot_token);
+    let _ = client
         .post(&url)
         .json(&json!({
             "chat_id": chat_id,
@@ -2202,18 +2226,8 @@ async fn send_message_draft(
         }))
         .send()
         .await
-        .map_err(|e| format!("send_message_draft   : {}", e))?;
-
-    let body: Value = resp.json().await.map_err(|e| e.to_string())?;
-    if body["ok"].as_bool() != Some(true) {
-        return Err(format!(
-            "send_message_draft API   : {}",
-            body["description"].as_str().unwrap_or("unknown")
-        ));
-    }
-    body["result"]["message_id"]
-        .as_i64()
-        .ok_or_else(|| "send_message_draft     message_id".to_string())
+        .map_err(|e| format!("sendMessageDraft: {}", e))?;
+    Ok(())
 }
 
 async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
