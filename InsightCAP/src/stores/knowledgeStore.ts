@@ -59,6 +59,14 @@ export interface SpaceItem {
 export type CategoryFilter = 'all' | 'editor_doc' | 'captured';
 export type MediaFilter = string | null; // null = all
 
+export interface RepositoryStats {
+    todaySources: number;
+    totalChunks: number;
+    totalData: number;
+    totalPatterns: number;
+    totalLogs: number;
+}
+
 export interface TimelineGroup {
     label: string;   // 'today' | 'yesterday' | 'this_week' | 'earlier' | date string
     items: TimelineSourceItem[];
@@ -82,11 +90,13 @@ interface KnowledgeState {
     expandedSourceId: string | null;
     expandedCaptures: CaptureDetail[];
     isLoadingCapDetail: boolean;
+    repoStats: RepositoryStats | null;
 
     setActiveSpaceId: (id: string | null) => void;
     loadSources: () => Promise<void>;
     loadPendingCaptures: () => Promise<void>;
     loadSpaces: () => Promise<void>;
+    loadRepoStats: () => Promise<void>;
 
     setCategoryFilter: (f: CategoryFilter) => void;
     setMediaFilter: (f: MediaFilter) => void;
@@ -150,6 +160,7 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     expandedSourceId: null,
     expandedCaptures: [],
     isLoadingCapDetail: false,
+    repoStats: null,
 
     setActiveSpaceId: (id) => {
         set({ activeSpaceId: id });
@@ -190,6 +201,15 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
             set({ spaces });
         } catch (error) {
             console.error('Failed to load spaces:', error);
+        }
+    },
+
+    loadRepoStats: async () => {
+        try {
+            const stats = await invoke<RepositoryStats>('get_repository_stats');
+            set({ repoStats: stats });
+        } catch (error) {
+            console.error('Failed to load repository stats:', error);
         }
     },
 

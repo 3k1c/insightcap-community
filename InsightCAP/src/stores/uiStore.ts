@@ -7,8 +7,8 @@ interface UiState {
     activeConversationTitle: string;
     setActiveConversationTitle: (title: string) => void;
 
-    activePage: 'chat' | 'repository' | 'settings';
-    setActivePage: (page: 'chat' | 'repository' | 'settings') => void;
+    activePage: 'chat' | 'repository' | 'settings' | 'schedule';
+    setActivePage: (page: 'chat' | 'repository' | 'settings' | 'schedule') => void;
 
     activeConversationId: string | null;
     setActiveConversationId: (id: string | null) => void;

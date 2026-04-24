@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useUiStore } from '../../stores/uiStore';
 import { useT } from '../../hooks/useT';
-import { Database, MessageSquare, Settings } from 'lucide-react';
+import { Database, MessageSquare, Settings, Calendar } from 'lucide-react';
 import { ChatPage } from '../../pages/ChatPage';
 import { RepositoryPage } from '../../pages/RepositoryPage';
+import { SchedulePage } from '../../pages/SchedulePage';
 import { SettingsPage } from '../../pages/SettingsPage';
 import { PendingConfirmDrawer, usePendingConfirmCount } from '../memory/PendingConfirmDrawer';
 
@@ -48,6 +49,13 @@ export const MainLayout: React.FC = () => {
                         </button>
                     )}
                 </div>
+                <button
+                    onClick={() => setActivePage('schedule')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-fs-sm transition-all ${activePage === 'schedule' ? 'bg-accent-default text-white shadow-sm' : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'}`}
+                >
+                    <Calendar className="w-4 h-4" />
+                    <span>{t('nav.schedule')}</span>
+                </button>
                 <div className="flex-1" />
                 <button
                     onClick={() => setActivePage('settings')}
@@ -62,6 +70,7 @@ export const MainLayout: React.FC = () => {
             <div className="flex-1 flex overflow-hidden">
                 {activePage === 'chat' && <ChatPage />}
                 {activePage === 'repository' && <RepositoryPage />}
+                {activePage === 'schedule' && <SchedulePage />}
                 {activePage === 'settings' && <SettingsPage />}
             </div>
 

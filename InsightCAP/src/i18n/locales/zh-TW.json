@@ -2,6 +2,7 @@
     "nav": {
         "chat": "對話",
         "repository": "儲存庫",
+        "schedule": "提醒",
         "settings": "設定"
     },
     "repository": {
@@ -68,14 +69,14 @@
         "toast_open_dialog_failed": "開啟檔案選擇視窗失敗",
         "stat_sources": "來源",
         "stat_notes": "筆記",
-        "stat_chunks": "Chunk",
+        "stat_chunks": "知識點",
         "stat_tags": "標籤",
         "doc_title_placeholder": "輸入文件標題",
         "stat_today_sources": "今日新增",
-        "stat_total_chunks": "已入庫 Chunk",
-        "stat_total_data": "已入庫 Data",
-        "stat_total_patterns": "Pattern",
-        "stat_total_logs": "Log",
+        "stat_total_chunks": "已入庫知識點",
+        "stat_total_data": "記憶",
+        "stat_total_patterns": "模式",
+        "stat_total_logs": "錯誤",
         "chunk_edit_space": "更改空間",
         "chunk_edit_tags": "編輯標籤",
         "chunk_save": "儲存",
@@ -678,6 +679,12 @@
         "error_complete_failed": "無法標記提醒為完成",
         "error_snooze_failed": "無法延後提醒",
         "error_dismiss_failed": "無法關閉提醒"
+    },
+    "schedule": {
+        "pending": "待確認",
+        "active": "已排定",
+        "no_active": "目前沒有已排定的行程。",
+        "add": "新增提醒"
     },
     "capture": {
         "quick_input_placeholder": "輸入想法、連結、或任何內容… (Enter 送出, Esc 取消)",

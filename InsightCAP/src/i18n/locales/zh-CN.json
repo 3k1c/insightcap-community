@@ -2,6 +2,7 @@
     "nav": {
         "chat": "对话",
         "repository": "储存库",
+        "schedule": "提醒",
         "settings": "设置"
     },
     "repository": {
@@ -68,14 +69,14 @@
         "toast_open_dialog_failed": "打开文件选择窗口失败",
         "stat_sources": "来源",
         "stat_notes": "笔记",
-        "stat_chunks": "Chunk",
+        "stat_chunks": "知识点",
         "stat_tags": "标签",
         "doc_title_placeholder": "输入文件标题",
         "stat_today_sources": "今日新增",
-        "stat_total_chunks": "已入库 Chunk",
-        "stat_total_data": "已入库 Data",
-        "stat_total_patterns": "Pattern",
-        "stat_total_logs": "Log",
+        "stat_total_chunks": "已入库知识点",
+        "stat_total_data": "记忆",
+        "stat_total_patterns": "模式",
+        "stat_total_logs": "错误",
         "chunk_edit_space": "更改空间",
         "chunk_edit_tags": "编辑标签",
         "chunk_save": "保存",
@@ -674,6 +675,12 @@
         "error_complete_failed": "无法标记提醒为完成",
         "error_snooze_failed": "无法延后提醒",
         "error_dismiss_failed": "无法关闭提醒"
+    },
+    "schedule": {
+        "pending": "待确认",
+        "active": "已排定",
+        "no_active": "目前没有已排定的行程。",
+        "add": "新增提醒"
     },
     "capture": {
         "quick_input_placeholder": "输入想法、链接、或任何内容… (Enter 送出, Esc 取消)",

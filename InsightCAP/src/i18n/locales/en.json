@@ -2,6 +2,7 @@
     "nav": {
         "chat": "Chat",
         "repository": "Repository",
+        "schedule": "Schedule",
         "settings": "Settings"
     },
     "repository": {
@@ -73,9 +74,9 @@
         "doc_title_placeholder": "Enter document title",
         "stat_today_sources": "Today",
         "stat_total_chunks": "Chunks",
-        "stat_total_data": "Data",
-        "stat_total_patterns": "Patterns",
-        "stat_total_logs": "Logs",
+        "stat_total_data": "Memory",
+        "stat_total_patterns": "Pattern",
+        "stat_total_logs": "Error",
         "chunk_edit_space": "Change Space",
         "chunk_edit_tags": "Edit Tags",
         "chunk_save": "Save",
@@ -675,6 +676,12 @@
         "error_complete_failed": "Failed to mark reminder as completed",
         "error_snooze_failed": "Failed to snooze reminder",
         "error_dismiss_failed": "Failed to dismiss reminder"
+    },
+    "schedule": {
+        "pending": "Pending",
+        "active": "Active",
+        "no_active": "No active schedules at the moment.",
+        "add": "Add Reminder"
     },
     "capture": {
         "quick_input_placeholder": "Type ideas, links, or anything... (Enter to send, Esc to cancel)",

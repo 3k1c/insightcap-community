@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback, KeyboardEvent } from 'react';
-import { Search, FileText, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers, Pencil, Check, ChevronDown, Globe, FileCode, FileSpreadsheet, File, BookText } from 'lucide-react';
+import { Search, FileText, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers, Pencil, Check, ChevronDown, Globe, FileCode, FileSpreadsheet, File, BookText, Brain, Fingerprint, Bug } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
@@ -370,6 +370,14 @@ export const RepositoryPage: React.FC = () => {
     const titleOf = (value: string | undefined | null) => safeTitle(value) || t('repository.untitled');
     const embeddedMedia = useMemo(() => getEmbeddedMedia(docPreview?.sourceItem), [docPreview]);
 
+    const [repoStats, setRepoStats] = useState({
+        todaySources: 0,
+        totalChunks: 0,
+        totalData: 0,
+        totalPatterns: 0,
+        totalLogs: 0,
+    });
+
     const [editingChunkId, setEditingChunkId] = useState<string | null>(null);
     const [editSpaceId, setEditSpaceId] = useState<string>('');
     const [editTags, setEditTags] = useState<string[]>([]);
@@ -439,6 +447,7 @@ export const RepositoryPage: React.FC = () => {
         loadRecentTags();
         loadSpaces();
         try { setNotes(loadFiles()); } catch { /* ignore */ }
+        invoke('get_repository_stats').then((stats: any) => setRepoStats(stats)).catch(console.error);
     }, [loadTimeline, loadRecentTags, loadSpaces]);
 
     useEffect(() => {
@@ -810,6 +819,9 @@ export const RepositoryPage: React.FC = () => {
                                 { label: t('repository.stat_notes'), count: filteredNotes.length, icon: <NotebookPen className="h-3.5 w-3.5" />, color: 'text-amber-500 bg-amber-500/10' },
                                 { label: t('repository.stat_chunks'), count: totalChunks, icon: <Layers className="h-3.5 w-3.5" />, color: 'text-purple-500 bg-purple-500/10' },
                                 { label: t('repository.stat_tags'), count: recentTags.length, icon: <Tag className="h-3.5 w-3.5" />, color: 'text-emerald-500 bg-emerald-500/10' },
+                                { label: t('repository.stat_total_data'), count: repoStats.totalData, icon: <Brain className="h-3.5 w-3.5" />, color: 'text-cyan-500 bg-cyan-500/10' },
+                                { label: t('repository.stat_total_patterns'), count: repoStats.totalPatterns, icon: <Fingerprint className="h-3.5 w-3.5" />, color: 'text-indigo-500 bg-indigo-500/10' },
+                                { label: t('repository.stat_total_logs'), count: repoStats.totalLogs, icon: <Bug className="h-3.5 w-3.5" />, color: 'text-rose-500 bg-rose-500/10' },
                             ].map((s) => (
                                 <div key={s.label} className="flex items-center gap-1.5 rounded-lg border border-stroke-card bg-surface-layer px-2.5 py-1.5 shadow-sm">
                                     <span className={`flex h-5 w-5 items-center justify-center rounded-md ${s.color}`}>{s.icon}</span>
