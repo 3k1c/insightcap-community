@@ -103,7 +103,10 @@
         "embedded_player": "嵌入播放器",
         "embedded_source_player": "嵌入來源播放器",
         "no_chunks_loaded_yet": "尚未載入 chunk。",
-        "no_tags": "無標籤"
+        "no_tags": "無標籤",
+        "new_space_prompt": "請輸入新空間名稱：",
+        "new_space_success": "成功建立新空間",
+        "create_space": "新增空間"
     },
     "common": {
         "confirm": "確認",

@@ -102,7 +102,10 @@
         "embedded_player": "Embedded Player",
         "embedded_source_player": "embedded-source-player",
         "no_chunks_loaded_yet": "No chunk loaded yet.",
-        "no_tags": "No tags"
+        "no_tags": "No tags",
+        "new_space_prompt": "Please enter new space name:",
+        "new_space_success": "New space created successfully",
+        "create_space": "Create Space"
     },
     "common": {
         "confirm": "Confirm",

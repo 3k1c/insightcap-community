@@ -363,7 +363,27 @@ fn split_semantic_windows(content: &str) -> Vec<String> {
     let mut current = String::new();
 
     for paragraph in paragraphs {
-        let next_len = current.chars().count() + paragraph.chars().count() + 2;
+        let p_len = paragraph.chars().count();
+        
+        // If single paragraph is too large, split it first
+        if p_len > MAX_CHUNK_CHARS {
+            // Flush current buffer if not empty
+            if !current.is_empty() {
+                chunks.push(current.trim().to_string());
+                current.clear();
+            }
+            
+            // Hard split the huge paragraph
+            let mut sub_chunks = split_by_chars(&paragraph);
+            if let Some(last) = sub_chunks.pop() {
+                chunks.extend(sub_chunks);
+                current = last;
+                current.push_str("\n\n");
+            }
+            continue;
+        }
+
+        let next_len = current.chars().count() + p_len + 2;
         if !current.is_empty() && next_len > MAX_CHUNK_CHARS {
             chunks.push(current.trim().to_string());
             current = overlap_tail(&current);

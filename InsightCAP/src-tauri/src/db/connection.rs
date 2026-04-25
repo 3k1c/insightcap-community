@@ -192,8 +192,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             include_str!("../../migrations/013_compiled_knowledge.sql"),
         ),
         (
+            "014",
+            include_str!("../../migrations/014_reminders.sql"),
+        ),
+        (
+            "015",
+            include_str!("../../migrations/015_patch_space_knowledge_guide.sql"),
+        ),
+        (
             "016",
             include_str!("../../migrations/016_source_group_ingestion.sql"),
+        ),
+        (
+            "017",
+            include_str!("../../migrations/017_user_managed_spaces.sql"),
         ),
     ];
 

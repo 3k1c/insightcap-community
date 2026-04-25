@@ -54,6 +54,7 @@ export interface SpaceItem {
     name: string;
     description: string;
     chunkCount: number;
+    isUserManaged: boolean;
 }
 
 export type CategoryFilter = 'all' | 'editor_doc' | 'captured';
@@ -110,6 +111,8 @@ interface KnowledgeState {
     createManualCapture: (sourceId: string | null, content: string, tags?: string, spaceId?: string) => Promise<CaptureDetail | null>;
     updateCapture: (captureId: string, content?: string, tags?: string, spaceId?: string) => Promise<void>;
     deleteCapture: (captureId: string) => Promise<void>;
+    createSpace: (name: string) => Promise<string | null>;
+    deleteSpace: (spaceId: string) => Promise<void>;
 }
 
 function groupByDate(items: TimelineSourceItem[]): TimelineGroup[] {
@@ -346,6 +349,29 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
             }));
         } catch (error) {
             console.error('Failed to delete capture:', error);
+        }
+    },
+
+    createSpace: async (name) => {
+        try {
+            const id = await invoke<string>('create_manual_space', { name });
+            await get().loadSpaces();
+            return id;
+        } catch (error) {
+            console.error('Failed to create space:', error);
+            return null;
+        }
+    },
+
+    deleteSpace: async (spaceId) => {
+        try {
+            await invoke('delete_space', { spaceId });
+            await get().loadSpaces();
+            if (get().spaceFilter === spaceId) {
+                get().setSpaceFilter(null);
+            }
+        } catch (error) {
+            console.error('Failed to delete space:', error);
         }
     },
 }));

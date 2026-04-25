@@ -365,6 +365,7 @@ export const RepositoryPage: React.FC = () => {
     const updateCapture = useKnowledgeStore((s) => s.updateCapture);
     const spaces = useKnowledgeStore((s) => s.spaces);
     const loadSpaces = useKnowledgeStore((s) => s.loadSpaces);
+    const createSpace = useKnowledgeStore((s) => s.createSpace);
     const spaceFilter = useKnowledgeStore((s) => s.spaceFilter);
     const setSpaceFilter = useKnowledgeStore((s) => s.setSpaceFilter);
     const titleOf = (value: string | undefined | null) => safeTitle(value) || t('repository.untitled');
@@ -438,6 +439,17 @@ export const RepositoryPage: React.FC = () => {
             setIsSavingChunk(false);
         }
     }, [editTags, editSpaceId, updateCapture, t]);
+
+    const handleCreateNewSpace = useCallback(async () => {
+        const name = window.prompt(t('repository.new_space_prompt') || 'Enter new space name:');
+        if (name && name.trim()) {
+            const newId = await createSpace(name.trim());
+            if (newId) {
+                setEditSpaceId(newId);
+                toast.success(t('repository.new_space_success') || 'New space created');
+            }
+        }
+    }, [createSpace, t]);
 
     const recentTags = useTagStore((s) => s.recentTags);
     const loadRecentTags = useTagStore((s) => s.loadRecentTags);
@@ -1225,9 +1237,9 @@ export const RepositoryPage: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="grid flex-1 overflow-hidden lg:grid-cols-[1fr_280px]">
+                        <div className="grid flex-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_280px]">
 
-                            <section className="flex min-h-0 flex-col">
+                            <section className="flex min-h-0 min-w-0 flex-1 flex-col">
                                 <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
                                     {embeddedMedia && (
                                         <div className="mb-5 overflow-hidden rounded-xl border border-white/[0.07] bg-black shadow-sm">
@@ -1286,7 +1298,7 @@ export const RepositoryPage: React.FC = () => {
                                             <div className="space-y-4">
                                                 {display && (
                                                     <div className="rounded-xl border border-white/[0.07] bg-surface-subtle/40 px-5 py-4 shadow-sm">
-                                                        <pre className="whitespace-pre-wrap text-[13.5px] leading-[1.8] text-text-secondary">{display}</pre>
+                                                        <pre className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.8] text-text-secondary">{display}</pre>
                                                     </div>
                                                 )}
                                             </div>
@@ -1340,11 +1352,11 @@ export const RepositoryPage: React.FC = () => {
                                                             try { parsedTags = JSON.parse(chunk.tags) ?? []; } catch { /* noop */ }
                                                             const spaceName = spaces.find(s => s.id === chunk.spaceId)?.name;
                                                             return (
-                                                                <div key={chunk.id} className="rounded-xl border border-white/[0.07] bg-surface-subtle/50 p-4 shadow-sm">
+                                                                <div key={chunk.id} className="max-w-full overflow-hidden rounded-xl border border-white/[0.07] bg-surface-subtle/50 p-4 shadow-sm">
                                                                     <div className="mb-2.5 flex items-center gap-2">
                                                                         <span className="rounded-md bg-accent-default/12 px-2 py-0.5 text-[11px] font-bold tracking-wide text-accent-default">{`#${idx + 1}`}</span>
                                                                         {!isEditing && (
-                                                                            <div className="ml-auto flex items-center gap-2">
+                                                                            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
                                                                                 {spaceName && (
                                                                                     <span className="inline-flex items-center gap-1 rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs text-accent-default">
                                                                                         <Layers size={10} />
@@ -1352,7 +1364,7 @@ export const RepositoryPage: React.FC = () => {
                                                                                     </span>
                                                                                 )}
                                                                                 {parsedTags.map(tag => (
-                                                                                    <span key={tag} className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-secondary">#{tag}</span>
+                                                                                    <span key={tag} className="max-w-[120px] truncate rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-secondary">#{tag}</span>
                                                                                 ))}
                                                                                 {!spaceName && parsedTags.length === 0 && (
                                                                                     <span className="rounded-full bg-surface-card px-2 py-0.5 text-fs-xs text-text-tertiary">{t('repository.no_tags')}</span>
@@ -1386,28 +1398,36 @@ export const RepositoryPage: React.FC = () => {
                                                                         )}
                                                                     </div>
 
-                                                                    <pre className="mb-3 whitespace-pre-wrap text-[13.5px] leading-6 text-text-primary">{extractPlainText(chunk.cleanContent || '')}</pre>
-
                                                                     {isEditing && (
-                                                                        <div className="mt-2 space-y-2 border-t border-stroke-divider pt-2">
+                                                                        <div className="mb-4 space-y-3 rounded-lg bg-surface-base p-3 border border-stroke-divider shadow-inner">
                                                                             <div>
-                                                                                <label className="mb-1 block text-fs-xs text-text-tertiary">{t('repository.chunk_edit_space')}</label>
-                                                                                <select
-                                                                                    value={editSpaceId}
-                                                                                    onChange={e => setEditSpaceId(e.target.value)}
-                                                                                    className="w-full rounded-md border border-stroke-control bg-surface-layer px-2 py-1 text-fs-xs text-text-primary focus:border-accent-default focus:outline-none"
-                                                                                >
-                                                                                    <option value="">{t('repository.chunk_no_space')}</option>
-                                                                                    {spaces.map(s => (
-                                                                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                                                                    ))}
-                                                                                </select>
+                                                                                <label className="mb-1 block text-fs-xs font-semibold text-text-tertiary">{t('repository.chunk_edit_space')}</label>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <select
+                                                                                        value={editSpaceId}
+                                                                                        onChange={e => setEditSpaceId(e.target.value)}
+                                                                                        className="flex-1 rounded-md border border-stroke-control bg-surface-layer px-2 py-1.5 text-fs-xs text-text-primary focus:border-accent-default focus:outline-none transition-colors"
+                                                                                    >
+                                                                                        <option value="">{t('repository.chunk_no_space')}</option>
+                                                                                        {spaces.map(s => (
+                                                                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={handleCreateNewSpace}
+                                                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-stroke-control bg-surface-layer text-text-tertiary transition-all hover:border-accent-default hover:bg-accent-default/10 hover:text-accent-default"
+                                                                                        title={t('repository.create_space')}
+                                                                                    >
+                                                                                        <Plus size={14} />
+                                                                                    </button>
+                                                                                </div>
                                                                             </div>
                                                                             <div>
-                                                                                <label className="mb-1 block text-fs-xs text-text-tertiary">{t('repository.chunk_edit_tags')}</label>
-                                                                                <div className="min-h-[32px] flex flex-wrap gap-1 rounded-md border border-stroke-control bg-surface-layer px-2 py-1 focus-within:border-accent-default">
+                                                                                <label className="mb-1 block text-fs-xs font-semibold text-text-tertiary">{t('repository.chunk_edit_tags')}</label>
+                                                                                <div className="min-h-[36px] flex flex-wrap gap-1.5 rounded-md border border-stroke-control bg-surface-layer px-2.5 py-1.5 focus-within:border-accent-default transition-colors">
                                                                                     {editTags.map(tag => (
-                                                                                        <span key={tag} className="inline-flex items-center gap-0.5 rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs text-accent-default">
+                                                                                        <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent-default/10 px-2.5 py-0.5 text-fs-xs font-medium text-accent-default">
                                                                                             #{tag}
                                                                                             <button onClick={() => setEditTags(prev => prev.filter(t => t !== tag))} className="transition-colors hover:text-red-500">
                                                                                                 <X size={10} />
@@ -1419,12 +1439,14 @@ export const RepositoryPage: React.FC = () => {
                                                                                         onChange={e => setEditTagInput(e.target.value)}
                                                                                         onKeyDown={handleTagKeyDown}
                                                                                         placeholder={editTags.length === 0 ? t('repository.chunk_tag_placeholder') : ''}
-                                                                                        className="min-w-[100px] flex-1 bg-transparent text-fs-xs text-text-primary outline-none placeholder:text-text-tertiary"
+                                                                                        className="min-w-[120px] flex-1 bg-transparent text-fs-xs text-text-primary outline-none placeholder:text-text-tertiary"
                                                                                     />
                                                                                 </div>
                                                                             </div>
                                                                         </div>
                                                                     )}
+
+                                                                    <pre className="w-full overflow-hidden whitespace-pre-wrap break-words text-[13.5px] leading-7 text-text-primary">{extractPlainText(chunk.cleanContent || '')}</pre>
                                                                 </div>
                                                             );
                                                         })}

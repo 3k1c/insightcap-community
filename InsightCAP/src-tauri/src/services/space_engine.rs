@@ -182,17 +182,20 @@ impl SpaceEngine {
         &self,
         space_centers: &HashMap<String, Vec<f32>>,
     ) -> Result<Vec<(String, String)>, String> {
-        let count_rows = sqlx::query("SELECT id, chunk_count FROM spaces WHERE is_archived = 0")
+        let count_rows = sqlx::query("SELECT id, chunk_count, is_user_managed FROM spaces WHERE is_archived = 0")
             .fetch_all(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
 
-        let chunk_counts: HashMap<String, i64> = count_rows
+        let space_info: HashMap<String, (i64, bool)> = count_rows
             .iter()
             .map(|r| {
                 (
                     r.get::<String, _>("id"),
-                    r.try_get::<i64, _>("chunk_count").unwrap_or(0),
+                    (
+                        r.try_get::<i64, _>("chunk_count").unwrap_or(0),
+                        r.try_get::<i32, _>("is_user_managed").map(|v| v == 1).unwrap_or(false)
+                    )
                 )
             })
             .collect();
@@ -221,9 +224,14 @@ impl SpaceEngine {
                 continue;
             }
 
-            let count_a = chunk_counts.get(id_a).copied().unwrap_or(0);
-            let count_b = chunk_counts.get(id_b).copied().unwrap_or(0);
-            let (survivor, absorbed_id) = if count_a >= count_b {
+            let (count_a, is_user_a) = space_info.get(id_a).copied().unwrap_or((0, false));
+            let (count_b, is_user_b) = space_info.get(id_b).copied().unwrap_or((0, false));
+            
+            let (survivor, absorbed_id) = if is_user_a && !is_user_b {
+                (id_a.clone(), id_b.clone())
+            } else if !is_user_a && is_user_b {
+                (id_b.clone(), id_a.clone())
+            } else if count_a >= count_b {
                 (id_a.clone(), id_b.clone())
             } else {
                 (id_b.clone(), id_a.clone())
@@ -570,7 +578,7 @@ impl SpaceEngine {
         }
 
         let _ = sqlx::query(
-            "UPDATE spaces SET is_archived = 1, updated_at = ? WHERE is_archived = 0 AND chunk_count = 0"
+            "UPDATE spaces SET is_archived = 1, updated_at = ? WHERE is_archived = 0 AND chunk_count = 0 AND is_user_managed = 0"
         )
         .bind(chrono::Utc::now().to_rfc3339())
         .execute(&self.pool)

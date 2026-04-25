@@ -389,6 +389,8 @@ pub fn run() {
             commands::space_commands::get_space_knowledge_guide,
             commands::space_commands::save_space_knowledge_guide,
             commands::space_commands::regenerate_space_knowledge_guide,
+            commands::space_commands::create_manual_space,
+            commands::space_commands::delete_space,
             commands::decision_commands::create_decision,
             commands::decision_commands::get_due_decisions,
             commands::decision_commands::get_project_decisions,

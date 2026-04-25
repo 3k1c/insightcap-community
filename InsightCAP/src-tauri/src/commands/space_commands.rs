@@ -10,6 +10,7 @@ pub struct SpaceItem {
     pub name: String,
     pub description: String,
     pub chunk_count: i64,
+    pub is_user_managed: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -48,6 +49,7 @@ pub async fn get_all_spaces(pool: State<'_, SqlitePool>) -> Result<Vec<SpaceItem
             name: r.get("name"),
             description: r.try_get("description").unwrap_or_default(),
             chunk_count: r.try_get("chunk_count").unwrap_or(0),
+            is_user_managed: r.try_get::<i32, _>("is_user_managed").unwrap_or(0) == 1,
         })
         .collect();
 
@@ -208,4 +210,56 @@ pub async fn regenerate_space_knowledge_guide(
         pool.inner().clone(),
     );
     engine.generate_guide(&space_id).await
+}
+
+#[tauri::command]
+pub async fn create_manual_space(
+    pool: State<'_, SqlitePool>,
+    name: String,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    
+    sqlx::query(
+        "INSERT INTO spaces (id, name, description, is_user_managed, created_at, updated_at) VALUES (?, ?, '', 1, ?, ?)"
+    )
+    .bind(&id)
+    .bind(&name)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
+    
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn delete_space(
+    pool: State<'_, SqlitePool>,
+    space_id: String,
+) -> Result<(), String> {
+    // 檢查是否為用戶建立或是可以刪除
+    // 目前允許用戶刪除任何 Space，但標註為 is_archived = 1 而非直接物理刪除
+    sqlx::query("UPDATE spaces SET is_archived = 1, updated_at = ? WHERE id = ?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(&space_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+        
+    // 同時把該 Space 下的所有 chunks 設為 null space
+    sqlx::query("UPDATE captures SET space_id = NULL WHERE space_id = ?")
+        .bind(&space_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+        
+    sqlx::query("UPDATE memory_chunks SET space_id = NULL WHERE space_id = ?")
+        .bind(&space_id)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
