@@ -11,13 +11,13 @@ use uuid::Uuid;
 
 use crate::db::AppState;
 use crate::providers::llm::openai::OpenAiProvider;
-use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
+use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::services::rag_engine::RagEngine;
 
 const POLL_TIMEOUT_SECS: u64 = 30;
 const RETRY_DELAY_SECS: u64 = 10;
 const TELEGRAM_MSG_LIMIT: usize = 4096;
-const DRAFT_THROTTLE_MS: u64 = 800; // Increased frequency for smoother character-by-character streaming
+
 
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -1589,28 +1589,6 @@ async fn edit_message_text(
     Ok(())
 }
 
-/// Used during live streaming — sends plain text without parse_mode to avoid
-/// Markdown validation failures from unbalanced symbols mid-stream.
-async fn edit_message_text_plain(
-    bot_token: &str,
-    chat_id: i64,
-    message_id: i64,
-    text: &str,
-) -> Result<(), String> {
-    let client = Client::new();
-    let url = format!("https://api.telegram.org/bot{}/editMessageText", bot_token);
-    let _ = client
-        .post(&url)
-        .json(&json!({
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("editMessageText (plain): {}", e))?;
-    Ok(())
-}
 
 async fn send_chat_action(bot_token: &str, chat_id: i64) {
     let client = Client::new();
