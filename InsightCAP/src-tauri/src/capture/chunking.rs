@@ -886,4 +886,45 @@ mod tests {
         let chunks = chunks_for_file_chunk(&file_chunk);
         assert!(chunks.is_empty(), "ocr_failed chunks should not be indexed");
     }
+
+    #[test]
+    fn stress_test_extreme_inputs() {
+        // Case 1: Extremely long single line (100k chars)
+        let long_line = "a".repeat(100_000);
+        let chunks = chunks_for_file_chunk(&file_chunk(long_line, "plain_text", "text"));
+        assert!(!chunks.is_empty());
+        for c in &chunks {
+            assert!(c.content.chars().count() <= MAX_CHUNK_CHARS + 100); // Allow some buffer for overlap
+        }
+
+        // Case 2: Massive log file (10k events)
+        let mut log_content = String::new();
+        for i in 0..10_000 {
+            log_content.push_str(&format!("2026-04-27 12:00:00 [INFO] event {}\n", i));
+        }
+        let chunks = chunks_for_file_chunk(&file_chunk(log_content, "log", "text"));
+        assert!(!chunks.is_empty());
+
+        // Case 3: Massive wide table
+        let mut table_content = String::from("| Head |\n|---|\n");
+        for i in 0..5_000 {
+            table_content.push_str(&format!("| Row {} with very long content {} |\n", i, "x".repeat(100)));
+        }
+        let chunks = chunks_for_file_chunk(&file_chunk(table_content, "xlsx", "document"));
+        assert!(!chunks.is_empty());
+
+        // Case 4: Pure whitespace and special characters
+        let weird_content = " \n\t\u{200b}\u{feff}".repeat(1000);
+        let chunks = chunks_for_file_chunk(&file_chunk(weird_content, "plain_text", "text"));
+        // Should be empty after clean_text
+        assert!(chunks.is_empty());
+
+        // Case 5: Deep/Massive Markdown headers
+        let mut md_content = String::new();
+        for i in 0..500 {
+            md_content.push_str(&format!("{} Header {}\nContent for {}\n\n", "#".repeat((i % 6) + 1), i, i));
+        }
+        let chunks = chunks_for_file_chunk(&file_chunk(md_content, "markdown", "text"));
+        assert!(!chunks.is_empty());
+    }
 }
