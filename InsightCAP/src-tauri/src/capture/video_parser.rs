@@ -3,7 +3,6 @@ use md5::{Digest, Md5};
 use reqwest::Client;
 use std::process::Command;
 
-
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
     28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
@@ -61,8 +60,7 @@ async fn fetch_wbi_keys(
 
     println!(
         "[WBI] Got keys: img_key={}, sub_key={}",
-        img_key_preview,
-        sub_key_preview
+        img_key_preview, sub_key_preview
     );
 
     Ok((img_key, sub_key))
@@ -390,10 +388,14 @@ fn coalesce_subtitle_lines(raw: &str) -> String {
                 current_para = segment;
             } else {
                 // 將短行展開為連續文字
-                let is_cjk = segment.chars().next().map(|c| {
-                    (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF
-                        || (c as u32) >= 0x3040 && (c as u32) <= 0x30FF
-                }).unwrap_or(false);
+                let is_cjk = segment
+                    .chars()
+                    .next()
+                    .map(|c| {
+                        (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF
+                            || (c as u32) >= 0x3040 && (c as u32) <= 0x30FF
+                    })
+                    .unwrap_or(false);
                 if is_cjk {
                     current_para.push_str(&segment);
                 } else {
@@ -674,7 +676,6 @@ pub async fn fetch_bilibili_subtitles(
         }
     }
 
-
     let mut result = format!(" Bilibili    {}", title);
     result.push_str(&format!("\nUP  {}", owner));
 
@@ -780,6 +781,11 @@ pub async fn parse_url_content(
                     chunks: vec![FileChunk {
                         content,
                         chunk_type: "document".to_string(),
+                        source_type: "youtube_subtitle".to_string(),
+                        metadata: serde_json::json!({
+                            "source_type": "youtube_subtitle",
+                            "source_url": url_str,
+                        }),
                         image_path: None,
                         status: "processed".to_string(),
                     }],
@@ -809,6 +815,12 @@ pub async fn parse_url_content(
                     chunks: vec![FileChunk {
                         content: transcript,
                         chunk_type: "document".to_string(),
+                        source_type: "bilibili_subtitle".to_string(),
+                        metadata: serde_json::json!({
+                            "source_type": "bilibili_subtitle",
+                            "source_url": url_str,
+                            "video_id": bvid,
+                        }),
                         image_path: None,
                         status: "processed".to_string(),
                     }],

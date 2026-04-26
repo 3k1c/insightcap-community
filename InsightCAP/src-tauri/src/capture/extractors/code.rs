@@ -31,7 +31,10 @@ pub async fn extract_code(
     if content.len() < 2000 {
         return Ok(vec![CodeChunk {
             language: language.clone(),
-            clean_content: format!("[Code File {} | {}]\n{}", filename, language, content),
+            clean_content: format!(
+                "# Language: {} | File: {}\n\n{}",
+                language, filename, content
+            ),
         }]);
     }
 
@@ -85,9 +88,9 @@ fn split_code_by_boundaries(
             chunks.push(CodeChunk {
                 language: language.to_string(),
                 clean_content: format!(
-                    "[Code File {} | {}]\n{}",
-                    filename,
+                    "# Language: {} | File: {}\n\n{}",
                     language,
+                    filename,
                     current_chunk.trim()
                 ),
             });
@@ -101,9 +104,9 @@ fn split_code_by_boundaries(
         chunks.push(CodeChunk {
             language: language.to_string(),
             clean_content: format!(
-                "[Code File {} | {}]\n{}",
-                filename,
+                "# Language: {} | File: {}\n\n{}",
                 language,
+                filename,
                 current_chunk.trim()
             ),
         });

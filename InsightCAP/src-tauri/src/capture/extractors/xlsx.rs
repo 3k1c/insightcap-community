@@ -1,6 +1,5 @@
 use crate::error::AppError;
 use calamine::{open_workbook, Data, Reader, Xlsx};
-use rand::seq::SliceRandom;
 use std::path::Path;
 
 pub struct XlsxChunk {
@@ -34,38 +33,14 @@ pub async fn extract_xlsx(
                 continue;
             }
 
-            let mut headers = Vec::new();
-            if let Some(first_row) = range.rows().next() {
-                for cell in first_row {
-                    headers.push(cell.to_string());
-                }
-            }
-            let header_str = headers.join(" | ");
-
-            let data_rows_count = total_rows.saturating_sub(1);
-            let mut sample_rows = Vec::new();
-
-            if data_rows_count > 0 {
-                let mut all_indices: Vec<usize> = (1..total_rows).collect();
-                let mut rng = rand::rng();
-                all_indices.shuffle(&mut rng);
-
-                let sample_size = std::cmp::min(5, data_rows_count);
-                for &idx in &all_indices[0..sample_size] {
-                    if let Some(row) = range.rows().nth(idx) {
-                        let row_str: Vec<String> =
-                            row.iter().map(|c: &Data| c.to_string()).collect();
-                        sample_rows.push(row_str.join(" | "));
-                    }
-                }
-            }
+            let rows = range
+                .rows()
+                .map(|row| row.iter().map(|c: &Data| c.to_string()).collect::<Vec<_>>())
+                .collect::<Vec<_>>();
 
             let mut content = format!("[Sheet: {}]\n", sheet_name);
-            content.push_str(&format!("Headers: {}\n", header_str));
-            content.push_str(&format!("Data rows: {}\n", data_rows_count));
-            for row in sample_rows {
-                content.push_str(&format!("{}\n", row));
-            }
+            content
+                .push_str(&crate::capture::extractors::preclean::format_table_as_markdown(&rows));
 
             chunks.push(XlsxChunk {
                 sheet_name,

@@ -1,6 +1,5 @@
 use crate::error::AppError;
 use csv::ReaderBuilder;
-use rand::seq::SliceRandom;
 use std::fs::File;
 use std::path::Path;
 
@@ -30,37 +29,15 @@ pub async fn extract_csv(
         .map_err(|e| AppError::Capture(format!("Failed to read CSV headers: {}", e)))?
         .clone();
 
-    let header_str = headers.iter().collect::<Vec<_>>().join(" | ");
-
-    let mut records = Vec::new();
+    let mut rows = vec![headers.iter().map(|s| s.to_string()).collect::<Vec<_>>()];
     for result in rdr.records() {
         let record =
             result.map_err(|e| AppError::Capture(format!("Failed to parse CSV record: {}", e)))?;
-        records.push(record);
-    }
-
-    let total_rows = records.len();
-    let mut sample_rows = Vec::new();
-
-    if total_rows > 0 {
-        let mut indices: Vec<usize> = (0..total_rows).collect();
-        let mut rng = rand::rng();
-        indices.shuffle(&mut rng);
-
-        let sample_size = std::cmp::min(5, total_rows);
-        for &idx in &indices[0..sample_size] {
-            let row = &records[idx];
-            let row_str: Vec<String> = row.iter().map(|s| s.to_string()).collect();
-            sample_rows.push(row_str.join(" | "));
-        }
+        rows.push(record.iter().map(|s| s.to_string()).collect());
     }
 
     let mut content = format!("[CSV: {}]\n", file_stem);
-    content.push_str(&format!("Headers: {}\n", header_str));
-    content.push_str(&format!("Total rows: {}\n", total_rows));
-    for row in sample_rows {
-        content.push_str(&format!("{}\n", row));
-    }
+    content.push_str(&crate::capture::extractors::preclean::format_table_as_markdown(&rows));
 
     Ok(vec![CsvChunk {
         clean_content: content.trim().to_string(),
@@ -83,4 +60,30 @@ pub fn read_csv_full(file_path: &str) -> Result<String, AppError> {
     }
 
     Ok(full_content.trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[tokio::test]
+    async fn extract_csv_outputs_markdown_table() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "Region,Revenue").unwrap();
+        writeln!(file, "North,100").unwrap();
+        writeln!(file, "South,200").unwrap();
+
+        let chunks = extract_csv("", file.path().to_str().unwrap(), "sales")
+            .await
+            .unwrap();
+
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0]
+            .clean_content
+            .starts_with("[CSV: sales]\n| Region | Revenue |"));
+        assert!(chunks[0].clean_content.contains("| --- | --- |"));
+        assert!(chunks[0].clean_content.contains("| North | 100 |"));
+    }
 }

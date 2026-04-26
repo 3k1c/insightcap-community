@@ -400,6 +400,11 @@ pub async fn scrape_url(
             chunks: vec![crate::capture::file_parser::FileChunk {
                 content: "Video content is handled by the dedicated video parser.".to_string(),
                 chunk_type: "document".to_string(),
+                source_type: "web_url".to_string(),
+                metadata: serde_json::json!({
+                    "source_type": "web_url",
+                    "url": url_str,
+                }),
                 image_path: None,
                 status: "processed".to_string(),
             }],
@@ -456,6 +461,12 @@ pub async fn scrape_url(
         chunks: vec![crate::capture::file_parser::FileChunk {
             content: final_content,
             chunk_type: "document".to_string(),
+            source_type: "html".to_string(),
+            metadata: serde_json::json!({
+                "source_type": "html",
+                "url": url_str,
+                "domain": host,
+            }),
             image_path: None,
             status: "processed".to_string(),
         }],

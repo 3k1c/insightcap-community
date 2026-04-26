@@ -1,4 +1,3 @@
-
 use crate::capture::attachment_manager::copy_image_to_attachments;
 use crate::error::AppError;
 use quick_xml::events::Event;
@@ -60,9 +59,9 @@ pub async fn extract_pptx(
         let text = slide_texts.get(&idx).cloned().unwrap_or_default();
         let notes = slide_notes.get(&idx).cloned().unwrap_or_default();
 
-        let mut combined = format!("[Slide {}]\n{}", idx, text);
+        let mut combined = format!("[Slide {}/{}]\n\nMain:\n{}", idx, slide_texts.len(), text);
         if !notes.trim().is_empty() {
-            combined.push_str("\n\n-- Notes --\n");
+            combined.push_str("\n\nNotes:\n");
             combined.push_str(&notes);
         }
 
@@ -190,10 +189,12 @@ mod tests {
         assert!(chunks[0].image_path.is_some());
 
         assert_eq!(chunks[1].slide_index, 1);
-        assert!(chunks[1].clean_content.contains("Hello Slide 1"));
-        assert!(chunks[1].clean_content.contains("Note for slide 1"));
+        assert!(chunks[1].clean_content.starts_with("[Slide 1/2]"));
+        assert!(chunks[1].clean_content.contains("Main:\nHello Slide 1"));
+        assert!(chunks[1].clean_content.contains("Notes:\nNote for slide 1"));
 
         assert_eq!(chunks[2].slide_index, 2);
+        assert!(chunks[2].clean_content.starts_with("[Slide 2/2]"));
         assert!(chunks[2].clean_content.contains("Content of Slide 2"));
         assert!(!chunks[2].clean_content.contains("Note for slide"));
     }

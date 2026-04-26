@@ -2,11 +2,14 @@ use std::fs;
 use std::path::Path;
 
 use crate::providers::llm::vision::VisionConfig;
+use serde_json::{json, Value};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct FileChunk {
     pub content: String,
     pub chunk_type: String, // "text" | "image" | "document" | "mixed"
+    pub source_type: String,
+    pub metadata: Value,
     pub image_path: Option<String>,
     pub status: String, // "processed" | "pending_ocr"
 }
@@ -45,21 +48,33 @@ pub async fn parse_file(
 
     let chunks = match ext.as_str() {
         "txt" | "log" => {
-            let content = crate::capture::encoding::read_text_file(path)
+            let content = extractors::txt::extract_txt(file_path)
                 .map_err(|e| format!("Failed to read text file: {}", e))?;
             vec![FileChunk {
-                content,
+                content: extractors::preclean::normalize_extracted_markdown(&content),
                 chunk_type: "text".to_string(),
+                source_type: if ext == "log" { "log" } else { "plain_text" }.to_string(),
+                metadata: json!({
+                    "source_type": if ext == "log" { "log" } else { "plain_text" },
+                    "file_name": title,
+                }),
                 image_path: None,
                 status: "processed".to_string(),
             }]
         }
         "md" => {
-            let content = crate::capture::encoding::read_text_file(path)
+            let content = extractors::md::extract_md(file_path)
                 .map_err(|e| format!("Failed to read markdown file: {}", e))?;
+            let content = extractors::preclean::normalize_extracted_markdown(&content);
             vec![FileChunk {
+                metadata: json!({
+                    "source_type": "markdown",
+                    "file_name": title,
+                    "heading": extractors::preclean::extract_heading_context(&content),
+                }),
                 content,
                 chunk_type: "text".to_string(),
+                source_type: "markdown".to_string(),
                 image_path: None,
                 status: "processed".to_string(),
             }]
@@ -71,8 +86,18 @@ pub async fn parse_file(
             p_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
-                    chunk_type: "document".to_string(),
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
+                    source_type: if c.chunk_type == "image" {
+                        "image"
+                    } else {
+                        "pdf"
+                    }
+                    .to_string(),
+                    metadata: json!({
+                        "source_type": if c.chunk_type == "image" { "image" } else { "pdf" },
+                        "page_number": c.page_num,
+                    }),
+                    chunk_type: c.chunk_type,
                     image_path: c.image_path,
                     status: c.status,
                 })
@@ -85,8 +110,18 @@ pub async fn parse_file(
             d_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
-                    chunk_type: "document".to_string(),
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
+                    source_type: if c.chunk_type == "image" {
+                        "image"
+                    } else {
+                        "docx"
+                    }
+                    .to_string(),
+                    metadata: json!({
+                        "source_type": if c.chunk_type == "image" { "image" } else { "docx" },
+                        "heading_level": c.title_level,
+                    }),
+                    chunk_type: c.chunk_type,
                     image_path: c.image_path,
                     status: "processed".to_string(),
                 })
@@ -99,8 +134,13 @@ pub async fn parse_file(
             x_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
                     chunk_type: "document".to_string(),
+                    source_type: "xlsx".to_string(),
+                    metadata: json!({
+                        "source_type": "xlsx",
+                        "sheet_name": c.sheet_name,
+                    }),
                     image_path: None,
                     status: "processed".to_string(),
                 })
@@ -113,8 +153,13 @@ pub async fn parse_file(
             p_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
                     chunk_type: "document".to_string(),
+                    source_type: "pptx".to_string(),
+                    metadata: json!({
+                        "source_type": "pptx",
+                        "slide_number": c.slide_index,
+                    }),
                     image_path: c.image_path,
                     status: "processed".to_string(),
                 })
@@ -127,8 +172,12 @@ pub async fn parse_file(
             c_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
                     chunk_type: "document".to_string(),
+                    source_type: "csv".to_string(),
+                    metadata: json!({
+                        "source_type": "csv",
+                    }),
                     image_path: None,
                     status: "processed".to_string(),
                 })
@@ -142,8 +191,16 @@ pub async fn parse_file(
             c_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_text_basics(&c.clean_content)
+                        .trim()
+                        .to_string(),
                     chunk_type: "document".to_string(),
+                    source_type: "code".to_string(),
+                    metadata: json!({
+                        "source_type": "code",
+                        "language": c.language,
+                        "file_name": title,
+                    }),
                     image_path: None,
                     status: "processed".to_string(),
                 })
@@ -156,8 +213,12 @@ pub async fn parse_file(
             r_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
                     chunk_type: "document".to_string(),
+                    source_type: "rtf".to_string(),
+                    metadata: json!({
+                        "source_type": "rtf",
+                    }),
                     image_path: None,
                     status: "processed".to_string(),
                 })
@@ -170,8 +231,13 @@ pub async fn parse_file(
             e_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
                     chunk_type: "document".to_string(),
+                    source_type: "epub".to_string(),
+                    metadata: json!({
+                        "source_type": "epub",
+                        "heading": c.title,
+                    }),
                     image_path: None,
                     status: "processed".to_string(),
                 })
@@ -184,8 +250,13 @@ pub async fn parse_file(
             h_chunks
                 .into_iter()
                 .map(|c| FileChunk {
-                    content: c.clean_content,
+                    content: extractors::preclean::normalize_extracted_markdown(&c.clean_content),
                     chunk_type: "document".to_string(),
+                    source_type: "html".to_string(),
+                    metadata: json!({
+                        "source_type": "html",
+                        "heading": c.title,
+                    }),
                     image_path: None,
                     status: "processed".to_string(),
                 })
@@ -225,8 +296,13 @@ pub async fn parse_file(
             };
 
             vec![FileChunk {
-                content: final_text,
+                content: extractors::preclean::normalize_extracted_markdown(&final_text),
                 chunk_type: "image".to_string(),
+                source_type: "image".to_string(),
+                metadata: json!({
+                    "source_type": "image",
+                    "file_name": title,
+                }),
                 image_path: Some(file_path.to_string()),
                 status: "processed".to_string(),
             }]
@@ -274,7 +350,6 @@ pub fn take_screenshot() -> Result<String, String> {
 
     let now = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let _filename = format!("screenshot_{}.png", now);
-
 
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     let b64 = STANDARD.encode(&buffer);
