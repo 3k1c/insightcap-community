@@ -266,18 +266,24 @@ pub async fn parse_file(
             let image_bytes =
                 fs::read(path).map_err(|e| format!("Failed to read image file: {}", e))?;
 
-            let ocr_text = match crate::ocr::perform_ocr(&image_bytes).await {
+            // Fix #6: on OCR failure, use an empty string and mark status as "ocr_failed".
+            // chunking.rs will skip chunks with this status, preventing garbage from
+            // entering the vector index.
+            let (ocr_text, ocr_failed) = match crate::ocr::perform_ocr(&image_bytes).await {
                 Ok(raw) => {
                     let lang = crate::ocr::postprocess::detect_language(&raw);
-                    crate::ocr::postprocess::postprocess_ocr_text(&raw, lang)
+                    (crate::ocr::postprocess::postprocess_ocr_text(&raw, lang), false)
                 }
                 Err(e) => {
                     eprintln!("[FileParser] OCR failed for {}: {}", title, e);
-                    format!("[OCR failed] {}", title)
+                    (String::new(), true)
                 }
             };
 
-            let final_text = if let Some(vc) = vision {
+            let (final_text, final_status) = if ocr_failed {
+                // OCR failed and no vision fallback — mark as failed so chunking skips it
+                (String::new(), "ocr_failed".to_string())
+            } else if let Some(vc) = vision {
                 match crate::providers::llm::vision::try_vision_enhance(
                     vc,
                     &image_bytes,
@@ -287,12 +293,12 @@ pub async fn parse_file(
                 {
                     Some(vision_text) => {
                         println!("[FileParser] Vision enhancement succeeded: {}", title);
-                        vision_text
+                        (vision_text, "processed".to_string())
                     }
-                    None => ocr_text,
+                    None => (ocr_text, "processed".to_string()),
                 }
             } else {
-                ocr_text
+                (ocr_text, "processed".to_string())
             };
 
             vec![FileChunk {
@@ -304,7 +310,7 @@ pub async fn parse_file(
                     "file_name": title,
                 }),
                 image_path: Some(file_path.to_string()),
-                status: "processed".to_string(),
+                status: final_status,
             }]
         }
         _ => return Err(format!("Unsupported file extension: {}", ext)),

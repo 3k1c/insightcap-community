@@ -122,6 +122,7 @@
         "loading": "Loading...",
         "error": "Error",
         "success": "Success",
+        "completed": "Completed",
         "warning": "Warning",
         "search": "Search",
         "clear": "Clear",

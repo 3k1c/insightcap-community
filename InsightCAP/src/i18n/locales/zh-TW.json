@@ -124,6 +124,7 @@
         "verifying": "驗證中...",
         "error": "發生錯誤",
         "success": "成功",
+        "completed": "已完成",
         "warning": "警告",
         "search": "搜尋",
         "clear": "清除",

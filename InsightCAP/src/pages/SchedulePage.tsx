@@ -71,16 +71,43 @@ const CustomSelect: React.FC<{
 // --- Main Page ---
 
 interface Reminder {
-    // ... existing interface ...
     id: string;
     title: string;
     description: string | null;
-    eventType: string;
+    eventType: 'meeting' | 'deliverable' | 'event' | 'appointment' | string;
     eventDate: string | null;
     eventTime: string | null;
     status: string;
     pendingConfirm: number;
 }
+
+const typeStyles: Record<string, { color: string, bg: string, icon: React.ReactNode }> = {
+    meeting: {
+        color: 'text-blue-500',
+        bg: 'bg-blue-500/10 dark:bg-blue-500/20',
+        icon: <Bell className="h-4 w-4" />
+    },
+    deliverable: {
+        color: 'text-emerald-500',
+        bg: 'bg-emerald-500/10 dark:bg-emerald-500/20',
+        icon: <Check className="h-4 w-4" />
+    },
+    event: {
+        color: 'text-purple-500',
+        bg: 'bg-purple-500/10 dark:bg-purple-500/20',
+        icon: <Layers className="h-4 w-4" />
+    },
+    appointment: {
+        color: 'text-amber-500',
+        bg: 'bg-amber-500/10 dark:bg-amber-500/20',
+        icon: <Clock className="h-4 w-4" />
+    },
+    default: {
+        color: 'text-text-secondary',
+        bg: 'bg-surface-subtle',
+        icon: <Bell className="h-4 w-4" />
+    }
+};
 
 interface ReminderDraft {
     title: string;
@@ -152,6 +179,7 @@ export const SchedulePage: React.FC = () => {
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const markerRefs = useRef<Record<string, HTMLSpanElement | null>>({});
+    const firstRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
     const loadReminders = async () => {
         setIsLoading(true);
@@ -290,17 +318,22 @@ export const SchedulePage: React.FC = () => {
         setSelectedDateKey(dateKey);
         const scroller = scrollerRef.current;
         const marker = markerRefs.current[dateKey];
+        const firstRow = firstRowRefs.current[dateKey];
         const section = sectionRefs.current[dateKey];
 
         if (!scroller || !section) return;
 
         if (!marker) {
-            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const target = firstRow || section;
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
 
+        const targetEl = firstRow || section;
+        if (!targetEl) return;
+
         const markerRect = marker.getBoundingClientRect();
-        const targetRect = section.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
         const markerCenterY = markerRect.top + markerRect.height / 2;
         const targetCenterY = targetRect.top + targetRect.height / 2;
         const nextTop = scroller.scrollTop + (targetCenterY - markerCenterY) - 50;
@@ -308,76 +341,99 @@ export const SchedulePage: React.FC = () => {
         scroller.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
     };
 
-    const renderReminderCard = (r: Reminder, pending: boolean) => (
-        <div key={r.id} className="bg-surface-layer border border-stroke-divider rounded-xl p-3 flex flex-col gap-2 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)]">
-            <div className="flex justify-between items-start gap-4">
-                <div className="min-w-0 flex-1">
-                    <h3 className="text-[13.5px] font-semibold text-text-primary leading-snug mb-1 flex items-center gap-2">
-                        <span className="truncate">{r.title}</span>
-                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-surface-subtle text-text-tertiary text-[10px] uppercase font-bold tracking-wider">
-                            {r.eventType}
-                        </span>
-                    </h3>
-                    {r.description && <p className="text-[12px] leading-relaxed text-text-tertiary line-clamp-2">{r.description}</p>}
-                </div>
-            </div>
+    const renderReminderCard = (r: Reminder, pending: boolean) => {
+        const style = typeStyles[r.eventType] || typeStyles.default;
 
-            {(r.eventDate || r.eventTime) && (
-                <div className="flex items-center gap-3 text-xs text-text-tertiary">
+        return (
+            <div key={r.id} className="group/card relative flex min-h-[180px] flex-col overflow-hidden rounded-2xl border border-stroke-card bg-surface-layer p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)] cursor-default">
+                {/* Top Section: Icon & Title */}
+                <div className="flex items-start gap-3">
+                    <div className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-xl ${style.bg} ${style.color} shadow-sm transition-transform duration-300 group-hover/card:scale-105`}>
+                        {style.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-text-tertiary">
+                                {t(`reminder.type_${r.eventType}`) || r.eventType}
+                            </span>
+                            {pending && (
+                                <span className="inline-flex h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
+                            )}
+                        </div>
+                        <h3 className="line-clamp-2 text-[14px] font-semibold leading-tight text-text-primary">
+                            {r.title}
+                        </h3>
+                    </div>
+                </div>
+
+                {/* Middle: Description */}
+                <div className="mt-3 flex-1">
+                    {r.description ? (
+                        <p className="line-clamp-3 text-[12.5px] leading-relaxed text-text-tertiary break-words">
+                            {r.description}
+                        </p>
+                    ) : (
+                        <div className="h-4 border-l-2 border-stroke-divider ml-5 opacity-40" />
+                    )}
+                </div>
+
+                {/* Metadata Section: Date & Time */}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                     {r.eventDate && (
-                        <span className="flex items-center gap-1.5 bg-surface-subtle px-2 py-1 rounded-md">
-                            <Calendar className="w-3.5 h-3.5" />
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-surface-subtle/60 px-2.5 py-1 text-[11px] font-medium text-text-secondary border border-stroke-card/50">
+                            <Calendar className="h-3 w-3 opacity-70" />
                             {r.eventDate}
-                        </span>
+                        </div>
                     )}
                     {r.eventTime && (
-                        <span className="flex items-center gap-1.5 bg-surface-subtle px-2 py-1 rounded-md">
-                            <Clock className="w-3.5 h-3.5" />
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-surface-subtle/60 px-2.5 py-1 text-[11px] font-medium text-text-secondary border border-stroke-card/50">
+                            <Clock className="h-3 w-3 opacity-70" />
                             {r.eventTime}
-                        </span>
+                        </div>
                     )}
                 </div>
-            )}
 
-            <div className="flex justify-end gap-2 mt-auto pt-2 border-t border-stroke-divider">
-                {pending ? (
-                    <>
-                        <button
-                            onClick={() => handleConfirm(r.id, false)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-tertiary hover:text-red-500 hover:bg-surface-subtle rounded-md transition-colors"
-                        >
-                            <X className="w-3.5 h-3.5" />
-                            {t('common.cancel')}
-                        </button>
-                        <button
-                            onClick={() => handleConfirm(r.id, true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-accent-default hover:bg-accent-hover rounded-md transition-colors"
-                        >
-                            <Check className="w-3.5 h-3.5" />
-                            {t('common.confirm')}
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <button
-                            onClick={() => handleUpdateStatus(r.id, 'dismissed')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-tertiary hover:text-red-500 hover:bg-surface-subtle rounded-md transition-colors"
-                        >
-                            <X className="w-3.5 h-3.5" />
-                            {t('common.cancel')}
-                        </button>
-                        <button
-                            onClick={() => handleUpdateStatus(r.id, 'completed')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors font-medium border border-emerald-200"
-                        >
-                            <Check className="w-3.5 h-3.5" />
-                            {t('common.success')}
-                        </button>
-                    </>
-                )}
+                {/* Action Buttons: Overlay on hover or constant for pending */}
+                <div className={`mt-4 flex items-center justify-end gap-2 pt-3 border-t border-stroke-divider transition-opacity duration-200 ${pending ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'}`}>
+                    {pending ? (
+                        <>
+                            <button
+                                onClick={() => handleConfirm(r.id, false)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold text-text-tertiary transition-all hover:bg-red-500/10 hover:text-red-500"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                onClick={() => handleConfirm(r.id, true)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent-default px-4 text-[12px] font-bold text-white shadow-sm transition-all hover:bg-accent-hover active:scale-95"
+                            >
+                                <Check className="h-3.5 w-3.5" />
+                                {t('common.confirm')}
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button
+                                onClick={() => handleUpdateStatus(r.id, 'dismissed')}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold text-text-tertiary transition-all hover:bg-red-500/10 hover:text-red-500"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                onClick={() => handleUpdateStatus(r.id, 'completed')}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 text-[12px] font-bold text-emerald-600 transition-all hover:bg-emerald-500/20 hover:text-emerald-700 active:scale-95"
+                            >
+                                <Check className="h-3.5 w-3.5" />
+                                {t('common.completed') || '已完成'}
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="flex-1 overflow-auto bg-surface-base h-full outline-none" ref={scrollerRef}>
@@ -445,10 +501,10 @@ export const SchedulePage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="w-full max-w-6xl mx-auto p-6 lg:p-10 flex flex-col min-h-0">
-                <div className="grid grid-cols-[36px_minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(124px,148px)_minmax(0,1fr)] flex-1">
+            <div className="w-full px-6 py-5">
+                <div className="grid grid-cols-[36px_minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(124px,148px)_minmax(0,1fr)]">
                     <aside className="sticky top-[160px]">
-                        <div className="relative pl-6 pb-2 pt-2">
+                        <div className="relative pl-6 pb-2 pt-32">
                             <div className="absolute bottom-1 left-2 top-1 w-px bg-stroke-divider" />
                             <ul className="space-y-3">
                                 {dayGroups.map((group) => {
@@ -485,7 +541,7 @@ export const SchedulePage: React.FC = () => {
                         </div>
                     </aside>
 
-                    <div className="min-w-0 space-y-8 pb-32 pt-2">
+                    <div className="min-w-0 space-y-4 pb-64 pt-2">
                         {dayGroups.map(group => (
                             <section
                                 key={group.dateKey}
@@ -500,23 +556,26 @@ export const SchedulePage: React.FC = () => {
                                 </div>
 
                                 {group.pending.length > 0 && (
-                                    <div className="mb-5">
-                                        <div className="mb-3 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                                    <div className="mb-3">
+                                        <div className="mb-2 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
                                             <Bell className="h-3 w-3 text-orange-500" />
                                             {t('schedule.pending')}
                                             <span className="bg-orange-100 text-orange-600 text-[10px] px-1.5 py-0.5 rounded-full ml-1">
                                                 {group.pending.length}
                                             </span>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div
+                                            ref={(el) => { if (!firstRowRefs.current[group.dateKey]) firstRowRefs.current[group.dateKey] = el; }}
+                                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+                                        >
                                             {group.pending.map(r => renderReminderCard(r, true))}
                                         </div>
                                     </div>
                                 )}
 
-                                <div className="mb-4">
+                                <div className="mb-3">
                                     {(group.active.length > 0 || group.dateKey === todayKey) && (
-                                        <div className="mb-3 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                                        <div className="mb-2 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
                                             <Calendar className="h-3 w-3 text-accent-default" />
                                             {t('schedule.active')}
                                             {group.active.length > 0 && (
@@ -526,12 +585,15 @@ export const SchedulePage: React.FC = () => {
                                             )}
                                         </div>
                                     )}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div
+                                        ref={(el) => { if (group.pending.length === 0) firstRowRefs.current[group.dateKey] = el; }}
+                                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+                                    >
                                         {group.dateKey === todayKey && (
                                             <button
                                                 type="button"
                                                 onClick={() => openCreateReminder(group.dateKey)}
-                                                className="group/card relative flex h-full min-h-[120px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-accent-default/5 text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-accent-default/10 hover:shadow-[var(--shadow-card-hover)]"
+                                                className="group/card relative flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-accent-default/5 text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-accent-default/10 hover:shadow-[var(--shadow-card-hover)]"
                                             >
                                                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-accent-default/25 bg-accent-default/12 transition-transform duration-200 group-hover/card:scale-105">
                                                     <Plus className="h-4 w-4" />

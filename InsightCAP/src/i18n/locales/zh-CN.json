@@ -122,6 +122,7 @@
         "loading": "加载中...",
         "error": "发生错误",
         "success": "成功",
+        "completed": "已完成",
         "warning": "警告",
         "search": "搜索",
         "clear": "清除",
