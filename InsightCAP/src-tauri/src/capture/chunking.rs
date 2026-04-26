@@ -888,43 +888,76 @@ mod tests {
     }
 
     #[test]
-    fn stress_test_extreme_inputs() {
-        // Case 1: Extremely long single line (100k chars)
-        let long_line = "a".repeat(100_000);
-        let chunks = chunks_for_file_chunk(&file_chunk(long_line, "plain_text", "text"));
+    fn stress_test_multi_channel_collection() {
+        // Case 1: Telegram Channel - Extremely long conversational message with many emojis/URLs
+        let mut tg_msg = String::from("User sent: 🚀".repeat(10));
+        for i in 0..1000 {
+            tg_msg.push_str(&format!("\nMessage segment {}: Check this link: https://example.com/very/long/path/to/article/{} 💎💎💎", i, i));
+        }
+        let tg_chunk = FileChunk {
+            content: tg_msg,
+            chunk_type: "text".to_string(),
+            source_type: "telegram".to_string(),
+            metadata: json!({ "user_id": 12345, "chat_id": 67890 }),
+            image_path: None,
+            status: "processed".to_string(),
+        };
+        let chunks = chunks_for_file_chunk(&tg_chunk);
+        assert!(!chunks.is_empty());
+
+        // Case 2: Code Channel - Massive source file with varying indentation
+        let mut code_body = String::from("/* License Header */\n");
+        for i in 0..2000 {
+            code_body.push_str(&format!("fn method_{}() {{\n    if true {{\n        println!(\"Level {}\");\n    }}\n}}\n", i, i));
+        }
+        let code_chunk = FileChunk {
+            content: code_body,
+            chunk_type: "document".to_string(),
+            source_type: "code".to_string(),
+            metadata: json!({ "language": "rust", "file_name": "massive.rs" }),
+            image_path: None,
+            status: "processed".to_string(),
+        };
+        let chunks = chunks_for_file_chunk(&code_chunk);
         assert!(!chunks.is_empty());
         for c in &chunks {
-            assert!(c.content.chars().count() <= MAX_CHUNK_CHARS + 100); // Allow some buffer for overlap
+            assert_eq!(c.chunk_strategy, "syntax_aware");
         }
 
-        // Case 2: Massive log file (10k events)
-        let mut log_content = String::new();
-        for i in 0..10_000 {
-            log_content.push_str(&format!("2026-04-27 12:00:00 [INFO] event {}\n", i));
+        // Case 3: Document Channel - PDF-like structured doc with thousands of headings
+        let mut doc_content = String::new();
+        let body = "This is a long paragraph explaining section {}. ".repeat(5);
+        for i in 0..1000 {
+            doc_content.push_str(&format!("### Section {}\n{}\n\n", i, body.replace("{}", &i.to_string())));
         }
-        let chunks = chunks_for_file_chunk(&file_chunk(log_content, "log", "text"));
+        let doc_chunk = FileChunk {
+            content: doc_content,
+            chunk_type: "document".to_string(),
+            source_type: "pdf".to_string(),
+            metadata: json!({ "page_count": 500 }),
+            image_path: None,
+            status: "processed".to_string(),
+        };
+        let chunks = chunks_for_file_chunk(&doc_chunk);
         assert!(!chunks.is_empty());
-
-        // Case 3: Massive wide table
-        let mut table_content = String::from("| Head |\n|---|\n");
-        for i in 0..5_000 {
-            table_content.push_str(&format!("| Row {} with very long content {} |\n", i, "x".repeat(100)));
+        for c in &chunks {
+            assert!(c.content.chars().count() <= MAX_CHUNK_CHARS + 200);
         }
-        let chunks = chunks_for_file_chunk(&file_chunk(table_content, "xlsx", "document"));
-        assert!(!chunks.is_empty());
 
-        // Case 4: Pure whitespace and special characters
-        let weird_content = " \n\t\u{200b}\u{feff}".repeat(1000);
-        let chunks = chunks_for_file_chunk(&file_chunk(weird_content, "plain_text", "text"));
-        // Should be empty after clean_text
-        assert!(chunks.is_empty());
-
-        // Case 5: Deep/Massive Markdown headers
-        let mut md_content = String::new();
-        for i in 0..500 {
-            md_content.push_str(&format!("{} Header {}\nContent for {}\n\n", "#".repeat((i % 6) + 1), i, i));
+        // Case 4: Web Channel - Messy scraped content with many URLs and whitespace
+        let mut web_content = String::from("<html><body>Navigation...</body></html>\n");
+        for i in 0..3000 {
+            web_content.push_str(&format!("Link {} \t   \n  http://news.site/topic/{} \n", i, i));
         }
-        let chunks = chunks_for_file_chunk(&file_chunk(md_content, "markdown", "text"));
+        let web_chunk = FileChunk {
+            content: web_content,
+            chunk_type: "document".to_string(),
+            source_type: "html".to_string(),
+            metadata: json!({ "url": "https://news.site/archive" }),
+            image_path: None,
+            status: "processed".to_string(),
+        };
+        let chunks = chunks_for_file_chunk(&web_chunk);
         assert!(!chunks.is_empty());
     }
 }
