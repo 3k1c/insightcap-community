@@ -6,6 +6,9 @@ use crate::capture::file_parser::FileChunk;
 const MAX_CHUNK_CHARS: usize = 2400;
 const OVERLAP_CHARS: usize = 240;
 
+// Table chunks flush before this many chars to leave room for header re-injection
+const MAX_TABLE_CHUNK_CHARS: usize = MAX_CHUNK_CHARS - 200;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct IngestChunk {
     pub content: String,
@@ -16,6 +19,11 @@ pub struct IngestChunk {
 }
 
 pub fn chunks_for_file_chunk(file_chunk: &FileChunk) -> Vec<IngestChunk> {
+    // Fix #6: skip indexing when OCR failed — content carries no semantic value
+    if file_chunk.status == "ocr_failed" {
+        return vec![];
+    }
+
     let content = clean_text(&file_chunk.content, file_chunk.source_type == "code");
     if content.is_empty() {
         return vec![];
@@ -217,16 +225,21 @@ fn build_metadata(
     };
     let (log_start_time, log_end_time) = extract_log_range(content);
 
+    // Fix #6: estimated_chars renamed to estimated_tokens with meaningful calculation
+    let char_count = content.chars().count();
+    let estimated_tokens = if content.is_ascii() {
+        char_count / 4 // English: ~4 chars per token
+    } else {
+        char_count * 2 / 3 // CJK: ~1.5 chars per token
+    };
+
     object.insert("source_type".to_string(), json!(file_chunk.source_type));
     object.insert(
         "source_chunk_type".to_string(),
         json!(file_chunk.chunk_type),
     );
-    object.insert("char_count".to_string(), json!(content.chars().count()));
-    object.insert(
-        "estimated_chars".to_string(),
-        json!(content.chars().count()),
-    );
+    object.insert("char_count".to_string(), json!(char_count));
+    object.insert("estimated_tokens".to_string(), json!(estimated_tokens));
     object.insert("line_count".to_string(), json!(content.lines().count()));
     object.insert("strategy_version".to_string(), json!("chunk-preclean-v1"));
     object.insert("split_index".to_string(), json!(split_index));
@@ -329,8 +342,9 @@ fn looks_like_code(lines: &[&str], lower: &str) -> bool {
     marker_hits >= 3 || (marker_hits >= 1 && indented >= 4)
 }
 
+// Fix #3: replaced corrupted CJK byte sequences with correct Unicode strings
 fn looks_like_pattern(lower: &str) -> bool {
-    let markers = [
+    let ascii_markers = [
         "must ",
         "should ",
         "always ",
@@ -338,13 +352,12 @@ fn looks_like_pattern(lower: &str) -> bool {
         "rule",
         "principle",
         "best practice",
-        "璅???",
-        "敹?",
-        "銝?",
-        "閬?",
-        "??",
     ];
-    markers.iter().any(|m| lower.contains(m))
+    let cjk_markers = [
+        "必須", "應該", "規則", "原則", "最佳實踐", "禁止", "限制", "準則",
+    ];
+    ascii_markers.iter().any(|m| lower.contains(m))
+        || cjk_markers.iter().any(|m| lower.contains(m))
 }
 
 fn has_headings(lines: &[&str]) -> bool {
@@ -356,26 +369,45 @@ fn has_headings(lines: &[&str]) -> bool {
         >= 2
 }
 
+// Fix #5: tightened heuristic to reduce false positives on short prose sentences
 fn is_heading(line: &str) -> bool {
     if line.starts_with('#') {
         return true;
     }
     let char_count = line.chars().count();
-    char_count > 3
-        && char_count <= 90
+    // Tightened upper bound (90 → 60) and added lower bound (> 3 → >= 5)
+    // Exclude lines ending with '：' or ':' (label lines like "說明：")
+    // Exclude lines that are purely numeric (page numbers, list indices)
+    char_count >= 5
+        && char_count <= 60
         && !line.ends_with('.')
         && !line.ends_with(',')
+        && !line.ends_with('：')
+        && !line.ends_with(':')
         && !line.contains('\t')
+        && !line.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | ' '))
 }
 
+// Fix #4: rewritten log event splitter — flush when the *next* event would overflow,
+// not based on a fixed 600-char minimum for the current buffer.
 fn split_log_events(content: &str) -> Vec<SplitPart> {
     let mut chunks = Vec::new();
     let mut current = String::new();
 
     for line in content.lines() {
-        let starts_event = has_timestamp_prefix(line) && !current.trim().is_empty();
-        if starts_event && current.chars().count() >= 600 {
-            chunks.extend(split_semantic_windows(&current));
+        let starts_new_event = has_timestamp_prefix(line);
+        let would_overflow = !current.is_empty()
+            && current.chars().count() + line.len() + 1 > MAX_CHUNK_CHARS;
+
+        if starts_new_event && !current.trim().is_empty() && would_overflow {
+            if current.chars().count() > MAX_CHUNK_CHARS {
+                chunks.extend(split_semantic_windows(&current));
+            } else {
+                chunks.push(SplitPart {
+                    content: current.trim().to_string(),
+                    has_overlap: false,
+                });
+            }
             current.clear();
         }
         current.push_str(line);
@@ -383,15 +415,27 @@ fn split_log_events(content: &str) -> Vec<SplitPart> {
     }
 
     if !current.trim().is_empty() {
-        chunks.extend(split_semantic_windows(&current));
+        // Last batch may still be oversized if a single event is huge; delegate to windows
+        if current.chars().count() > MAX_CHUNK_CHARS {
+            chunks.extend(split_semantic_windows(&current));
+        } else {
+            chunks.push(SplitPart {
+                content: current.trim().to_string(),
+                has_overlap: false,
+            });
+        }
     }
 
     chunks
 }
 
+// Fix #2: table splitting now controlled by char count, not line count.
+// Line count check kept only as a fast early-exit for small tables.
 fn split_table_groups(content: &str) -> Vec<SplitPart> {
     let lines: Vec<&str> = content.lines().collect();
-    if lines.len() <= 40 {
+
+    // Fast path: small tables that definitely fit in one chunk
+    if content.chars().count() <= MAX_TABLE_CHUNK_CHARS {
         return vec![SplitPart {
             content: content.to_string(),
             has_overlap: false,
@@ -410,9 +454,8 @@ fn split_table_groups(content: &str) -> Vec<SplitPart> {
 
     let body_start = if separator.is_some() { 2 } else { 1 };
     for line in lines.iter().skip(body_start) {
-        current.push_str(line);
-        current.push('\n');
-        if current.lines().count() >= 40 {
+        // Flush when adding this row would exceed the char budget
+        if current.chars().count() + line.len() + 1 > MAX_TABLE_CHUNK_CHARS {
             chunks.push(SplitPart {
                 content: current.trim().to_string(),
                 has_overlap: false,
@@ -420,9 +463,13 @@ fn split_table_groups(content: &str) -> Vec<SplitPart> {
             current.clear();
             push_table_header(&mut current, &header, separator);
         }
+        current.push_str(line);
+        current.push('\n');
     }
 
-    if current.lines().count() > if separator.is_some() { 2 } else { 1 } {
+    // Emit final chunk if it has rows beyond just the header (and optional separator)
+    let header_lines = if separator.is_some() { 2 } else { 1 };
+    if current.lines().count() > header_lines {
         chunks.push(SplitPart {
             content: current.trim().to_string(),
             has_overlap: false,
@@ -567,18 +614,25 @@ fn overlap_tail(content: &str) -> String {
         .collect::<String>()
 }
 
+// Fix #1: added CJK sentence-ending punctuation alongside ASCII equivalents,
+// and added CJK comma/pause marks as weak fallback before newline.
 fn sentence_boundary(chars: &[char], start: usize, hard_end: usize) -> Option<usize> {
     let min = start + ((hard_end - start) * 70 / 100);
+
+    // Priority 1: strong sentence-ending punctuation (ASCII + CJK)
     for idx in (min..hard_end).rev() {
-        if matches!(chars[idx], '.' | '!' | '?' | ';') {
+        if matches!(chars[idx], '.' | '!' | '?' | ';' | '。' | '！' | '？' | '；') {
             return Some(idx + 1);
         }
     }
+
+    // Priority 2: newline, then weak punctuation (commas)
     for idx in (min..hard_end).rev() {
-        if chars[idx] == '\n' {
+        if matches!(chars[idx], '\n' | '，' | ',') {
             return Some(idx + 1);
         }
     }
+
     None
 }
 
@@ -668,6 +722,25 @@ mod tests {
         assert_eq!(chunks[0].chunk_strategy, "semantic_fallback");
     }
 
+    // Fix #1: new test — CJK sentence boundary must be respected
+    #[test]
+    fn sentence_boundary_respects_chinese_punctuation() {
+        let sentence = "這是一個完整的中文句子，用來測試語意切分是否正確運作。";
+        let content = sentence.repeat(120);
+        let chunks = chunks_for_file_chunk(&file_chunk(content, "plain_text", "text"));
+
+        assert!(chunks.len() > 1);
+        // Each chunk must end at a CJK sentence boundary, not mid-character
+        for chunk in &chunks {
+            let last = chunk.content.chars().last().unwrap();
+            assert!(
+                matches!(last, '。' | '！' | '？' | '；' | '，') || chunk.content.ends_with('\n'),
+                "chunk ended mid-sentence with: {:?}",
+                last
+            );
+        }
+    }
+
     #[test]
     fn markdown_heading_stays_with_following_body() {
         let content = "# Revenue\n\nRevenue increased because renewal expansion improved.\n\n# Cost\n\nCosts stayed flat.";
@@ -695,6 +768,30 @@ mod tests {
         assert_eq!(chunks[0].chunk_strategy, "table_serialization");
     }
 
+    // Fix #2: new test — wide tables must not exceed MAX_CHUNK_CHARS even if row count is low
+    #[test]
+    fn wide_table_chunks_respect_char_limit() {
+        // Each row is ~200 chars; 40 rows would be ~8000 chars (well over 2400)
+        let mut content = String::from("| Col1 | Col2 | Col3 | Col4 | Col5 |\n|---|---|---|---|---|\n");
+        for i in 0..40 {
+            content.push_str(&format!(
+                "| {:>30} | {:>30} | {:>30} | {:>30} | {:>30} |\n",
+                i, i * 2, i * 3, i * 4, i * 5
+            ));
+        }
+
+        let chunks = chunks_for_file_chunk(&file_chunk(content, "xlsx", "document"));
+
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert!(
+                chunk.content.chars().count() <= MAX_CHUNK_CHARS,
+                "chunk exceeded MAX_CHUNK_CHARS: {} chars",
+                chunk.content.chars().count()
+            );
+        }
+    }
+
     #[test]
     fn log_metadata_includes_start_and_end_timestamp() {
         let content = "2026-04-27 10:00:00 [info] started\nline one\n2026-04-27 10:01:00 [error] failed\nline two";
@@ -704,6 +801,31 @@ mod tests {
         assert_eq!(chunks[0].chunk_strategy, "log_event");
         assert_eq!(data["log_start_time"], "2026-04-27 10:00:00");
         assert_eq!(data["log_end_time"], "2026-04-27 10:01:00");
+    }
+
+    // Fix #4: new test — log events must not be merged across timestamp boundaries when oversized
+    #[test]
+    fn log_events_split_at_timestamp_boundaries_when_oversized() {
+        let mut content = String::new();
+        for i in 0..30 {
+            content.push_str(&format!(
+                "2026-04-27 10:{:02}:00 [info] event_{}\n{}\n",
+                i,
+                i,
+                "payload data ".repeat(20) // ~260 chars per event
+            ));
+        }
+
+        let chunks = chunks_for_file_chunk(&file_chunk(content, "log", "text"));
+
+        // All chunks must respect the char limit
+        for chunk in &chunks {
+            assert!(
+                chunk.content.chars().count() <= MAX_CHUNK_CHARS,
+                "log chunk exceeded limit: {} chars",
+                chunk.content.chars().count()
+            );
+        }
     }
 
     #[test]
@@ -732,5 +854,36 @@ mod tests {
         assert_eq!(data["slide_number"], 2);
         assert!(data["char_count"].as_u64().unwrap() > 0);
         assert!(data["line_count"].as_u64().unwrap() > 0);
+    }
+
+    // Fix #6: new test — estimated_tokens replaces estimated_chars and has a meaningful value
+    #[test]
+    fn metadata_includes_estimated_tokens_not_estimated_chars() {
+        let chunks = chunks_for_file_chunk(&file_chunk(
+            "Revenue details about Q3 performance.".to_string(),
+            "pdf",
+            "document",
+        ));
+        let data = metadata(&chunks[0]);
+
+        assert!(data.get("estimated_tokens").is_some(), "estimated_tokens missing");
+        assert!(data.get("estimated_chars").is_none(), "estimated_chars should be removed");
+        assert!(data["estimated_tokens"].as_u64().unwrap() > 0);
+    }
+
+    // Fix #6: new test — ocr_failed chunks are not indexed
+    #[test]
+    fn ocr_failed_chunks_are_skipped() {
+        let file_chunk = FileChunk {
+            content: "[OCR failed] image.png".to_string(),
+            chunk_type: "image".to_string(),
+            source_type: "image".to_string(),
+            metadata: json!({ "source_type": "image" }),
+            image_path: Some("/path/to/image.png".to_string()),
+            status: "ocr_failed".to_string(),
+        };
+
+        let chunks = chunks_for_file_chunk(&file_chunk);
+        assert!(chunks.is_empty(), "ocr_failed chunks should not be indexed");
     }
 }
