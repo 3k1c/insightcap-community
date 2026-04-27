@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+﻿import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../hooks/useT';
 import { useThemeStore } from '../stores/themeStore';
@@ -492,7 +492,7 @@ export const SchedulePage: React.FC = () => {
                                             : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
                                             }`}
                                     >
-                                        {f === 'all' ? t('repository.filter_all') : f}
+                                        {f === 'all' ? t('repository.filter_all') : t(`reminder.type_${f}`)}
                                     </button>
                                 );
                             })}
@@ -566,7 +566,7 @@ export const SchedulePage: React.FC = () => {
                                         </div>
                                         <div
                                             ref={(el) => { if (!firstRowRefs.current[group.dateKey]) firstRowRefs.current[group.dateKey] = el; }}
-                                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+                                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3"
                                         >
                                             {group.pending.map(r => renderReminderCard(r, true))}
                                         </div>
@@ -587,8 +587,9 @@ export const SchedulePage: React.FC = () => {
                                     )}
                                     <div
                                         ref={(el) => { if (group.pending.length === 0) firstRowRefs.current[group.dateKey] = el; }}
-                                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+                                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3"
                                     >
+                                        {group.active.map(r => renderReminderCard(r, false))}
                                         {group.dateKey === todayKey && (
                                             <button
                                                 type="button"
@@ -601,7 +602,6 @@ export const SchedulePage: React.FC = () => {
                                                 <span className="text-sm font-semibold tracking-wide">{t('schedule.add')}</span>
                                             </button>
                                         )}
-                                        {group.active.map(r => renderReminderCard(r, false))}
                                     </div>
                                 </div>
                             </section>

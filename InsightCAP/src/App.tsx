@@ -86,7 +86,7 @@ export default function App() {
             <>
                 <SetupPage onComplete={initApp} />
                 <Toaster
-                    position="top-right"
+                    position="top-right" offset={80} containerStyle={{ right: "12px" }}
                     toastOptions={{
                         style: {
                             backgroundColor: 'var(--surface-base)',
@@ -106,7 +106,7 @@ export default function App() {
             <>
                 <MigratePage kbPath={kbPath} onUnlockSuccess={initApp} />
                 <Toaster
-                    position="top-right"
+                    position="top-right" offset={80} containerStyle={{ right: "12px" }}
                     toastOptions={{
                         style: {
                             backgroundColor: 'var(--surface-base)',
@@ -129,7 +129,7 @@ export default function App() {
                     onLoginSuccess={() => setAppState('main')}
                 />
                 <Toaster
-                    position="top-right"
+                    position="top-right" offset={80} containerStyle={{ right: "12px" }}
                     toastOptions={{
                         style: {
                             backgroundColor: 'var(--surface-base)',
@@ -151,7 +151,7 @@ export default function App() {
                 <DecisionReviewToast />
                 <ReminderToast />
                 <Toaster
-                    position="top-right"
+                    position="top-right" offset={80} containerStyle={{ right: "12px" }}
                     toastOptions={{
                         style: {
                             backgroundColor: 'var(--surface-base)',

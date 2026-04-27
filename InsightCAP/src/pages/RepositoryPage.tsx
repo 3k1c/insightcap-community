@@ -1035,7 +1035,7 @@ export const RepositoryPage: React.FC = () => {
                                                 ref={(el) => {
                                                     firstRowRefs.current[group.dateKey] = el;
                                                 }}
-                                                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                                                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
                                             >
                                                 {group.sourceItems.map((item) => {
                                                     const { iconColor, iconBg, icon, mt } = getMediaConfig(item);
@@ -1146,7 +1146,7 @@ export const RepositoryPage: React.FC = () => {
                                                 ref={group.sourceItems.length === 0 ? (el) => {
                                                     firstRowRefs.current[group.dateKey] = el;
                                                 } : undefined}
-                                                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                                                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
                                             >
                                                 {group.noteItems.map((note) => {
                                                     return (
