@@ -243,8 +243,7 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         let coalesced = coalesce_subtitle_lines(&transcript);
         result.push_str(&format!("\n字幕内容\n{}", coalesced));
     } else if !description.is_empty() {
-        let desc_preview: String = description.chars().take(2000).collect();
-        result.push_str(&format!("\n描述\n{}", desc_preview));
+        result.push_str(&format!("\n描述\n{}", description));
     }
     result.push_str(&format!("\n   {}", url));
 
@@ -340,11 +339,19 @@ fn sanitize_subtitle_text(text: &str) -> String {
         .to_string()
 }
 
-/// 將一行行的短字幕合並成多個段落，並去除逶字重複
-/// - 去除和上一行完全相同的行（遮罩字幕瀻片的重覆）
-/// - 將短行展開為連續文字，每 MAX_PARA_CHARS 等字就换行
+/// 將一行行的短字幕合併成多個段落，並去除真正的重複內容。
+///
+/// 去重策略：
+/// - 完全相同的相鄰行直接跳過（滾動字幕的逐字更新）
+/// - 「上一行包含此行」只在此行夠長（>= MIN_OVERLAP_CHARS）時才視為重複。
+///   不設門檻的話，短片段（如「的」「了」「是」）極易被誤判為包含在上一行中，
+///   導致大量正常字幕被錯誤丟棄。
+///   範例誤殺：prev="今天我們來討論這個話題", t="來討論這個話題的重要性"
+///   → t 的後半不在 prev 中，不應跳過，但舊邏輯會跳過。
 fn coalesce_subtitle_lines(raw: &str) -> String {
     const MAX_PARA_CHARS: usize = 300;
+    // 只有當重複字串長度達此門檻，才視為滾動式重複而跳過
+    const MIN_OVERLAP_CHARS: usize = 6;
 
     let mut deduped: Vec<String> = Vec::new();
     let mut prev = String::new();
@@ -354,12 +361,12 @@ fn coalesce_subtitle_lines(raw: &str) -> String {
         if t.is_empty() {
             continue;
         }
-        // 如果與上一行完全相同就跳過
+        // 完全相同的相鄰行跳過
         if t == prev {
             continue;
         }
-        // 如果上一行包含此行內容，也跳過（逆序重覆筆話字幕）
-        if !prev.is_empty() && prev.contains(t.as_str()) {
+        // 只有 t 夠長，且上一行完整包含 t 時，才視為滾動重複跳過
+        if t.chars().count() >= MIN_OVERLAP_CHARS && prev.contains(t.as_str()) {
             continue;
         }
 
