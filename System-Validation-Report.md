@@ -1,66 +1,79 @@
-# InsightCAP 核心引擎系統驗證與壓力測試報告
+﻿# InsightCAP ?詨?撘?蝟餌絞撽????葫閰血??
 
-**測試日期**：2026-04-27
-**測試環境**：Windows Desktop / Rust Backend
-**測試目標**：針對知識管理、空間演化、記憶分類及提醒系統進行極限壓測與全生命週期驗證。
+**皜祈岫?交?**嚗?026-04-27
+**皜祈岫?啣?**嚗indows Desktop / Rust Backend
+**皜祈岫?格?**嚗?撠霅恣?征?????嗅?憿???蝟餌絞?脰?璆菟?憯葫???望?撽???
 
 ---
 
-## 1. 知識庫生命週期壓力測試 (Knowledge Base Stress Test)
-*   **測試腳本**：`kb_stress.rs`
-*   **測試規模**：注入 1,000 個虛擬 Source 與 5,000 條 Capture。
-*   **關鍵指標**：
-    - **批量寫入**：穩定處理大規模資料併發寫入。
-    - **索引重建**：成功驗證 5,000 條向量數據的批次重新嵌入 (Re-embedding) 與資料庫同步。
-    - **標籤引擎**：手動觸發全局標籤重新生成，系統無阻塞。
-    - **安全性**：驗證了匯出與匯入後的資料完整性。
+## 1. ?亥?摨怎??賡望?憯?皜祈岫 (Knowledge Base Stress Test)
+*   **皜祈岫?單**嚗kb_stress.rs`
+*   **皜祈岫閬芋**嚗釣??1,000 ????Source ??5,000 璇?Capture??
+*   **???**嚗?
+    - **?寥?撖怠**嚗帘摰??之閬芋鞈?雿萇撖怠??
+    - **蝝Ｗ??遣**嚗???霅?5,000 璇?????寞活?撋 (Re-embedding) ???澈?郊??
+    - **璅惜撘?**嚗??孛?澆撅璅惜???嚗頂蝯梁?餃???
+    - **摰??*嚗?霅??臬??亙??????湔扼?
 
-## 2. Space 自動歸類與動態演化測試 (Space Engine)
-*   **測試腳本**：`space_evolution.rs`
-*   **核心邏輯驗證**：
-    - **自動增加**：根據不同技術領域（Rust, Async, Cooking）自動生成專屬 Space。
-    - **智能合併 (Merge)**：當話題相似度超過 **0.91** 時，系統成功執行了 Space 合併，合併了細粒度的技術分類。
-    - **自動減少/歸檔**：當底層內容被清空後，系統自動將無效空間轉為 `Archived` 狀態。
-*   **修復項**：修復了 `is_user_managed` 欄位的遷移同步問題，確保用戶自定義空間受到保護。
+## 2. Space ?芸?甇賊??????葫閰?(Space Engine)
+*   **皜祈岫?單**嚗space_evolution.rs`
+*   **?詨??摩撽?**嚗?
+    - **?芸?憓?**嚗????銵???Rust, Async, Cooking嚗????撅?Space??
+    - **?箄?蔥 (Merge)**嚗閰梢??訾撮摨西???**0.91** ??蝟餌絞???瑁?鈭?Space ?蔥嚗?雿萎?蝝啁?摨衣??銵?憿?
+    - **?芸?皜?/甇豢?**嚗摨惜?批捆鋡急?蝛箏?嚗頂蝯梯???⊥?蝛粹?頧 `Archived` ???
+*   **靽桀儔??*嚗耨敺拐? `is_user_managed` 甈??蝘餃?甇亙?憿?蝣箔??冽?芸?蝢拍征???唬?霅瑯?
 
-## 3. 三層記憶系統驗證 (Memory Tiering: Data/Pattern/Log)
-*   **測試腳本**：`memory_evolution.rs`
-*   **分類準確性**：
-    - **Data**：事實類知識歸類正確，信心度穩定於 0.9+。
-    - **Pattern**：成功從對話中提取「開發規範與 SOP」，並標記為高優先級模式。
-    - **Log**：精準捕獲「錯誤教訓與坑點」，並提取觸發場景關鍵字 (Trigger Context)。
-*   **穩定性機制**：驗證了當 LLM 逾時時，系統自動將記憶存為「待確認 (Pending)」狀態的安全回退邏輯。
+## 3. 銝惜閮蝟餌絞撽? (Memory Tiering: Data/Pattern/Log)
+*   **皜祈岫?單**嚗memory_evolution.rs`
+*   **??皞Ⅱ??*嚗?
+    - **Data**嚗?撖阡??亥?甇賊?甇?Ⅱ嚗縑敹漲蝛拙???0.9+??
+    - **Pattern**嚗???撠店銝剜????潸?蝭? SOP??銝行?閮擃??璅∪???
+    - **Log**嚗移皞??脯隤斗?閮?????銝行??孛?澆?舫??萄? (Trigger Context)??
+*   **蝛拙??扳???*嚗?霅???LLM ?暹???蝟餌絞?芸?撠??嗅??箝?蝣箄? (Pending)????摰??摩??
 
 ## 4. 提醒系統全流程負荷測試 (Reminder & Scheduler)
 *   **測試腳本**：`reminder_batch.rs`
-*   **性能基準**：
-    - **高併發寫入**：單次瞬間建立 **30+ 個** 提醒任務及 **90+ 條** 通知觸發規則，資料庫響應近乎即時。
-    - **通知精度**：驗證了通知時間點的精確計算，支持多層級預警（準時、提前、及時）。
-*   **功能環節**：成功跑通了「從對話偵測 -> 自動生成 -> 用戶確認 -> 延時 (Snooze) -> 完成標記」的完整鏈條。
-*   **動態調整**：成功測試了活動整體改期時，系統對批量時程的重排 (Reschedule) 能力。
+*   **實作差異清單**：
+    - **新增**：Reminder extraction 大批次分段處理（adaptive chunk extraction），大於 12 個候選提醒時先切成每批 8 項。
+    - **新增**：對明確的編號／日期提醒清單加入 deterministic fallback parser，當 LLM timeout 或回傳不完整 JSON 時，仍可直接從原始文字補齊 reminder。
+    - **新增**：截斷 JSON salvage，若模型只回傳半截 `reminders` array，系統會盡可能回收已完成的 JSON objects。
+    - **新增**：`create_reminder()` 與 `extract_reminders()` 共享 reschedule transaction 邏輯，包含 normalized title matching、±90 天時間窗、pending notification 重建。
+    - **新增**：無法安排的 reminder 會標記 `pending_confirm = 1`，並附帶結構化 reason（如 `schedule_unavailable:event_date_in_past`），不再靜默成功。
+    - **修改**：`reminder_batch.rs` 壓測腳本改為先清理殘留測試資料，再固定驗證 20 項 reminders 的 extraction 完整率與缺漏清單。
+*   **測試結果**：
+    - **資料庫與排程負荷**：手動建立 **30 個 reminders**，成功產生 **60 筆 scheduled notifications**。
+    - **20 項提醒 extraction 壓測**：在實際模型多次 timeout 的情況下，透過 LLM + deterministic fallback 的合併策略，最終 **成功寫入 20 / 20 項 reminders**，`Missing titles: []`。
+    - **後續操作驗證**：對首筆 reminder 執行 **Snooze 60 分鐘**，流程成功。
+    - **規則與邊界測試**：`cargo test reminder_engine::tests --lib` 共 **20 項測試全數通過**，新增覆蓋了 reschedule matching、整體 snooze 平移、取消後清除 pending notifications、unschedulable reminder policy。
+*   **結論**：
+    - 目前模型對大量 reminder JSON 輸出仍有 timeout 與遺漏風險，因此系統已改為 **「LLM 萃取 + 結構化清單本地補齊」** 的混合策略，不再把完整性完全交給單次模型輸出。
+    - 對於明確格式的 reminder list，此策略已可穩定通過 20 項全量寫入測試；且 `extract_reminders()` 的延期／取消／補項邏輯已統一到相同 transaction 規則，目前判定為 **已修正並通過**。
+*   **已知限制**：
+    - 若對話內容不是明確的編號／日期清單，而是高度自由敘述，系統仍主要依賴 LLM semantic extraction；本次修正主要解決的是 **大量 structured reminder list** 的穩定性問題。
 
 ---
+## 5. 皜祈岫?單皜 (Test Scripts Manifest)
+?箔?銝蔣??Tauri 銝餌?撘? DLL ??嚗????葫閰血?隞亦蝡??脣?辣 (Stand-alone Binaries) 敶Ｗ?撖虫???
 
-## 5. 測試腳本清單 (Test Scripts Manifest)
-為了不影響 Tauri 主程式的 DLL 加載，所有壓力測試均以獨立二進制文件 (Stand-alone Binaries) 形式實作。
-
-| 腳本路徑 (src-tauri/src/bin/) | 功能描述 |
+| ?單頝臬? (src-tauri/src/bin/) | ??膩 |
 | :--- | :--- |
-| `kb_stress.rs` | 知識庫大規模注入與生命週期壓測工具。 |
-| `kb_verify.rs` | 資料庫清理驗證與數據完整性檢查工具。 |
-| `space_evolution.rs` | Space 引擎動態演化（增加/合併/減少）測試。 |
-| `debug_schema.rs` | 當前資料庫 Schema 結構快速檢查工具。 |
-| `fix_spaces.rs` | 資料庫遷移脫節 (Desync) 時的手動修復工具。 |
-| `memory_evolution.rs` | Data/Pattern/Log 記憶提取分類測試。 |
-| `reminder_stress.rs` | 提醒系統單一提醒生命週期 (Life-cycle) 測試。 |
-| `reminder_batch.rs` | 提醒系統大規模批量負載與調整測試。 |
+| `kb_stress.rs` | ?亥?摨怠之閬芋瘜典???賡望?憯葫撌亙??|
+| `kb_verify.rs` | 鞈?摨急???霅??豢?摰?扳炎?亙極?瑯?|
+| `space_evolution.rs` | Space 撘???瞍?嚗????蔥/皜?嚗葫閰艾?|
+| `debug_schema.rs` | ?嗅?鞈?摨?Schema 蝯?敹恍炎?亙極?瑯?|
+| `fix_spaces.rs` | 鞈?摨恍蝘餉蝭 (Desync) ????靽桀儔撌亙??|
+| `memory_evolution.rs` | Data/Pattern/Log 閮????皜祈岫??|
+| `reminder_stress.rs` | ??蝟餌絞?桐?????望? (Life-cycle) 皜祈岫??|
+| `reminder_batch.rs` | ??蝟餌絞憭扯?璅⊥??頛?隤踵皜祈岫??|
 
-**注意**：以上腳本僅供內部驗證使用。在進行生產環境打包前，可清理 `src/bin/` 目錄以減少包體積，或保留用於自動化 CI 流程。
+**瘜冽?**嚗誑銝?砍?靘?券?霅蝙?具?脰???啣??????舀???`src/bin/` ?桅?隞交?撠?擃?嚗?靽??冽?芸???CI 瘚???
 
 ---
 
-## 總體評價
-InsightCAP 的後台引擎在本次測試中展現了極高的**魯棒性 (Robustness)**。無論是在數據吞吐量、邏輯邊界處理，還是系統容錯機制上，均已達到預期設計目標。
+## 蝮賡?閰
+InsightCAP ???啣???祆活皜祈岫銝剖??曆?璆菟???*擳舀???(Robustness)**?隢?冽??????頛舫??????蝟餌絞摰寥璈銝??歇???閮剛??格???
 
-**當前系統狀態：【穩定 / 準備就緒】**
-*所有測試殘留數據已完整清理，系統環境保持純淨狀態。*
+**?嗅?蝟餌絞????帘摰?/ 皞?撠梁???*
+*??葫閰行???歇摰皜?嚗頂蝯梁憓???瘛函???
+
+
