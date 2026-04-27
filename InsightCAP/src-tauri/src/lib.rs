@@ -355,6 +355,7 @@ pub fn run() {
             commands::knowledge_commands::import_kb,
             commands::knowledge_commands::delete_kb,
             commands::knowledge_commands::repair_missing_local_copies,
+            commands::knowledge_commands::run_knowledge_stress_test,
             commands::memory_commands::confirm_memory_chunk,
             commands::memory_commands::get_pending_memory_chunks,
             commands::memory_commands::get_pending_patterns,

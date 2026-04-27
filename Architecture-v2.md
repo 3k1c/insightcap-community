@@ -69,7 +69,7 @@ InsightCAP 是**經驗調用系統**。
 | 雲端 AI | OpenAI / Gemini / OpenAI-compatible | 可選雲端模型 |
 | 手機端入口 | Telegram Bot polling | 取代原生 React Native 手機版 |
 | 手機端推理 | 桌面端代理 / 雲端 LLM | 手機只負責輸入與接收回覆 |
-| 本地 HTTP | Axum `0.0.0.0:3030` | 保留為內部 API / 後續擴充，不再作為手機 app 主路徑 |
+| 本地 HTTP | Axum `0.0.0.0:3030` | 內部 API / 後續擴充 |
 
 ---
 
@@ -166,12 +166,13 @@ ConversationScheduler（每 30 秒輪詢）
     → LLM 生成摘要文字
     → 寫入 conversations.summary（供後續對話歷史注入）
     ↓
-MemoryEngine.process_conversation_summary
-    → Tagger 深度推斷 knowledge_type
-    信心度 >= 0.75 且 content 非空 → 直接寫入 memory_chunks
-    信心度 < 0.75 且 content 非空  → 寫入 memory_chunks（pending_confirm = 1）
-                     推送用戶確認 toast（非阻塞）
-    content 為空（如摘要生成失敗或降級中） → 靜默丟棄（避免前端顯示「內容尚未生成」）
+    MemoryEngine.process_conversation_summary
+        → Tagger 深度推斷 knowledge_type（data | pattern | log）
+        信心度 >= 0.75 且 content 非空 → 直接寫入 memory_chunks
+        信心度 < 0.75 且 content 非空  → 寫入 memory_chunks（pending_confirm = 1）
+                         狀態設為 pending，等待用戶於「記憶管理」介面確認
+        **容錯機制**：當 LLM 推斷逾時或出錯，自動回退為 DATA 類型並標記為 pending，確保數據不丟失。
+        content 為空（如摘要生成失敗或降級中） → 靜默丟棄（避免前端顯示「內容尚未生成」）
                      確認 → 更新 knowledge_type
                      忽略 → 保持 data
     ↓ （非阻塞 spawn，以下三步平行/串行背景執行）
@@ -184,6 +185,29 @@ MemoryEngine.process_conversation_summary
     SpaceKnowledgeGuideEngine.update_knowledge_guide_for_space
         → 根據 space 內最新 chunk 自動更新 spaces.knowledge_guide_content
 ```
+
+### 知識切分策略（Chunking Strategy）
+
+系統採用多策略分流切分（`chunking.rs`），確保不同來源的數據都能在 RAG 檢索中保持最佳顆粒度與上下文完整性：
+
+- **通用語義視窗（Split Semantic Windows）**：
+  - 核心邏輯：依序嘗試 `\n\n` -> `\n` -> `。` -> ` ` -> 強制截斷。
+  - 嚴格限制：單個 chunk 長度固定為 `MAX_CHUNK_CHARS` (1000)，重疊（Overlap）為 200 字元。
+- **日誌事件切分（Split Log Events）**：
+  - 針對場景：系統日誌、聊天記錄。
+  - 邏輯：依據時間戳或 `[INFO/WARN]` 等前綴識別單一事件。
+  - **強健性保障**：若單一事件超過 `MAX_CHUNK_CHARS`，系統會自動回退使用語義視窗切分並進行強制截斷，防止索引崩潰。
+- **原始碼切分（Split Code Snippets）**：
+  - 針對場景：.rs, .js, .py 等代碼文件。
+  - 邏輯：按函數、類定義進行物理分塊。
+- **系統驗證測試 (Stress/Lifecycle Testing)**：
+  - 核心引擎不散落在 integration tests 中，而是透過 `src-tauri/src/bin/` 下的**獨立二進制測試腳本**進行。
+  - **驗證項目**：
+    - `kb_stress.rs`: 5,000+ 級別的知識庫生命週期與重建索引。
+    - `space_evolution.rs`: 自動合併 (0.91) 與歸檔邏輯。
+    - `memory_evolution.rs`: Data/Pattern/Log 提取精準度。
+    - `reminder_batch.rs`: 30+ 任務併發寫入與排程準確度。
+  - **優勢**：繞過 Tauri GUI 與 Windows DLL 加載限制，允許直接進行資料庫與算法層的「地獄級」壓測。
 
 ### 記憶產生——路徑 B（跨對話積累識別）
 
@@ -319,10 +343,12 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 
 - 由 AI 自動生成名稱和聚類內容，用戶可修正名稱
-- 每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度，**自動合併相似空間（需相似度 >= 0.91）**，動態重新聚合。
-- **嚴格分類原則**：調高了匹配門檻（Assign >= 0.81）與合併門檻（Merge >= 0.91），並透過 LLM 指引強制要求 AI 建立更具體、更獨特的空間名稱，防止所有文件被吸入單一寬泛空間。
+- **動態演化**：每增加一個新 Space，SpaceRecluster 重新計算所有 chunk 相似度。
+  - **合併 (Merge)**：相似度 >= **0.91** 時自動合併相似空間。
+  - **分配 (Assign)**：相似度 >= **0.81** 時歸入現有空間，否則嘗試建立新空間。
+- **嚴格分類原則**：透過調高門檻與 LLM Prompt 強制要求 AI 建立更具體（Specific）的空間名稱，防止所有文件被吸入單一寬泛空間。
 - 用戶不需要手動管理 chunk 屬於哪個 Space
-- 空 Space 自動歸檔（`is_archived = 1`），不顯示於 UI
+- 空 Space 偵測到關聯內容清空後自動歸檔（`is_archived = 1`），不顯示於 UI
 - 前台僅作為 chunk 分類篩選，在儲存庫頁的 chunk 編輯面板與 header Space dropdown 使用
 - 不在 Project 裡明確綁定，不作為 @ 引用的對象，不作為 RAG 的硬邊界
 
@@ -441,6 +467,7 @@ toast 顯示導入成功 / 失敗結果
 ### 核心原則
 
 - **Timeline 導向**：提醒事項按日期分組顯示，提供直觀的時間軸導航。
+- **佈局一致性**：Schedule 頁面與 Repository 頁面共享相同的佈局架構（`w-full px-6`），確保跨頁面切換時視覺重心不動搖。
 - **狀態區分**：明確區分「活躍（Active）」與「待確認（Pending）」提醒，支援批次與單項管理。
 - **Premium UI 規範**：遵循應用的高階設計語言，使用漸層背景、磨砂玻璃效果（Backdrop Blur）及流暢的動畫。
 
@@ -454,10 +481,24 @@ toast 顯示導入成功 / 失敗結果
   - 統計摘要：顯示當前活躍與待確認總數。
   - 搜尋與過濾：支援關鍵字搜尋及按事件類型（會議、交付物、事件、預約）過濾。
 - **右側：提醒卡片區**
-  - 按日期分組。
-  - **待確認（Pending）**：顯示於組頂部，包含確認/取消動作。
-  - **活躍（Active）**：顯示於下方，包含完成/取消動作。
-  - **新增入口**：當前日期區塊提供顯眼的「新增提醒」卡片。
+  - 按日期分組，與儲存庫共用 `w-full px-6` 滿版佈局。
+  - **待確認（Pending）**：顯示於組頂部，卡片帶有呼吸燈狀態點。
+  - **活躍（Active）**：顯示於下方。
+  - **新增入口**：當前日期區塊提供渲染為虛線邊框的「新增提醒」卡片。
+  - **卡片交互**：
+    - **非待確認卡片**：按鈕預設隱藏，僅在 Hover 時滑入顯示，保持介面清爽。
+    - **色彩編碼**：會議 (Blue)、交付物 (Emerald)、事件 (Purple)、預約 (Amber)，icon 背景採用 10%/20% 透明度渲染。
+    - **元數據膠囊**：日期與時間以帶有 icon 的半透明膠囊 (bg-surface-subtle/60) 顯示。
+    - **完成按鈕**：統一翻譯為「已完成」(Completed)。
+    - **延時 (Snooze)**：支援將提醒通知向後推延（預設 30 分鐘），更新對應的 `reminder_notifications.scheduled_at`。
+
+### 提醒生命週期 (Lifecycle)
+
+1. **偵測 (Detection)**：從對話文本或 Markdown 企劃書中自動識別 Deadline 與事件類型。
+2. **提取 (Extraction)**：LLM 轉化為 JSON 實體，設定 `confirmed` 狀態（高信心度）或 `pending` 狀態（低信心度）。
+3. **確認 (Confirmation)**：用戶一鍵將待確認項轉為活躍排程。
+4. **排程 (Scheduling)**：`ReminderScheduler` 動態計算多個預警點（Imminent/Soon/Final）。
+5. **更新與撤回 (Update/Snooze)**：支援全體延期或特定項目時間調整，對應更新排程。
 
 ### 新增提醒彈窗 (Add Reminder Modal)
 
@@ -614,7 +655,7 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm） |
 | `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單） |
 | `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |
-| `telegram` | `botToken`（加密存儲）/ `allowedChatIds: Vec<i64>` / `enabled: bool` / `streaming: "partial" \| "off"` / `promptInstructionOverride` | Telegram Bot 配置；`promptInstructionOverride` 優先度高於全域偏好 |
+| `telegram` | `botToken`（加密存儲）/ `allowedChatIds: Vec<i64>` / `enabled: bool` / `promptInstructionOverride` | Telegram Bot 配置；已移除舊版 live streaming edit 邏輯，簡化為純通知流。 |
 | `editor` | `promptInstructionOverride` | 編輯器專用 AI 偏好覆寫 |
 
 ---

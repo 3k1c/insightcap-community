@@ -1,6 +1,6 @@
 use crate::db::AppState;
 use sqlx::{Row, SqlitePool};
-use tauri::{Emitter, State};
+use tauri::{Emitter, State, Runtime};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -957,9 +957,9 @@ pub async fn rebuild_kb_index(state: State<'_, AppState>) -> Result<usize, Strin
 }
 
 #[tauri::command]
-pub async fn rebuild_source_tags(
+pub async fn rebuild_source_tags<R: Runtime>(
     state: State<'_, AppState>,
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
 ) -> Result<usize, String> {
     let db = &state.db;
 
@@ -1514,4 +1514,87 @@ pub async fn repair_missing_local_copies(state: State<'_, AppState>) -> Result<S
     );
     println!("[RepairCopies] {}", msg);
     Ok(msg)
+}
+
+#[tauri::command]
+pub async fn run_knowledge_stress_test<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let pool = &state.db;
+    let now_utc = chrono::Utc::now();
+    let now = now_utc.to_rfc3339();
+
+    println!("[STRESS-TEST] Starting Knowledge Base Stress Test...");
+
+    // 1. Data Injection: 1000 Sources, each with 5 chunks
+    println!("[STRESS-TEST] Phase 1: Injecting 1,000 sources and 5,000 chunks...");
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    for i in 0..1000 {
+        let source_id = uuid::Uuid::now_v7().to_string();
+        let title = format!("Stress Test Source Entity #{}", i);
+        let content = format!("This is a long synthetic content for stress testing source {}. It contains multiple paragraphs to simulate real world data distribution patterns in the RAG engine.", i);
+        
+        sqlx::query(
+            "INSERT INTO sources (id, type, title, clean_content, captured_at, updated_at, capture_count, source_category, media_type) \
+             VALUES (?, 'text', ?, ?, ?, ?, 5, 'captured', 'text')"
+        )
+        .bind(&source_id)
+        .bind(&title)
+        .bind(&content)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        for j in 0..5 {
+            let chunk_id = uuid::Uuid::now_v7().to_string();
+            let chunk_content = format!("Synthetic chunk {} for source {}. Vector search relevance testing data.", j, i);
+            sqlx::query(
+                "INSERT INTO captures (id, source_id, type, raw_content, clean_content, status, capture_method, chunk_index, created_at, updated_at) \
+                 VALUES (?, ?, 'text', ?, ?, 'processed', 'source_import', ?, ?, ?)"
+            )
+            .bind(&chunk_id)
+            .bind(&source_id)
+            .bind(&chunk_content)
+            .bind(&chunk_content)
+            .bind(j as i64)
+            .bind(&now)
+            .bind(&now)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        if i % 200 == 0 {
+            println!("[STRESS-TEST] Injected {}/1000 sources...", i);
+        }
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    println!("[STRESS-TEST] Injection complete.");
+
+    // 2. Rebuild Tags
+    println!("[STRESS-TEST] Phase 2: Rebuilding Source Tags...");
+    let tags_count = rebuild_source_tags(state.clone(), app.clone()).await?;
+    println!("[STRESS-TEST] Tagged {} sources.", tags_count);
+
+    // 3. Rebuild Index
+    println!("[STRESS-TEST] Phase 3: Rebuilding Vector Index...");
+    let index_count = rebuild_kb_index(state.clone()).await?;
+    println!("[STRESS-TEST] Rebuilt {} vectors.", index_count);
+
+    // 4. Verification Check
+    let total_chunks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM captures WHERE source_id IN (SELECT id FROM sources WHERE title LIKE 'Stress Test Source%')")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = format!(
+        "STRESS TEST SUCCESSFUL\n- Injected Chunks: {}\n- Tags Rebuilt: {}\n- Vectors Rebuilt: {}\n- Verified in DB: {}",
+        5000, tags_count, index_count, total_chunks
+    );
+    println!("[STRESS-TEST] Done.");
+    Ok(result)
 }
