@@ -146,8 +146,17 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
     let _ = std::fs::create_dir_all(&temp_dir);
     let output_template = temp_dir.join("%(id)s").to_string_lossy().to_string();
 
+    let ffmpeg_path = ytdlp.parent().unwrap_or(Path::new(".")).join("ffmpeg.exe");
+
     let info_output = tokio::process::Command::new(ytdlp)
-        .args(["--dump-json", "--no-playlist", "--skip-download", url])
+        .args([
+            "--dump-json",
+            "--no-playlist",
+            "--skip-download",
+            "--js-runtimes",
+            "auto",
+            url,
+        ])
         .output()
         .await
         .map_err(|e| format!("yt-dlp info error: {}", e))?;
@@ -179,6 +188,10 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
             "json3",
             "--skip-download",
             "--no-playlist",
+            "--ffmpeg-location",
+            ffmpeg_path.to_str().unwrap_or("ffmpeg"),
+            "--js-runtimes",
+            "auto",
             "-o",
             &output_template,
             url,
@@ -302,6 +315,8 @@ async fn try_transcribe_with_whisper(ytdlp: &Path, url: &str, video_id: &str) ->
 pub fn parse_preferred_whisper_model_name(content: &str) -> Option<&str> {
     let json = serde_json::from_str::<serde_json::Value>(content).ok()?;
     match json["model"].as_str() {
+        Some("tiny") => Some("tiny"),
+        Some("base") => Some("base"),
         Some("small") => Some("small"),
         Some("medium") => Some("medium"),
         _ => None,

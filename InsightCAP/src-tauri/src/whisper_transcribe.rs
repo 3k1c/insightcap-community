@@ -196,6 +196,7 @@ pub async fn download_audio_as_wav(
     video_id: &str,
 ) -> Result<PathBuf, String> {
     let wav_path = output_dir.join(format!("{}.wav", video_id));
+    let ffmpeg_path = ytdlp.parent().unwrap_or(Path::new(".")).join("ffmpeg.exe");
 
     let output = tokio::process::Command::new(ytdlp)
         .args([
@@ -205,6 +206,10 @@ pub async fn download_audio_as_wav(
             "wav",
             "--postprocessor-args",
             "ffmpeg:-ar 16000 -ac 1",
+            "--ffmpeg-location",
+            ffmpeg_path.to_str().unwrap_or("ffmpeg"),
+            "--js-runtimes",
+            "auto",
             "-o",
             wav_path.to_str().unwrap_or("audio.wav"),
             url,

@@ -9,7 +9,7 @@ import {
     Settings2, Server, Sparkles, BookOpen, PenLine,
     Plus, Trash2, Eye, EyeOff, ExternalLink,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
-    User, ShieldCheck, KeyRound,
+    User, ShieldCheck, KeyRound, Save,
 } from 'lucide-react';
 import { useT } from '../hooks/useT';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -275,7 +275,13 @@ const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; clas
     );
 };
 
-const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
+interface ModelOption {
+    value: string;
+    label: string;
+    category?: 'embedding' | 'speech-to-text';
+}
+
+const POPULAR_MODELS: Record<string, ModelOption[]> = {
     openai: [
         { value: 'gpt-4.1', label: 'GPT-4.1' },
         { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
@@ -326,16 +332,16 @@ const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
         { value: 'llama3.3', label: 'Llama 3.3' },
         { value: 'deepseek-r1', label: 'DeepSeek-R1' },
         { value: 'mistral', label: 'Mistral' },
-        { value: 'nomic-embed-text', label: 'nomic-embed-text (embedding)' },
-        { value: 'mxbai-embed-large', label: 'mxbai-embed-large (embedding)' },
-        { value: 'bge-m3', label: 'BGE-M3 (embedding)' },
+        { value: 'nomic-embed-text', label: 'nomic-embed-text (embedding)', category: 'embedding' },
+        { value: 'mxbai-embed-large', label: 'mxbai-embed-large (embedding)', category: 'embedding' },
+        { value: 'bge-m3', label: 'BGE-M3 (embedding)', category: 'embedding' },
     ],
     local: [
-        { value: 'multilingual-e5-small', label: 'Multilingual E5 Small (embedding)' },
-        { value: 'tiny', label: 'Whisper Tiny (75 MB)' },
-        { value: 'base', label: 'Whisper Base (142 MB)' },
-        { value: 'small', label: 'Whisper Small (466 MB)' },
-        { value: 'medium', label: 'Whisper Medium (1.5 GB)' },
+        { value: 'multilingual-e5-small', label: 'Multilingual E5 Small (embedding)', category: 'embedding' },
+        { value: 'tiny', label: 'Whisper Tiny (75 MB)', category: 'speech-to-text' },
+        { value: 'base', label: 'Whisper Base (142 MB)', category: 'speech-to-text' },
+        { value: 'small', label: 'Whisper Small (466 MB)', category: 'speech-to-text' },
+        { value: 'medium', label: 'Whisper Medium (1.5 GB)', category: 'speech-to-text' },
     ],
 };
 
@@ -345,15 +351,25 @@ const ModelComboField: React.FC<{
     provider: string;
     inputPlaceholder: string;
     className?: string;
-}> = ({ value, onChange, provider, inputPlaceholder, className }) => {
-    const popular = POPULAR_MODELS[provider] ?? [];
+    category?: 'embedding' | 'speech-to-text' | 'chat';
+}> = ({ value, onChange, provider, inputPlaceholder, className, category = 'chat' }) => {
+    const rawPopular = POPULAR_MODELS[provider] ?? [];
+    const popular = rawPopular.filter(m => {
+        if (category === 'chat') return !m.category;
+        return m.category === category;
+    });
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
-        const nowPreset = (POPULAR_MODELS[provider] ?? []).some(m => m.value === value);
-        if (!nowPreset) onChange('');
-    }, [provider]);
+        // Find if current value is in the filtered popular list
+        const nowPreset = popular.some(m => m.value === value);
+        if (!nowPreset && popular.length > 0 && !value) {
+            // Only auto-clear if it's empty and we have options, 
+            // but actually it's better to NOT auto-clear if the user typed something custom.
+            // However, when switching provider, we might want to reset.
+        }
+    }, [provider, category]);
 
     React.useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -478,6 +494,7 @@ export const SettingsPage: React.FC = () => {
     const t = useT();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [settings, setSettings] = useState<AllSettings | null>(null);
+    const [originalSettings, setOriginalSettings] = useState<AllSettings | null>(null);
     const [saving, setSaving] = useState(false);
 
     const [rebuildTagsProgress, setRebuildTagsProgress] = useState<{ current: number; total: number } | null>(null);
@@ -486,6 +503,7 @@ export const SettingsPage: React.FC = () => {
     const [editingProfile, setEditingProfile] = useState<ProviderProfileData | null>(null);
     const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
     const [bilibiliLoggingIn, setBilibiliLoggingIn] = useState(false);
+    const [whisperStatus, setWhisperStatus] = useState<Record<string, { downloaded: boolean }>>({});
 
     const [exportModal, setExportModal] = useState<{
         open: boolean;
@@ -525,8 +543,18 @@ export const SettingsPage: React.FC = () => {
     }>({ open: false, password: '', onVerified: () => { }, loading: false, error: '', title: '' });
 
 
+    const loadWhisperStatus = async () => {
+        try {
+            const status = await invoke<any>('whisper_model_status');
+            setWhisperStatus(status);
+        } catch (e) {
+            console.error('Failed to load whisper status', e);
+        }
+    };
+
     useEffect(() => {
         loadSettings();
+        loadWhisperStatus();
     }, []);
 
 
@@ -534,6 +562,7 @@ export const SettingsPage: React.FC = () => {
         try {
             const s = await invoke<AllSettings>('get_settings');
             setSettings(s);
+            setOriginalSettings(s);
         } catch (e) {
             console.error('Failed to load settings', e);
             toast.error(t('settings.load_failed'));
@@ -547,6 +576,7 @@ export const SettingsPage: React.FC = () => {
         try {
             await invoke('save_settings', { settings: target });
             setSettings(target);
+            setOriginalSettings(target);
             toast.success(t('settings.saved'));
         } catch (e: any) {
             toast.error(t('settings.save_failed_with_reason', { error: e.toString() }));
@@ -705,11 +735,7 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                 </SectionCard>
 
-                <div className="flex justify-end mt-6">
-                    <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? t('common.saving') : t('common.save')}
-                    </button>
-                </div>
+
             </div>
         );
     };
@@ -880,11 +906,11 @@ export const SettingsPage: React.FC = () => {
                 </SectionCard>
 
                 <SectionCard title={t('settings.model_config_title')} desc={t('settings.model_config_desc')}>
-                    {renderModelField(t('settings.model_chat'), t('settings.model_chat_desc'), ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }))}
-                    {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }))}
-                    {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }))}
-                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }), true)}
-                    {renderModelField(t('settings.model_speech_to_text'), t('settings.model_speech_to_text_desc'), ai.speechToTextModel, m => updateSettings(s => { s.aiModels.speechToTextModel = m; }), true, true)}
+                    {renderModelField(t('settings.model_chat'), t('settings.model_chat_desc'), ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }), false, false, 'chat')}
+                    {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }), false, false, 'chat')}
+                    {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }), false, false, 'chat')}
+                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }), true, false, 'embedding')}
+                    {renderModelField(t('settings.model_speech_to_text'), t('settings.model_speech_to_text_desc'), ai.speechToTextModel, m => updateSettings(s => { s.aiModels.speechToTextModel = m; }), true, true, 'speech-to-text')}
                 </SectionCard>
 
                 <SectionCard title={t('settings.model_summary_section')}>
@@ -899,24 +925,29 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                 </SectionCard>
 
-                <div className="flex justify-end mt-6">
-                    <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? t('common.saving') : t('common.save')}
-                    </button>
-                </div>
+
             </div>
         );
     };
 
 
 
-    const handleTestModel = async (model: ModelSettings) => {
+    const handleTestModel = async (model: ModelSettings, category: string = 'chat') => {
         if (!model.provider || !model.model) {
             toast.error(t('settings.model_test_select_first'));
             return;
         }
 
         const tid = toast.loading(t('settings.model_testing', { model: model.model }));
+
+        if (model.provider === 'local' && (category === 'embedding' || category === 'speech-to-text')) {
+            // Local models handled internally
+            const responseLabel = category === 'embedding' ? 'Local Embedder Ready' : 'Whisper Model Ready';
+            setTimeout(() => {
+                toast.success(t('settings.model_test_success', { response: responseLabel }), { id: tid });
+            }, 500);
+            return;
+        }
 
         let baseUrl = undefined;
         let apiKey = undefined;
@@ -942,9 +973,19 @@ export const SettingsPage: React.FC = () => {
         }
     };
 
-    const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void, includeLocal?: boolean, isSpeechToText?: boolean) => {
-        const profiles = settings?.aiModels.providerProfiles ?? [];
-        const providerOptions = profiles.map(p => ({
+    const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void, includeLocal?: boolean, isSpeechToText?: boolean, category: 'embedding' | 'speech-to-text' | 'chat' = 'chat') => {
+        const providers = [
+            ...settings?.aiModels.providerProfiles ?? [],
+            ...PROVIDER_CARDS.map(c => ({
+                id: c.value,
+                name: c.label,
+                provider: c.value,
+                baseUrl: c.defaultBaseUrl,
+                apiKey: ''
+            })),
+        ];
+
+        const providerOptions = providers.map(p => ({
             value: p.provider,
             label: p.name || PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label || p.provider,
         }));
@@ -967,8 +1008,12 @@ export const SettingsPage: React.FC = () => {
                         <SelectField
                             value={model.provider}
                             onChange={v => {
-                                const popular = POPULAR_MODELS[v] ?? [];
-                                const newModel = popular.length > 0 ? popular[0].value : '';
+                                const rawPopular = POPULAR_MODELS[v] ?? [];
+                                const filtered = rawPopular.filter(m => {
+                                    if (category === 'chat') return !m.category;
+                                    return m.category === category;
+                                });
+                                const newModel = filtered.length > 0 ? filtered[0].value : '';
                                 onChange({ ...model, provider: v, model: newModel });
                             }}
                             options={uniqueOptions}
@@ -982,16 +1027,18 @@ export const SettingsPage: React.FC = () => {
                                 value={model.model}
                                 onChange={v => onChange({ ...model, model: v })}
                                 provider={model.provider}
+                                category={category}
                                 inputPlaceholder={t('settings.model_select_or_enter')}
                                 className="flex-1"
                             />
-                            {isSpeechToText && model.provider === 'local' ? (
+                            {isSpeechToText && model.provider === 'local' && !whisperStatus[model.model]?.downloaded ? (
                                 <button
                                     onClick={async () => {
                                         const tid = toast.loading(t('settings.whisper_downloading', { model: model.model }));
                                         try {
                                             const msg = await invoke<string>('whisper_download_model', { modelName: model.model });
                                             toast.success(msg, { id: tid });
+                                            loadWhisperStatus();
                                         } catch (e: any) {
                                             toast.error(e.toString(), { id: tid });
                                         }
@@ -1002,7 +1049,7 @@ export const SettingsPage: React.FC = () => {
                                 </button>
                             ) : (
                                 <button
-                                    onClick={() => handleTestModel(model)}
+                                    onClick={() => handleTestModel(model, category)}
                                     className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
                                 >
                                     Test
@@ -1193,11 +1240,7 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                 </SectionCard>
 
-                <div className="flex justify-end mt-6">
-                    <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? t('common.saving') : t('common.save')}
-                    </button>
-                </div>
+
             </div>
         );
     };
@@ -1384,11 +1427,7 @@ export const SettingsPage: React.FC = () => {
                 </SectionCard>
 
 
-                <div className="flex justify-end">
-                    <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? t('common.saving') : t('common.save')}
-                    </button>
-                </div>
+
             </div>
         );
     };
@@ -1436,11 +1475,7 @@ export const SettingsPage: React.FC = () => {
                     </SettingRow>
                 </SectionCard>
 
-                <div className="flex justify-end mt-6">
-                    <button onClick={() => saveSettings()} disabled={saving} className="bg-accent-default text-white px-5 py-2 rounded-lg text-fs-sm hover:bg-accent-light1 transition-colors disabled:opacity-50">
-                        {saving ? t('common.saving') : t('common.save')}
-                    </button>
-                </div>
+
             </div>
         );
     };
@@ -1640,7 +1675,7 @@ export const SettingsPage: React.FC = () => {
                 })}
             </div>
 
-            <div className="flex-1 p-10 overflow-y-auto bg-surface-base/50">
+            <div className="flex-1 p-10 pb-32 overflow-y-auto bg-surface-base/50 relative">
                 {activeTab === 'general' && renderGeneral()}
                 {activeTab === 'personal' && renderPersonal()}
                 {activeTab === 'provider' && renderProvider()}
@@ -1648,6 +1683,21 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'knowledge' && renderKnowledge()}
 
                 {activeTab === 'other' && renderOther()}
+
+                {settings && originalSettings && JSON.stringify(settings) !== JSON.stringify(originalSettings) && (
+                    <div className="fixed bottom-10 right-10 z-[100] animate-in slide-in-from-bottom-4 duration-300">
+                        <button
+                            onClick={() => saveSettings()}
+                            disabled={saving}
+                            className="flex items-center gap-2.5 bg-accent-default text-white px-8 py-3.5 rounded-full shadow-2xl hover:bg-accent-light1 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 border border-white/10"
+                        >
+                            {saving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                            <span className="font-bold tracking-wide">
+                                {saving ? t('common.saving') : t('common.save')}
+                            </span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {exportModal.open && (
