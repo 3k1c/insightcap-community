@@ -48,6 +48,7 @@ pub struct AIModelSettings {
     pub content_processor_llm: ModelSettings,
     pub vision_model: ModelSettings,
     pub embedding_model: ModelSettings,
+    pub speech_to_text_model: ModelSettings,
     pub summary_model: Option<String>,
     #[serde(default)]
     pub provider_profiles: Vec<ProviderProfile>,
@@ -78,6 +79,12 @@ impl Default for AIModelSettings {
             embedding_model: ModelSettings {
                 provider: "local".to_string(),
                 model: "MultilingualE5Small".to_string(),
+                api_key: None,
+                base_url: None,
+            },
+            speech_to_text_model: ModelSettings {
+                provider: "local".to_string(),
+                model: "base".to_string(),
                 api_key: None,
                 base_url: None,
             },
@@ -272,6 +279,9 @@ impl AllSettings {
         if let Some(key) = &self.ai_models.embedding_model.api_key {
             self.ai_models.embedding_model.api_key = Some(encrypt(key));
         }
+        if let Some(key) = &self.ai_models.speech_to_text_model.api_key {
+            self.ai_models.speech_to_text_model.api_key = Some(encrypt(key));
+        }
         if !self.web_search.api_key.is_empty() {
             self.web_search.api_key = encrypt(&self.web_search.api_key);
         }
@@ -309,6 +319,11 @@ impl AllSettings {
         if let Some(key) = &self.ai_models.embedding_model.api_key {
             if let Ok(decrypted) = decrypt(key) {
                 self.ai_models.embedding_model.api_key = Some(decrypted);
+            }
+        }
+        if let Some(key) = &self.ai_models.speech_to_text_model.api_key {
+            if let Ok(decrypted) = decrypt(key) {
+                self.ai_models.speech_to_text_model.api_key = Some(decrypted);
             }
         }
         if !self.web_search.api_key.is_empty() {
@@ -360,6 +375,7 @@ impl AllSettings {
         resolve_model(&mut self.ai_models.content_processor_llm);
         resolve_model(&mut self.ai_models.vision_model);
         resolve_model(&mut self.ai_models.embedding_model);
+        resolve_model(&mut self.ai_models.speech_to_text_model);
     }
 }
 
@@ -483,6 +499,11 @@ pub async fn save_settings(
     let now = chrono::Utc::now().to_rfc3339();
 
     settings.encrypt_all();
+    
+    // Sync whisper model preference
+    if let Some(model) = crate::whisper_transcribe::WhisperModel::from_name(&settings.ai_models.speech_to_text_model.model) {
+        let _ = crate::whisper_transcribe::write_model_preference(model);
+    }
 
     let queries = vec![
         (

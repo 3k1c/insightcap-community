@@ -1,0 +1,12 @@
+[env]
+LIBCLANG_PATH = "C:\\PROGRA~1\\LLVM\\bin"
+
+# Help bindgen resolve MSVC + Windows SDK headers on local Windows builds.
+"BINDGEN_EXTRA_CLANG_ARGS_x86_64-pc-windows-msvc" = "--target=x86_64-pc-windows-msvc -IC:\\PROGRA~1\\LLVM\\lib\\clang\\21\\include -IC:\\PROGRA~2\\MICROS~4\\2022\\BUILDT~1\\VC\\Tools\\MSVC\\14.44.35207\\include -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\ucrt -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\shared -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\um -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\winrt"
+BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_msvc = "--target=x86_64-pc-windows-msvc -IC:\\PROGRA~1\\LLVM\\lib\\clang\\21\\include -IC:\\PROGRA~2\\MICROS~4\\2022\\BUILDT~1\\VC\\Tools\\MSVC\\14.44.35207\\include -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\ucrt -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\shared -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\um -IC:\\PROGRA~2\\WI3CF2~1\\10\\Include\\10.0.26100.0\\winrt"
+"BINDGEN_EXTRA_CLANG_ARGS_x86_64-pc-windows-gnu" = "--target=x86_64-w64-windows-gnu -IC:\\PROGRA~1\\LLVM\\lib\\clang\\21\\include -IC:\\Strawberry\\c\\x86_64-w64-mingw32\\include"
+BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu = "--target=x86_64-w64-windows-gnu -IC:\\PROGRA~1\\LLVM\\lib\\clang\\21\\include -IC:\\Strawberry\\c\\x86_64-w64-mingw32\\include"
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:\\Strawberry\\c\\bin\\gcc.exe"
+ar = "C:\\Strawberry\\c\\bin\\ar.exe"

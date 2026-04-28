@@ -1,0 +1,5 @@
+feat: video字幕提取增加audio to text模型
+
+- 支援 Whisper tiny / base 版本
+- 在設置介面新增「語音轉文字模型」設定
+- 介面與其他模型選擇維持一致

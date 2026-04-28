@@ -1,6 +1,7 @@
 use crate::capture::file_parser::{FileChunk, ParsedDocument};
 use md5::{Digest, Md5};
 use reqwest::Client;
+use std::path::Path;
 use std::process::Command;
 
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
@@ -173,7 +174,7 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
             "--write-sub",      //
             "--write-auto-sub", //
             "--sub-langs",
-            "zh-HK,zh-TW,zh,en",
+            "zh-HK,zh-TW,zh-Hans,zh,en.*,en",
             "--sub-format",
             "json3",
             "--skip-download",
@@ -190,7 +191,9 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
         let sub_paths = vec![
             temp_dir.join(format!("{}.zh-HK.json3", video_id)),
             temp_dir.join(format!("{}.zh-TW.json3", video_id)),
+            temp_dir.join(format!("{}.zh-Hans.json3", video_id)),
             temp_dir.join(format!("{}.zh.json3", video_id)),
+            temp_dir.join(format!("{}.zh-HK.vtt.json3", video_id)),
             temp_dir.join(format!("{}.en.json3", video_id)),
         ];
 
@@ -204,14 +207,26 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
                             let mut t = String::new();
                             for event in events {
                                 if let Some(segs) = event["segs"].as_array() {
+                                    let mut event_text = String::new();
                                     for seg in segs {
                                         if let Some(text) = seg["utf8"].as_str() {
-                                            let cleaned = text.replace('\n', " ");
-                                            if !cleaned.trim().is_empty() {
-                                                t.push_str(&cleaned);
-                                                t.push(' ');
+                                            if text == "\n" {
+                                                if !event_text.trim().is_empty() {
+                                                    t.push_str(event_text.trim());
+                                                    t.push('\n');
+                                                    event_text.clear();
+                                                }
+                                            } else {
+                                                let cleaned = text.trim();
+                                                if !cleaned.is_empty() {
+                                                    event_text.push_str(cleaned);
+                                                }
                                             }
                                         }
+                                    }
+                                    if !event_text.trim().is_empty() {
+                                        t.push_str(event_text.trim());
+                                        t.push('\n');
                                     }
                                 }
                             }
@@ -242,6 +257,9 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
     if !transcript.is_empty() {
         let coalesced = coalesce_subtitle_lines(&transcript);
         result.push_str(&format!("\n字幕内容\n{}", coalesced));
+    } else if let Some(whisper_text) = try_transcribe_with_whisper(ytdlp, url, &video_id).await {
+        result.push_str("\n字幕內容 (Whisper 轉錄)\n");
+        result.push_str(&whisper_text);
     } else if !description.is_empty() {
         result.push_str(&format!("\n描述\n{}", description));
     }
@@ -252,6 +270,53 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
     }
 
     Ok(result)
+}
+
+async fn try_transcribe_with_whisper(ytdlp: &Path, url: &str, video_id: &str) -> Option<String> {
+    if video_id.is_empty() {
+        return None;
+    }
+
+    let model = get_preferred_whisper_model();
+    if !crate::whisper_transcribe::is_model_downloaded(model) {
+        println!(
+            "[VIDEO_PARSER]   Whisper model ({}) not downloaded, skipping.",
+            model.filename()
+        );
+        return None;
+    }
+
+    match crate::whisper_transcribe::transcribe_video(ytdlp, url, video_id, model).await {
+        Ok(transcript) if !transcript.trim().is_empty() => Some(transcript),
+        Ok(_) => {
+            println!("[VIDEO_PARSER]   Whisper returned empty transcript");
+            None
+        }
+        Err(error) => {
+            println!("[VIDEO_PARSER]   Whisper failed: {}", error);
+            None
+        }
+    }
+}
+
+pub fn parse_preferred_whisper_model_name(content: &str) -> Option<&str> {
+    let json = serde_json::from_str::<serde_json::Value>(content).ok()?;
+    match json["model"].as_str() {
+        Some("small") => Some("small"),
+        Some("medium") => Some("medium"),
+        _ => None,
+    }
+}
+
+fn get_preferred_whisper_model() -> crate::whisper_transcribe::WhisperModel {
+    crate::whisper_transcribe::read_model_preference()
+}
+
+#[tauri::command]
+pub fn set_whisper_model_preference(model_name: String) -> Result<(), String> {
+    let model = crate::whisper_transcribe::WhisperModel::from_name(&model_name)
+        .ok_or_else(|| format!("Unknown model: {}", model_name))?;
+    crate::whisper_transcribe::write_model_preference(model)
 }
 
 async fn fetch_youtube_metadata(url: &str) -> Result<String, String> {
@@ -847,4 +912,27 @@ pub async fn parse_temp_content(
     sessdata: Option<String>,
 ) -> Result<ParsedDocument, String> {
     crate::capture::file_parser::parse_content(kb_path, file_path, url, sessdata, None).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_preferred_whisper_model_name_from_config_json() {
+        assert_eq!(
+            parse_preferred_whisper_model_name(r#"{"model":"small"}"#),
+            Some("small")
+        );
+        assert_eq!(
+            parse_preferred_whisper_model_name(r#"{"model":"medium"}"#),
+            Some("medium")
+        );
+        assert_eq!(parse_preferred_whisper_model_name(r#"{"model":"ggml-small"}"#), None);
+    }
+
+    #[test]
+    fn formats_whisper_timestamp_in_srt_style() {
+        assert_eq!(crate::whisper_transcribe::format_timestamp_ms(3_723_045), "01:02:03.045");
+    }
 }

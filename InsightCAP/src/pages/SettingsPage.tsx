@@ -43,6 +43,7 @@ interface AllSettings {
         contentProcessorLlm: ModelSettings;
         visionModel: ModelSettings;
         embeddingModel: ModelSettings;
+        speechToTextModel: ModelSettings;
         summaryModel?: string;
         providerProfiles: ProviderProfileData[];
     };
@@ -330,7 +331,11 @@ const POPULAR_MODELS: Record<string, { value: string; label: string }[]> = {
         { value: 'bge-m3', label: 'BGE-M3 (embedding)' },
     ],
     local: [
-        { value: 'multilingual-e5-small', label: 'Multilingual E5 Small' },
+        { value: 'multilingual-e5-small', label: 'Multilingual E5 Small (embedding)' },
+        { value: 'tiny', label: 'Whisper Tiny (75 MB)' },
+        { value: 'base', label: 'Whisper Base (142 MB)' },
+        { value: 'small', label: 'Whisper Small (466 MB)' },
+        { value: 'medium', label: 'Whisper Medium (1.5 GB)' },
     ],
 };
 
@@ -879,6 +884,7 @@ export const SettingsPage: React.FC = () => {
                     {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }))}
                     {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }))}
                     {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }), true)}
+                    {renderModelField(t('settings.model_speech_to_text'), t('settings.model_speech_to_text_desc'), ai.speechToTextModel, m => updateSettings(s => { s.aiModels.speechToTextModel = m; }), true, true)}
                 </SectionCard>
 
                 <SectionCard title={t('settings.model_summary_section')}>
@@ -936,7 +942,7 @@ export const SettingsPage: React.FC = () => {
         }
     };
 
-    const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void, includeLocal?: boolean) => {
+    const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void, includeLocal?: boolean, isSpeechToText?: boolean) => {
         const profiles = settings?.aiModels.providerProfiles ?? [];
         const providerOptions = profiles.map(p => ({
             value: p.provider,
@@ -979,12 +985,29 @@ export const SettingsPage: React.FC = () => {
                                 inputPlaceholder={t('settings.model_select_or_enter')}
                                 className="flex-1"
                             />
-                            <button
-                                onClick={() => handleTestModel(model)}
-                                className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
-                            >
-                                Test
-                            </button>
+                            {isSpeechToText && model.provider === 'local' ? (
+                                <button
+                                    onClick={async () => {
+                                        const tid = toast.loading(t('settings.whisper_downloading', { model: model.model }));
+                                        try {
+                                            const msg = await invoke<string>('whisper_download_model', { modelName: model.model });
+                                            toast.success(msg, { id: tid });
+                                        } catch (e: any) {
+                                            toast.error(e.toString(), { id: tid });
+                                        }
+                                    }}
+                                    className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
+                                >
+                                    {t('settings.whisper_download')}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => handleTestModel(model)}
+                                    className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
+                                >
+                                    Test
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -15,6 +15,7 @@ pub mod settings;
 pub mod tray_status;
 pub mod utils;
 pub mod vector_store;
+pub mod whisper_transcribe;
 
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -430,6 +431,10 @@ pub fn run() {
             commands::reminder_commands::manual_extract_reminders,
             commands::reminder_commands::check_reminder_health,
             commands::reminder_commands::get_project_timeline,
+            whisper_transcribe::whisper_binary_status,
+            whisper_transcribe::whisper_model_status,
+            whisper_transcribe::whisper_download_model,
+            capture::video_parser::set_whisper_model_preference,
             set_zoom,
         ])
         .run(tauri::generate_context!())
