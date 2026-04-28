@@ -132,7 +132,9 @@
         "copied": "已複製",
         "warning_irreversible": "⚠️ 此操作無法復原！",
         "confirm_action": "確定要執行此操作嗎？",
-        "dimension": "維"
+        "dimension": "維",
+        "created_by": "Created by ck",
+        "copyright": "© 2026 InsightCAP. All rights reserved."
     },
     "auth": {
         "setup": {

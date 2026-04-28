@@ -2,8 +2,6 @@ import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import ImageNodeView from './ImageNodeView';
 
-console.log('ImageNodePro: Extension file loaded');
-
 export interface ImageNodeProOptions {
     HTMLAttributes: Record<string, any>;
 }

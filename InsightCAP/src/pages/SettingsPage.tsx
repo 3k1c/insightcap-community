@@ -1673,6 +1673,20 @@ export const SettingsPage: React.FC = () => {
                         </button>
                     );
                 })}
+
+                <div className="mt-auto pt-6 px-3 border-t border-stroke-divider/30">
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold text-accent-default tracking-widest uppercase opacity-70">
+                            InsightCAP v0.1.0
+                        </span>
+                        <span className="text-fs-xs text-text-tertiary font-medium">
+                            {t('common.created_by')}
+                        </span>
+                        <span className="text-[9px] text-text-tertiary/40 leading-tight mt-1">
+                            {t('common.copyright')}
+                        </span>
+                    </div>
+                </div>
             </div>
 
             <div className="flex-1 p-10 pb-32 overflow-y-auto bg-surface-base/50 relative">

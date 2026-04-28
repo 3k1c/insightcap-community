@@ -134,6 +134,15 @@ export function LoginPage({ onLoginSuccess, kbPath }: LoginPageProps) {
                 ) : (
                     <RecoveryForm kbPath={kbPath} onSuccess={onLoginSuccess} onBack={() => setShowRecovery(false)} />
                 )}
+
+                <div className="mt-10 pt-6 border-t border-stroke-divider/30 text-center space-y-1">
+                    <p className="text-fs-xs font-medium text-text-tertiary">
+                        {t('common.created_by')}
+                    </p>
+                    <p className="text-[10px] text-text-tertiary/50">
+                        {t('common.copyright')}
+                    </p>
+                </div>
             </div>
         </div>
     );
