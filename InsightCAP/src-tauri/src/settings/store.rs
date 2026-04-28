@@ -198,7 +198,7 @@ impl Default for WebSearchSettings {
         Self {
             enabled: false,
             provider: "tavily".to_string(),
-            api_key: "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".to_string(),
+            api_key: "".to_string(),
         }
     }
 }
