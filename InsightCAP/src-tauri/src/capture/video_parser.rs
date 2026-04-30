@@ -148,40 +148,12 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
 
     let ffmpeg_path = ytdlp.parent().unwrap_or(Path::new(".")).join("ffmpeg.exe");
 
-    let info_output = tokio::process::Command::new(ytdlp)
+    // 合併 --dump-json 和 --write-sub 為單次 yt-dlp 調用，避免重複下載網頁
+    let combined_output = tokio::process::Command::new(ytdlp)
         .args([
             "--dump-json",
-            "--no-playlist",
-            "--skip-download",
-            "--js-runtimes",
-            "auto",
-            url,
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("yt-dlp info error: {}", e))?;
-
-    let mut title = String::new();
-    let mut description = String::new();
-    let mut channel = String::new();
-    let mut video_id = String::new();
-
-    if !info_output.stdout.is_empty() {
-        if let Ok(json_str) = String::from_utf8(info_output.stdout) {
-            if let Ok(info) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                title = info["title"].as_str().unwrap_or("").to_string();
-                description = info["description"].as_str().unwrap_or("").to_string();
-                channel = info["uploader"].as_str().unwrap_or("").to_string();
-                video_id = info["id"].as_str().unwrap_or("").to_string();
-                println!("[VIDEO_PARSER]    Video: {} (id={})", title, video_id);
-            }
-        }
-    }
-
-    let _sub_output = tokio::process::Command::new(ytdlp)
-        .args([
-            "--write-sub",      //
-            "--write-auto-sub", //
+            "--write-sub",
+            "--write-auto-sub",
             "--sub-langs",
             "zh-HK,zh-TW,zh-Hans,zh,en.*,en",
             "--sub-format",
@@ -191,14 +163,31 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
             "--ffmpeg-location",
             ffmpeg_path.to_str().unwrap_or("ffmpeg"),
             "--js-runtimes",
-            "auto",
+            "node",
             "-o",
             &output_template,
             url,
         ])
         .output()
         .await
-        .map_err(|e| format!("yt-dlp subtitle error: {}", e))?;
+        .map_err(|e| format!("yt-dlp error: {}", e))?;
+
+    let mut title = String::new();
+    let mut description = String::new();
+    let mut channel = String::new();
+    let mut video_id = String::new();
+
+    if !combined_output.stdout.is_empty() {
+        if let Ok(json_str) = String::from_utf8(combined_output.stdout) {
+            if let Ok(info) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                title = info["title"].as_str().unwrap_or("").to_string();
+                description = info["description"].as_str().unwrap_or("").to_string();
+                channel = info["uploader"].as_str().unwrap_or("").to_string();
+                video_id = info["id"].as_str().unwrap_or("").to_string();
+                println!("[VIDEO_PARSER]    Video: {} (id={})", title, video_id);
+            }
+        }
+    }
 
     let transcript = if !video_id.is_empty() {
         let sub_paths = vec![
@@ -419,6 +408,17 @@ fn sanitize_subtitle_text(text: &str) -> String {
         .to_string()
 }
 
+/// 判斷字元是否為 CJK（中日韓）文字。
+/// CJK 字元之間不需要空格分隔。
+fn is_cjk_char(c: char) -> bool {
+    let u = c as u32;
+    // CJK Unified Ideographs, Hiragana, Katakana
+    (u >= 0x4E00 && u <= 0x9FFF)
+        || (u >= 0x3040 && u <= 0x30FF)
+        // CJK Extension A
+        || (u >= 0x3400 && u <= 0x4DBF)
+}
+
 /// 將一行行的短字幕合併成多個段落，並去除真正的重複內容。
 ///
 /// 去重策略：
@@ -475,15 +475,18 @@ fn coalesce_subtitle_lines(raw: &str) -> String {
                 current_para = segment;
             } else {
                 // 將短行展開為連續文字
-                let is_cjk = segment
+                // CJK 字元之間不需要空格，CJK↔拉丁之間需要空格
+                let prev_is_cjk = current_para
+                    .chars()
+                    .last()
+                    .map(is_cjk_char)
+                    .unwrap_or(false);
+                let next_is_cjk = segment
                     .chars()
                     .next()
-                    .map(|c| {
-                        (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF
-                            || (c as u32) >= 0x3040 && (c as u32) <= 0x30FF
-                    })
+                    .map(is_cjk_char)
                     .unwrap_or(false);
-                if is_cjk {
+                if prev_is_cjk && next_is_cjk {
                     current_para.push_str(&segment);
                 } else {
                     current_para.push(' ');
@@ -517,16 +520,25 @@ pub async fn fetch_bilibili_subtitles(
         bvid
     );
     println!("[BILI DEBUG] View URL: {}", view_url);
-    let res = client
-        .get(&view_url)
-        .send()
-        .await
-        .map_err(|e| format!("View API Error: {}", e))?;
-    let view_json: serde_json::Value = res
-        .json()
-        .await
-        .map_err(|e| format!("JSON Parse Error: {}", e))?;
 
+    let sess_ref = sessdata.as_deref();
+
+    // View API 和 Nav API（WBI keys）互相獨立，並行調用以減少延遲
+    let (view_result, wbi_result) = tokio::join!(
+        async {
+            let res = client
+                .get(&view_url)
+                .send()
+                .await
+                .map_err(|e| format!("View API Error: {}", e))?;
+            res.json::<serde_json::Value>()
+                .await
+                .map_err(|e| format!("JSON Parse Error: {}", e))
+        },
+        fetch_wbi_keys(&client, sess_ref)
+    );
+
+    let view_json = view_result?;
     if view_json["code"] != 0 {
         return Err(format!("Bilibili API Error: {}", view_json["message"]));
     }
@@ -544,10 +556,9 @@ pub async fn fetch_bilibili_subtitles(
     println!("[BILI DEBUG] Title from API: {}", title);
     println!("[BILI DEBUG] CID: {}", cid);
 
-    let sess_ref = sessdata.as_deref();
     let cid_str = cid.to_string();
 
-    let player_json: serde_json::Value = match fetch_wbi_keys(&client, sess_ref).await {
+    let player_json: serde_json::Value = match wbi_result {
         Ok((img_key, sub_key)) => {
             let mixin_key = gen_mixin_key(&img_key, &sub_key);
             let signed_query = wbi_sign(&[("bvid", bvid), ("cid", &cid_str)], &mixin_key);
@@ -785,79 +796,82 @@ pub async fn fetch_bilibili_subtitles(
     Ok(result)
 }
 
+fn clean_inline_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// 從 URL 產生可讀標題（fallback 用）
+pub fn readable_title_from_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return "Untitled URL".to_string();
+    }
+
+    let without_scheme = trimmed
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("www.");
+    let host_and_path = without_scheme.split('#').next().unwrap_or(without_scheme);
+    let host_and_path = host_and_path.split('?').next().unwrap_or(host_and_path);
+    let mut parts = host_and_path.splitn(2, '/');
+    let host = parts.next().unwrap_or("").trim();
+    let path = parts.next().unwrap_or("").trim();
+
+    if host.is_empty() {
+        return trimmed.to_string();
+    }
+
+    let slug = path
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .next_back()
+        .unwrap_or("")
+        .replace(['-', '_'], " ");
+    let slug = clean_inline_text(&slug);
+
+    if slug.is_empty() {
+        host.to_string()
+    } else {
+        format!("{} | {}", slug, host)
+    }
+}
+
+/// 從 video_parser 輸出的格式化內容中提取影片標題
+pub fn extract_video_title(content: &str, platform: &str) -> Option<String> {
+    let platform_lower = platform.to_lowercase();
+    let lines: Vec<String> = content
+        .lines()
+        .map(clean_inline_text)
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let line_lower = line.to_lowercase();
+        if !line_lower.starts_with(&platform_lower) {
+            continue;
+        }
+
+        let mut title = line[platform.len()..].trim().to_string();
+        if title.is_empty() {
+            continue;
+        }
+
+        if let Some(channel) = lines.get(idx + 1) {
+            let is_url = channel.starts_with("http://") || channel.starts_with("https://");
+            if !is_url && channel.len() <= 80 {
+                title = format!("{} | {}", title, channel);
+            }
+        }
+        return Some(clean_inline_text(&title));
+    }
+
+    None
+}
+
 pub async fn parse_url_content(
     url_str: &str,
     sessdata: Option<String>,
 ) -> Result<ParsedDocument, String> {
-    fn clean_inline_text(value: &str) -> String {
-        value.split_whitespace().collect::<Vec<_>>().join(" ")
-    }
-
-    fn readable_title_from_url(url: &str) -> String {
-        let trimmed = url.trim();
-        if trimmed.is_empty() {
-            return "Untitled URL".to_string();
-        }
-
-        let without_scheme = trimmed
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .trim_start_matches("www.");
-        let host_and_path = without_scheme.split('#').next().unwrap_or(without_scheme);
-        let host_and_path = host_and_path.split('?').next().unwrap_or(host_and_path);
-        let mut parts = host_and_path.splitn(2, '/');
-        let host = parts.next().unwrap_or("").trim();
-        let path = parts.next().unwrap_or("").trim();
-
-        if host.is_empty() {
-            return trimmed.to_string();
-        }
-
-        let slug = path
-            .split('/')
-            .filter(|s| !s.is_empty())
-            .next_back()
-            .unwrap_or("")
-            .replace(['-', '_'], " ");
-        let slug = clean_inline_text(&slug);
-
-        if slug.is_empty() {
-            host.to_string()
-        } else {
-            format!("{} | {}", slug, host)
-        }
-    }
-
-    fn extract_video_title(content: &str, platform: &str) -> Option<String> {
-        let platform_lower = platform.to_lowercase();
-        let lines: Vec<String> = content
-            .lines()
-            .map(clean_inline_text)
-            .filter(|line| !line.is_empty())
-            .collect();
-
-        for (idx, line) in lines.iter().enumerate() {
-            let line_lower = line.to_lowercase();
-            if !line_lower.starts_with(&platform_lower) {
-                continue;
-            }
-
-            let mut title = line[platform.len()..].trim().to_string();
-            if title.is_empty() {
-                continue;
-            }
-
-            if let Some(channel) = lines.get(idx + 1) {
-                let is_url = channel.starts_with("http://") || channel.starts_with("https://");
-                if !is_url && channel.len() <= 80 {
-                    title = format!("{} | {}", title, channel);
-                }
-            }
-            return Some(clean_inline_text(&title));
-        }
-
-        None
-    }
 
     if url_str.contains("youtube.com/watch") || url_str.contains("youtu.be/") {
         match fetch_youtube_subtitles(url_str).await {

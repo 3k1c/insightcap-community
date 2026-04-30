@@ -1679,10 +1679,8 @@ export const SettingsPage: React.FC = () => {
                         <span className="text-[10px] font-bold text-accent-default tracking-widest uppercase opacity-70">
                             InsightCAP v0.1.0
                         </span>
-                        <span className="text-fs-xs text-text-tertiary font-medium">
-                            {t('common.created_by')}
-                        </span>
-                        <span className="text-[9px] text-text-tertiary/40 leading-tight mt-1">
+
+                        <span className="text-[9px] text-text-tertiary/40 leading-tight mt-1 whitespace-pre-line">
                             {t('common.copyright')}
                         </span>
                     </div>

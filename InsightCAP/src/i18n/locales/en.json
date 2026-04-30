@@ -130,7 +130,8 @@
         "copied": "Copied",
         "warning_irreversible": "⚠️ This action cannot be undone!",
         "confirm_action": "Are you sure you want to perform this action?",
-        "dimension": "D"
+        "dimension": "D",
+        "copyright": "Copyright (c) 2026 3k1c\nAll rights reserved."
     },
     "auth": {
         "setup": {

@@ -294,9 +294,25 @@ pub async fn scrape_and_ingest_url(
     let mut clean_content = String::new();
     let mut html = String::new();
 
-    if host.contains("youtube.com") || host.contains("youtu.be") || host.contains("bilibili.com") {
-        title = "Video Link".to_string();
-        clean_content = "Video content is handled by the dedicated video parser.".to_string();
+    if host.contains("youtube.com") || host.contains("youtu.be") {
+        match crate::capture::video_parser::fetch_youtube_subtitles(url_str).await {
+            Ok(content) => {
+                title = crate::capture::video_parser::extract_video_title(&content, "YouTube")
+                    .unwrap_or_else(|| url_str.to_string());
+                clean_content = content;
+                html = clean_content.clone();
+            }
+            Err(e) => {
+                eprintln!("[SCRAPER] YouTube parse failed for {}: {}", url_str, e);
+                title = url_str.to_string();
+                clean_content = format!("Failed to extract video content: {}", e);
+                html = format!("<h1>{}</h1><p>{}</p>", title, clean_content);
+            }
+        }
+    } else if host.contains("bilibili.com") {
+        eprintln!("[SCRAPER] Bilibili requires SESSDATA, skipping: {}", url_str);
+        title = url_str.to_string();
+        clean_content = "Bilibili 影片需透過 video_parser::parse_url_content 並提供 SESSDATA".to_string();
         html = format!("<h1>{}</h1><p>{}</p>", title, clean_content);
     }
 
@@ -394,21 +410,31 @@ pub async fn scrape_url(
     is_url_safe(&parsed_url)?;
 
     let host = parsed_url.host_str().unwrap_or("");
-    if host.contains("youtube.com") || host.contains("youtu.be") || host.contains("bilibili.com") {
+    if host.contains("youtube.com") || host.contains("youtu.be") {
+        // scrape_url 無 sessdata，直接調用 fetch_youtube_subtitles 避免
+        // 透過 parse_url_content 造成 async 遞迴
+        let content = crate::capture::video_parser::fetch_youtube_subtitles(url_str).await?;
+        let title = crate::capture::video_parser::extract_video_title(&content, "YouTube")
+            .unwrap_or_else(|| crate::capture::video_parser::readable_title_from_url(url_str));
         return Ok(crate::capture::file_parser::ParsedDocument {
-            title: "Video Link".to_string(),
+            title,
             chunks: vec![crate::capture::file_parser::FileChunk {
-                content: "Video content is handled by the dedicated video parser.".to_string(),
+                content,
                 chunk_type: "document".to_string(),
-                source_type: "web_url".to_string(),
+                source_type: "youtube_subtitle".to_string(),
                 metadata: serde_json::json!({
-                    "source_type": "web_url",
-                    "url": url_str,
+                    "source_type": "youtube_subtitle",
+                    "source_url": url_str,
                 }),
                 image_path: None,
                 status: "processed".to_string(),
             }],
         });
+    }
+    if host.contains("bilibili.com") {
+        return Err(
+            "Bilibili 影片需要使用 video_parser::parse_url_content 並提供 SESSDATA".to_string(),
+        );
     }
 
     let client = Client::builder()
