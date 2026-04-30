@@ -322,14 +322,23 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 | URL 類型 | 方法 | 降級 |
 |---------|------|------|
 | 一般網頁 | HTTP GET + Readability 正文萃取 | 無降級 |
-| YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | yt-dlp 不存在時爬取頁面標題+描述 |
-| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 預覽模式自動加入 `&autoplay=0` 以提升載入順序與靜後。需要 SESSDATA Cookie（AI 設置頁彈出視窗登入）。 |
+| YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | 當無字幕時，自動啟動本地 Whisper 模型下載音軌並轉錄為中文字幕。支援動態實體核心加速（`-t N`）與語系自動偵測（`-l auto`），自動產生唯一 UUID 防止併發檔案鎖死。 |
+| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 預覽模式自動加入 `&autoplay=0` 以提升載入順序與靜默。需要 SESSDATA Cookie（AI 設置頁彈出視窗登入）。 |
 
 **Bilibili 登入驗證機制（原生彈出視窗）：**
 - 於設定頁（AI 設置分頁）點擊登入，呼叫 Rust command `open_bilibili_login`。
 - 建立 `WebviewWindow` 開啟 B站原生登入網頁，由用戶操作（支援密碼、簡訊、掃碼）。
 - 後台非同步輪詢利用 Tauri v2原生 `win.cookies()` API 繞過 HttpOnly 限制，主動擷取 `SESSDATA`。
 - 成功擷取後自動關閉彈窗並寫回 `Settings`，前端實時更新登錄狀態燈號。
+
+**系統托盤狀態 (Tray Status) 與擷取生命週期：**
+為了讓背景擷取（如耗時的影片轉錄）具備更好的操作感知，系統實作了精細的托盤指示燈狀態機：
+1. **💜 紫色 (Capturing)**：按下快捷鍵觸發，表示任務成功寫入 `inbox` 佇列（排隊中）。
+2. **💛 黃色 (Processing)**：背景 `CaptureProcessor` 正式接手任務並開始高耗能處理（如 Whisper 轉錄、文字分塊與向量化）。
+3. **💙 藍色 (Done)**：處理完成，顯示 3 秒。
+4. **💚 綠色 (Idle)**：完全閒置。
+5. **❤️ 紅色 (Error)**：處理過程中發生錯誤。
+此設計有效分離了「寫入佇列」與「實際處理」兩個階段，即使連續進行多次長影片擷取，用戶依然能透過紫燈確認請求已收件而未遺失。
 
 三個入口（對話附件、Ctrl+Alt+F、Ctrl+Alt+G）均使用同一個 `parse_url_content` 實作，差異只在觸發流程：
 - 對話輸入框「加入網址」→ `create_temp_chunk` → **立即同步**解析，結果作為臨時附件

@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TrayStatus {
     Idle,
+    Capturing,
     Processing,
     Done,
     Error,
@@ -14,7 +15,8 @@ impl TrayStatus {
     fn dot_color(self) -> Rgba<u8> {
         match self {
             TrayStatus::Idle => Rgba([34, 197, 94, 255]),
-            TrayStatus::Processing => Rgba([234, 179, 8, 255]),
+            TrayStatus::Capturing => Rgba([168, 85, 247, 255]), // Purple
+            TrayStatus::Processing => Rgba([234, 179, 8, 255]), // Yellow
             TrayStatus::Done => Rgba([59, 130, 246, 255]),
             TrayStatus::Error => Rgba([239, 68, 68, 255]),
         }

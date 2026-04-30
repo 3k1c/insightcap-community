@@ -12,6 +12,7 @@ pub mod video_parser;
 
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
+use crate::tray_status::{set_tray_status, TrayStatus};
 
 fn normalize_video_url(url: &str) -> String {
     let trimmed = url.trim();
@@ -26,6 +27,20 @@ fn normalize_video_url(url: &str) -> String {
                 .unwrap_or("");
             if !bvid.is_empty() {
                 return format!("https://www.bilibili.com/video/{}", bvid);
+            }
+        }
+    }
+    if trimmed.contains("youtu.be/") {
+        if let Some(id) = trimmed.split("youtu.be/").nth(1) {
+            let video_id = id
+                .split('?')
+                .next()
+                .unwrap_or("")
+                .split('/')
+                .next()
+                .unwrap_or("");
+            if !video_id.is_empty() {
+                return format!("https://www.youtube.com/watch?v={}", video_id);
             }
         }
     }
@@ -56,6 +71,7 @@ pub struct CapturePayload {
 }
 
 pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
+    set_tray_status(&app, TrayStatus::Capturing);
     let pool = app.state::<SqlitePool>();
     println!("\n[CAPTURE] Hotkey triggered. Starting capture...");
 
@@ -78,6 +94,7 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     let clipboard_data = match clipboard_result {
         Ok(data) => data,
         Err(_) => {
+            set_tray_status(&app, TrayStatus::Idle);
             println!("[CAPTURE] No selection detected, aborting capture.");
             return Ok(());
         }

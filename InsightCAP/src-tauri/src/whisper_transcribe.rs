@@ -69,25 +69,24 @@ impl WhisperModel {
     }
 }
 
-pub fn model_dir() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let models_dir = dir.join("whisper_models");
-            let _ = std::fs::create_dir_all(&models_dir);
-            return models_dir;
-        }
+fn app_data_dir() -> PathBuf {
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        return PathBuf::from(local).join("InsightCAP");
     }
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join(".insightcap");
+    }
+    std::env::temp_dir().join("InsightCAP")
+}
 
-    let fallback = std::env::temp_dir().join("insightcap_whisper_models");
-    let _ = std::fs::create_dir_all(&fallback);
-    fallback
+pub fn model_dir() -> PathBuf {
+    let dir = app_data_dir().join("models");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 pub fn config_path() -> PathBuf {
-    model_dir()
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("whisper_config.json")
+    app_data_dir().join("models").join("whisper_config.json")
 }
 
 pub fn model_path(model: WhisperModel) -> PathBuf {
@@ -114,11 +113,27 @@ pub fn is_model_downloaded(model: WhisperModel) -> bool {
 
 pub fn read_model_preference() -> WhisperModel {
     let config = std::fs::read_to_string(config_path()).ok();
-    config
+    let preferred = config
         .as_deref()
         .and_then(crate::capture::video_parser::parse_preferred_whisper_model_name)
-        .and_then(WhisperModel::from_name)
-        .unwrap_or_else(WhisperModel::default_model)
+        .and_then(WhisperModel::from_name);
+
+    // 若設定的模型已下載，直接使用
+    if let Some(ref model) = preferred {
+        if is_model_downloaded(*model) {
+            return *model;
+        }
+    }
+
+    // 找第一個已下載的模型（從小到大）
+    for model in &[WhisperModel::Tiny, WhisperModel::Base, WhisperModel::Small, WhisperModel::Medium] {
+        if is_model_downloaded(*model) {
+            return *model;
+        }
+    }
+
+    // 全部未下載，回傳使用者設定值或預設值
+    preferred.unwrap_or_else(WhisperModel::default_model)
 }
 
 pub fn write_model_preference(model: WhisperModel) -> Result<(), String> {
@@ -195,23 +210,25 @@ pub async fn download_audio_as_wav(
     output_dir: &Path,
     video_id: &str,
 ) -> Result<PathBuf, String> {
-    let wav_path = output_dir.join(format!("{}.wav", video_id));
+    let unique_id = uuid::Uuid::now_v7().to_string();
+    let file_id = format!("{}_{}", video_id, unique_id);
+    let wav_path = output_dir.join(format!("{}.wav", file_id));
     let ffmpeg_path = ytdlp.parent().unwrap_or(Path::new(".")).join("ffmpeg.exe");
 
     let output = tokio::process::Command::new(ytdlp)
         .args([
             "--no-playlist",
+            "-f",
+            "bestaudio",
             "-x",
             "--audio-format",
             "wav",
-            "--postprocessor-args",
-            "ffmpeg:-ar 16000 -ac 1",
             "--ffmpeg-location",
             ffmpeg_path.to_str().unwrap_or("ffmpeg"),
             "--js-runtimes",
-            "auto",
+            "node",
             "-o",
-            wav_path.to_str().unwrap_or("audio.wav"),
+            &output_dir.join(format!("{}.%(ext)s", file_id)).to_string_lossy(),
             url,
         ])
         .output()
@@ -224,10 +241,33 @@ pub async fn download_audio_as_wav(
     }
 
     if !wav_path.exists() {
-        return Err("yt-dlp did not produce expected wav file".to_string());
+        return Err("yt-dlp did not produce expected audio file".to_string());
     }
 
-    Ok(wav_path)
+    // yt-dlp 下載的可能是 webm/m4a，用 ffmpeg 轉成 16kHz mono WAV
+    let converted_path = output_dir.join(format!("{}_16k.wav", file_id));
+    let ffmpeg_output = tokio::process::Command::new(&ffmpeg_path)
+        .args([
+            "-i",
+            wav_path.to_str().unwrap_or("audio"),
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-y",
+            converted_path.to_str().unwrap_or("out.wav"),
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("ffmpeg conversion error: {}", e))?;
+
+    if !ffmpeg_output.status.success() {
+        let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr);
+        return Err(format!("ffmpeg conversion failed: {}", stderr));
+    }
+
+    let _ = std::fs::remove_file(&wav_path);
+    Ok(converted_path)
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +304,7 @@ pub async fn transcribe_video(
     let _ = std::fs::create_dir_all(&temp_dir);
 
     let wav_path = download_audio_as_wav(ytdlp, url, &temp_dir, video_id).await?;
-    let transcript = run_whisper_cli(&wav_path, model, None).await;
+    let transcript = run_whisper_cli(&wav_path, model, Some("auto")).await;
     let _ = std::fs::remove_file(&wav_path);
     let transcript = transcript?;
 
@@ -343,11 +383,18 @@ fn build_whisper_cli_args(
     output_dir: &Path,
     language: Option<&str>,
 ) -> Vec<String> {
+    // 預設使用實體核心數量來最佳化速度
+    let threads = std::thread::available_parallelism()
+        .map(|n| (n.get() / 2).max(2))
+        .unwrap_or(4);
+
     let mut args = vec![
         "-m".to_string(),
         model_path(model).to_string_lossy().to_string(),
         "-f".to_string(),
         wav_path.to_string_lossy().to_string(),
+        "-t".to_string(),
+        threads.to_string(),
     ];
 
     if let Some(lang) = language {
@@ -527,6 +574,10 @@ mod tests {
             Some("yue"),
         );
 
+        let threads = std::thread::available_parallelism()
+            .map(|n| (n.get() / 2).max(2))
+            .unwrap_or(4);
+
         assert_eq!(
             args,
             vec![
@@ -534,6 +585,8 @@ mod tests {
                 model_path(WhisperModel::Medium).to_string_lossy().to_string(),
                 "-f".to_string(),
                 r"C:\tmp\audio.wav".to_string(),
+                "-t".to_string(),
+                threads.to_string(),
                 "-l".to_string(),
                 "yue".to_string(),
                 "-otxt".to_string(),
