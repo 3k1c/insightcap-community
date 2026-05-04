@@ -5,6 +5,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { useLanguageStore } from '../stores/languageStore';
+import type { Language } from '../i18n';
 
 type Step = 'workspace' | 'password' | 'recovery';
 
@@ -14,6 +16,7 @@ interface SetupPageProps {
 
 export function SetupPage({ onComplete }: SetupPageProps) {
     const { t } = useTranslation();
+    const { language, setLanguage } = useLanguageStore();
     const [step, setStep] = useState<Step>('workspace');
     const [workspacePath, setWorkspacePath] = useState('');
     const [password, setPassword] = useState('');
@@ -111,6 +114,21 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                     <p className="mt-1 text-fs-sm text-text-tertiary">
                         {t('auth.setup.subtitle')}
                     </p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                        <label htmlFor="setup-language" className="text-fs-xs font-medium text-text-secondary">
+                            {t('language.label')}
+                        </label>
+                        <select
+                            id="setup-language"
+                            value={language}
+                            onChange={e => setLanguage(e.target.value as Language)}
+                            className="h-8 rounded-md border border-stroke-divider bg-surface-base px-2 text-fs-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-stroke-focus"
+                        >
+                            <option value="zh-TW">{t('language.zh-TW')}</option>
+                            <option value="zh-CN">{t('language.zh-CN')}</option>
+                            <option value="en">{t('language.en')}</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2 mb-6">

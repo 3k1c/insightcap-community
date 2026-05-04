@@ -61,7 +61,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "yt-dlp.exe"
+      "yt-dlp.exe",
+      "resources/vc-runtime/*"
     ],
     "windows": {
       "nsis": {
