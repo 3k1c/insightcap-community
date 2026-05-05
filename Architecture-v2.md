@@ -30,17 +30,17 @@ InsightCAP 是**經驗調用系統**。
 
 ## 產品形態
 
-### InsightCAP Personal（個人版）
+### InsightCAP Personal（個人版 v1.0.0）
 - 單用戶，本地優先
 - 知識源：sources + captures + memory_chunks
 - 向量索引：通用 MultilingualE5Small（384 維）
-- 登入：本地密碼 + Argon2id + Keychain
+- 登入：本地密碼 + Argon2id + 系統金鑰環 (Keyring)
 
 ### InsightCAP Enterprise（商業版）
 - 單用戶，本地優先（每人各自安裝，知識庫完全私有）
 - 知識源：sources + captures + memory_chunks + Knowledge Builder 產出的外部 KB
 - 向量索引：個人部分同個人版；外部 KB 使用專業模型（可為 768 維）
-- 登入：同個人版（本地密碼 + Argon2id + Keychain）
+- 登入：同個人版（本地密碼 + Argon2id + 系統金鑰環 Keyring）
 - 差異核心：`KnowledgeSource` trait 的商業版實現，支援多維度多索引
 
 ### Knowledge Builder（商業版配套工具）
@@ -65,10 +65,11 @@ InsightCAP 是**經驗調用系統**。
 | 向量庫 | usearch | 本地向量索引（支援多索引） |
 | Embedding | fastembed-rs | 本地向量化 |
 | 文本編輯器 | Tiptap（ProseMirror） | 內建文件編輯器 |
+| 語音轉文字 | Whisper (whisper-cli / whisper.cpp) | 影片字幕提取（本地降級） |
 | 本地 LLM | Ollama HTTP API | 可選本地模型 |
-| 雲端 AI | OpenAI / Gemini / OpenAI-compatible | 可選雲端模型 |
+| 雲端 AI | OpenAI / Gemini / Anthropic / xAI / OpenRouter | 可選雲端模型 |
 | 手機端入口 | Telegram Bot polling | 取代原生 React Native 手機版 |
-| 手機端推理 | 桌面端代理 / 雲端 LLM | 手機只負責輸入與接收回覆 |
+| 安全加密 | Keyring (系統金鑰環) | 儲存 DB Key 與 API 金鑰 |
 | 本地 HTTP | Axum `0.0.0.0:3030` | 內部 API / 後續擴充 |
 
 ---
@@ -322,8 +323,8 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 | URL 類型 | 方法 | 降級 |
 |---------|------|------|
 | 一般網頁 | HTTP GET + Readability 正文萃取 | 無降級 |
-| YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | 當無字幕時，自動啟動本地 Whisper 模型下載音軌並轉錄為中文字幕。支援動態實體核心加速（`-t N`）與語系自動偵測（`-l auto`），自動產生唯一 UUID 防止併發檔案鎖死。 |
-| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 預覽模式自動加入 `&autoplay=0` 以提升載入順序與靜默。需要 SESSDATA Cookie（AI 設置頁彈出視窗登入）。 |
+| YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | 當無字幕或下載失敗時，自動啟動本地 **Whisper** 模型進行音軌轉錄。支援 Tiny/Base/Small/Medium 模型，具備語系自動偵測。 |
+| Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 預覽模式自動加入 `&autoplay=0` 並優化加載順序。支援 WBI 參數動態簽名與 SESSDATA 驗證。 |
 
 **Bilibili 登入驗證機制（原生彈出視窗）：**
 - 於設定頁（AI 設置分頁）點擊登入，呼叫 Rust command `open_bilibili_login`。
@@ -624,6 +625,31 @@ create_editor_document(title) → 在 {kb_path}/.insightcap/documents/ 建立 .m
 
 ---
 
+## 初始設定嚮導 (Initial Setup Wizard)
+
+當系統偵測到 `bootstrap.json` 不存在時，會自動進入 5 步初始設定嚮導（`SetupPage.tsx`），引導用戶完成基礎配置：
+
+1.  **歡迎頁面 (Welcome)**：展示核心功能與全域快捷鍵（Ctrl+Alt+F / Ctrl+Alt+G）。
+2.  **AI 提供者配置 (AI Provider)**：
+    *   選擇 AI Provider（OpenAI, Anthropic, Google, xAI, OpenRouter, Ollama）。
+    *   輸入 API Key（除 Ollama 外）與模型名稱（預設為 `gpt-4o-mini` 或 `qwen2.5:7b`）。
+    *   提供「暫時跳過」選項，允許後續於設定頁面配置。
+3.  **工作區設定 (Workspace)**：
+    *   選擇知識庫存放路徑（預設於用戶文件夾下的 `InsightCAP`）。
+    *   系統會自動於該路徑建立 `.insightcap` 結構。
+4.  **安全密碼設定 (Password)**：
+    *   設定本地解鎖密碼（Argon2id 衍生金鑰）。
+    *   此密碼將用於加密 SQLite 資料庫。
+5.  **備份恢復碼 (Recovery)**：
+    *   生成 24 個單字的助記詞（Mnemonic）。
+    *   要求用戶確認已保存恢復碼，這是遺失密碼時唯一的救命稻草。
+
+**技術細節**：
+*   設定過程中，API Key 會立即透過 `auth_commands` 寫入系統金鑰環（Keyring）。
+*   完成所有步驟後，系統會原子寫入 `bootstrap.json` 並強制重啟應用。
+
+---
+
 ## AppState
 
 Tauri 全域狀態（managed state），所有 command 通過 `State<'_, AppState>` 存取：
@@ -662,6 +688,7 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `aiModels` | `visionModel` | 可選 Vision 模型，用於增強圖片和 PDF 掃描頁的 OCR 結果；若配置會在 parse_file / parse_content / ocr_worker 中自動探測能力並增強 |
 | `aiModels` | `embeddingModel` | Embedding 模型（預設 MultilingualE5Small，local） |
 | `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm） |
+| `aiModels` | `whisperModel` | 本地 Whisper 模型選擇（Tiny / Base / Small / Medium） |
 | `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單） |
 | `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |
 | `telegram` | `botToken`（加密存儲）/ `allowedChatIds: Vec<i64>` / `enabled: bool` / `promptInstructionOverride` | Telegram Bot 配置；已移除舊版 live streaming edit 邏輯，簡化為純通知流。 |
@@ -730,12 +757,11 @@ kb_path/（可能在雲端同步目錄）
 
 3. 確認 kb_path 下的 DB 文件存在
 
-4. 從 Keychain 讀取 db_key
+4. 從 **系統金鑰環 (Keyring)** 讀取 `auto_login_key` 作為 `db_key`
    → 讀取失敗 → 進入修復模式（要求用戶輸入密碼）
 
-5. 用 db_key 打開 DB
+5. 用 `db_key` 打開 DB
    → SQLCipher key 必須在建立連線時透過 SqliteConnectOptions::pragma("key", "\"x'hex'\"") 設定
-   → 不可在連線後執行 PRAGMA key（SQLCipher 規定）
    → 失敗 → 進入修復模式
 
 6. 執行 PRAGMA integrity_check
@@ -1996,6 +2022,15 @@ Embedding → usearch
   - v2.15 記載的「Insight / 知識指南分頁切換」已調整為純知識指南顯示
 - RAG commands 新增 `thinking_mode` 參數（normal/think），已實作 Think Mode 系統 prompt 前綴注入
 - RAG commands 新增 `_web_enabled` 參數 stub（佔位，尚未實作 Web 搜尋功能）
+
+*版本：v2.16 | 日期：2026-05-05*
+本次更新（Release 1.0.0）：
+- **正式發行版本 1.0.0**：穩定性優化，加入完整單元測試與集成測試
+- **安全架構升級 (Keyring)**：移除硬編碼 API 金鑰，全面接入系統金鑰環 (Keyring) 加密儲存
+- **初始設定嚮導 (Setup Wizard)**：新增 5 步引導流程，支援 AI Provider 初始配置與語系選擇
+- **影片轉錄增強 (Whisper)**：YouTube 擷取增加本地 Whisper 模型降級機制，支援多種模型規模（Tiny 到 Medium）
+- **安裝包優化**：優化 NSIS 安裝腳本，預裝必要的運行時組件，提升首次啟動成功率
+- **品牌識別更新**：移除開發者個人標識，統一官方品牌與版權資訊
 
 *版本：v2.15 | 日期：2026-04-06*
 本次更新：
