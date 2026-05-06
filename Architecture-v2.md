@@ -307,16 +307,19 @@ PatternPromotion 掃描：
 
 **Ctrl+Alt+F 流程細節：**
 ```
-複製選取文字
+複製選取文字 / 檔案
   ↓ 剪貼簿為空 → 靜默返回（不觸發 Quick Capture）
   ↓ 偵測到純 URL → content_type = 'url'，source_url = normalize_video_url(trimmed)
+  ↓ 偵測到檔案 → 支援文件、圖片與音訊，直接進 process_clipboard_file
   ↓
 寫入 inbox（content / content_type / source_url / source_exe / window_title）
   ↓
 CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
   url → parse_url_content（網頁 Readability / YouTube yt-dlp / Bilibili WBI API）
-  text / image → 直接寫入 sources + captures
+  text / image / file → 直接寫入 sources + captures
 ```
+
+剪貼簿檔案擷取支援的音訊格式與「加入文件」一致：`.wav / .mp3 / .m4a / .aac / .flac / .ogg / .opus / .webm`。音訊會保存原檔副本到 KB `files/`，並透過 Whisper transcript 進入 `memory_chunks`。
 
 **URL 擷取技術（三種）：**
 
@@ -325,6 +328,12 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 | 一般網頁 | HTTP GET + Readability 正文萃取 | 無降級 |
 | YouTube | yt-dlp 下載字幕（json3 格式，優先 zh-HK/zh-TW/zh/en） | 當無字幕或下載失敗時，自動啟動本地 **Whisper** 模型進行音軌轉錄。支援 Tiny/Base/Small/Medium 模型，具備語系自動偵測。 |
 | Bilibili | WBI 簽名 → `player/v2` API 取字幕列表 → 下載字幕 JSON | 預覽模式自動加入 `&autoplay=0` 並優化加載順序。支援 WBI 參數動態簽名與 SESSDATA 驗證。 |
+
+**本地音訊檔轉錄：**
+- `file_parser::parse_file` 支援 `.wav / .mp3 / .m4a / .aac / .flac / .ogg / .opus / .webm`。
+- `.wav` 直接送入 `whisper-cli`；其他格式先由 bundled / PATH 中可執行的 `ffmpeg` 轉成 16kHz mono WAV。
+- `whisper-cli` 同時輸出 TXT 與 SRT；若 SRT 存在，系統會以 timestamp segment 建立 transcript chunks，metadata 保留 `transcript_start_ms` / `transcript_end_ms`。
+- `SettingsPage` 的本地 Whisper 模型區支援下載與刪除模型；模型位於 `%LOCALAPPDATA%\InsightCAP\models`。
 
 **Bilibili 登入驗證機制（原生彈出視窗）：**
 - 於設定頁（AI 設置分頁）點擊登入，呼叫 Rust command `open_bilibili_login`。
@@ -401,6 +410,7 @@ Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 - 右側內容依日期分組，同日再分為「來源文件」與「筆記」兩個區塊
 - source / note 均可直接開啟預覽，並支援卡片 hover 顯示刪除按鈕
 - 今天區塊的來源文件區提供「導入文件」卡，使用原生檔案選擇器匯入本機文件
+- 當知識庫完全為空且沒有搜尋 / tag / space filter 時，仍建立今日 timeline group，顯示左側今日 marker 與「導入文件」卡；真正的搜尋無結果仍顯示空結果提示
 
 ### 兩類內容
 
@@ -409,7 +419,7 @@ Space 是**後台 AI 聚類概念**，不是用戶管理的容器。
 | **來源文件** | `timelineSources` / `source_category = editor_doc \| captured` | 由編輯器文件或匯入/擷取來源構成 |
 | **筆記** | `noteStore` 本地筆記 | 以獨立筆記檔案顯示於同一天的筆記區塊 |
 
-**擷取內容 media_type 細分：** `text` | `markdown` | `url` | `image` | `video` | `pdf` | `file`
+**擷取內容 media_type 細分：** `text` | `markdown` | `url` | `image` | `video` | `pdf` | `file` | `audio_transcript`
 
 ### 頁面結構（目前實作）
 
@@ -534,11 +544,11 @@ toast 顯示導入成功 / 失敗結果
 ```
 
 **[+] 附件選單（即時解析）：**
-- 加入文件（.txt / .md / .doc / .docx / .xlsx / .csv / .pptx / .pdf / 程式碼檔）
+- 加入文件（.txt / .md / .doc / .docx / .xlsx / .csv / .pptx / .pdf / 程式碼檔 / .wav / .mp3 / .m4a / .aac / .flac / .ogg / .opus / .webm）
 - 加入圖片 OCR（.png / .jpg / .jpeg / .webp / .gif）— chip 顯示縮圖
 - 加入網址（網頁 / YouTube / Bilibili）
 
-選取後立即呼叫 `create_temp_chunk` 解析，chip 顯示 spinner 直到解析完成，解析失敗顯示紅色錯誤 chip。附件 chunk ID 在同一對話內跨輪次保留（`conversationTempChunkIds`），不因送出而清空。附件內容以最高優先級注入 LLM context。
+選取後立即呼叫 `create_temp_chunk` 解析，chip 顯示 spinner 直到解析完成，解析失敗顯示紅色錯誤 chip。文件與音訊共用 `file_parser::parse_file`，音訊會先轉成 16kHz mono WAV，再由 Whisper 產生逐段 transcript chunk。附件 chunk ID 在同一對話內跨輪次保留（`conversationTempChunkIds`），不因送出而清空。附件內容以最高優先級注入 LLM context。
 
 **傳送限制：**
 - 任何附件仍在解析中（`isParsing`）→ 傳送按鈕 disabled
@@ -629,23 +639,27 @@ create_editor_document(title) → 在 {kb_path}/.insightcap/documents/ 建立 .m
 
 當系統偵測到 `bootstrap.json` 不存在時，會自動進入 5 步初始設定嚮導（`SetupPage.tsx`），引導用戶完成基礎配置：
 
-1.  **歡迎頁面 (Welcome)**：展示核心功能與全域快捷鍵（Ctrl+Alt+F / Ctrl+Alt+G）。
-2.  **AI 提供者配置 (AI Provider)**：
-    *   選擇 AI Provider（OpenAI, Anthropic, Google, xAI, OpenRouter, Ollama）。
-    *   輸入 API Key（除 Ollama 外）與模型名稱（預設為 `gpt-4o-mini` 或 `qwen2.5:7b`）。
-    *   提供「暫時跳過」選項，允許後續於設定頁面配置。
-3.  **工作區設定 (Workspace)**：
+1.  **歡迎頁面 (Welcome)**：展示產品價值、語言選擇與全域快捷鍵（Ctrl+Alt+F / Ctrl+Alt+G）。
+2.  **工作區設定 (Workspace)**：
     *   選擇知識庫存放路徑（預設於用戶文件夾下的 `InsightCAP`）。
     *   系統會自動於該路徑建立 `.insightcap` 結構。
-4.  **安全密碼設定 (Password)**：
+    *   若選擇已存在 InsightCAP 知識庫的路徑，前端會阻止繼續，避免覆寫既有 DB / auth files。
+3.  **安全密碼設定 (Password)**：
     *   設定本地解鎖密碼（Argon2id 衍生金鑰）。
     *   此密碼將用於加密 SQLite 資料庫。
+4.  **AI 提供者配置 (AI Provider，可跳過)**：
+    *   選擇 AI Provider（OpenAI, Anthropic, Google, xAI, OpenRouter, Ollama）。
+    *   輸入 API Key（除 Ollama 外）與模型名稱。
+    *   此步只收集前端 state；按「略過並建立」時不寫入 AI 設定。
 5.  **備份恢復碼 (Recovery)**：
     *   生成 24 個單字的助記詞（Mnemonic）。
     *   要求用戶確認已保存恢復碼，這是遺失密碼時唯一的救命稻草。
 
 **技術細節**：
-*   設定過程中，API Key 會立即透過 `auth_commands` 寫入系統金鑰環（Keyring）。
+*   `setup_auth` 只在第 4 步 AI 設定完成、準備進入第 5 步時呼叫一次。
+*   AI 設定若有填寫，透過 `setup_auth.initialSettings.aiModels` 沿用既有 settings 儲存 / 加密流程；略過時不帶 `initialSettings.aiModels`。
+*   recovery phrase 只由 `setup_auth` 回傳，前端不自行生成、不寫入 localStorage/sessionStorage。
+*   `confirm_new_recovery` 保持在第 5 步最終完成時呼叫。
 *   完成所有步驟後，系統會原子寫入 `bootstrap.json` 並強制重啟應用。
 
 ---
@@ -688,8 +702,8 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `aiModels` | `visionModel` | 可選 Vision 模型，用於增強圖片和 PDF 掃描頁的 OCR 結果；若配置會在 parse_file / parse_content / ocr_worker 中自動探測能力並增強 |
 | `aiModels` | `embeddingModel` | Embedding 模型（預設 MultilingualE5Small，local） |
 | `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm） |
-| `aiModels` | `whisperModel` | 本地 Whisper 模型選擇（Tiny / Base / Small / Medium） |
-| `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單） |
+| `aiModels` | `whisperModel` | 本地 Whisper 模型選擇（Tiny / Base / Small / Medium）；Settings 可下載或刪除已下載模型檔 |
+| `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單）；同一 provider 可建立多個 profile，例如多台 Ollama 主機以不同 `baseUrl` 區分 |
 | `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |
 | `telegram` | `botToken`（加密存儲）/ `allowedChatIds: Vec<i64>` / `enabled: bool` / `promptInstructionOverride` | Telegram Bot 配置；已移除舊版 live streaming edit 邏輯，簡化為純通知流。 |
 | `editor` | `promptInstructionOverride` | 編輯器專用 AI 偏好覆寫 |
@@ -702,6 +716,9 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 - **功能收納**：「智慧提醒（Smart Reminders）」設置已併入「一般設定」，移除獨立側邊欄分頁，減少介面層級。
 - **圖示規範**：「編輯器設定」統一使用 `PenLine` 圖示。
 - **視覺一致性**：所有 AI 偏好輸入框（全域/覆寫）背景色統一使用 `bg-surface-base`。
+- **避免原生瀏覽器 UI 外露**：設定頁中的時間選擇與安全確認流程使用 app 內自訂元件，不直接使用瀏覽器原生 `prompt` / `confirm` / `input[type=time]`，確保跟隨主題與視覺語言。
+- **Provider Profile 作為可選實例**：AI 模型設定下拉選單顯示 provider profile 名稱，而不是只顯示 provider 類型；選中 profile 後會把該 profile 的 `baseUrl` / `apiKey` 寫入模型設定。
+- **響應式資訊密度**：Provider profile 清單在窄版隱藏 `baseUrl`，只保留名稱、provider 類型與操作按鈕，避免壓縮版面。
 
 ---
 
@@ -856,7 +873,7 @@ CREATE TABLE sources (
   source_category  TEXT NOT NULL DEFAULT 'capture',
   -- editor（編輯器文件，暫存本地）| capture（擷取內容）
   media_type       TEXT,
-  -- text | markdown | url | image | video | pdf | file
+  -- text | markdown | url | image | video | pdf | file | audio_transcript
   title            TEXT NOT NULL,
   url              TEXT,
   source_group_id  TEXT REFERENCES source_groups(id) ON DELETE SET NULL,
@@ -1858,14 +1875,24 @@ mobile/
 ```json
 {
   "chat_llm":              { "provider": "ollama", "model": "qwen2.5:7b",    "base_url": "http://localhost:11434" },
-  "content_processor_llm": { "provider": "ollama", "model": "qwen2.5:3b",    "base_url": "http://localhost:11434" },
+  "content_processor_llm": { "provider": "ollama", "model": "qwen2.5:3b",    "base_url": "http://10.0.2.148:11434" },
   "vision_model":          { "provider": "ollama", "model": "minicpm-v",     "base_url": "http://localhost:11434" },
+  "provider_profiles": [
+    { "id": "local-ollama", "name": "本機", "provider": "ollama", "base_url": "http://localhost:11434" },
+    { "id": "lan-ollama", "name": "148", "provider": "ollama", "base_url": "http://10.0.2.148:11434" }
+  ],
   // Vision 模型配置：用於增強圖片和 PDF 掃描頁的 OCR 結果
   // 工作流：probe_vision_support（4×4 紅色測試圖探測，快取結果） → try_vision_enhance（若支援則調用）
   // 可選：若不配置或模型不支援 vision，系統將使用原生 OS OCR 結果
   "embedding_model":       { "provider": "local",  "model": "multilingual-e5-small" }
 }
 ```
+
+**Provider Profile 選擇規則：**
+- `SettingsPage` 的模型設定下拉選單使用 profile id 作為 UI value，避免兩個 `ollama` 被去重成同一個選項。
+- 儲存到 `ModelSettings` 時仍保留既有欄位：`provider` / `model` / `baseUrl` / `apiKey`，不新增後端 migration。
+- 後端 `resolve_profiles()` 仍可用 provider 類型補齊缺漏值；前端測試連線與模型設定會優先使用模型自身已保存的 `baseUrl` / `apiKey`，因此可把不同任務分配到不同 Ollama 主機。
+- Embedding 與語音轉文字模型的 `local` 選項在 UI 顯示為「系統預設（本地）」，語意上代表內建本地引擎，不等同於 Ollama provider。
 
 **settings.chat_prompt_instruction（用戶 AI 回答偏好）：**
 
@@ -2209,7 +2236,7 @@ kb_path/
 │   ├── recovery.bin        ← 加密備份的 db_key（日常恢復碼加密）
 │   ├── backup_recovery.bin ← 加密備份的 db_key（備份專用恢復碼加密，匯出時生成，匯入時解密）
 │   └── vectors/            ← usearch 向量索引
-├── files/                  ← 所有本地文件副本（PDF、DOCX、MD 等）
+├── files/                  ← 所有本地文件副本（PDF、DOCX、MD、音訊等）
 └── notes/                  ← 編輯器筆記（draft_<timestamp>.md）
 ```
 
@@ -2219,8 +2246,8 @@ kb_path/
 |---------|----|----|-----|-----------|
 | 熱鍵擷取（文字/URL）| 無 | 無 | ✅ 完整內嵌 | ✅ 安全 |
 | 熱鍵擷取（圖片）| 無 | 無 | ✅ OCR 後內嵌；image_data BLOB 在 DB | ✅ 安全 |
-| 剪貼簿拖入檔案（`process_clipboard_file`）| 原始外部路徑 | `files/<id>_<name>` ✅ KB 內副本 | ✅ 完整內嵌 | ✅ 安全 |
-| 匯入文件（`ingest_file`）| 原始外部路徑 | `files/<id>_<name>` ✅ KB 內副本 | ✅ 完整內嵌 | ✅ 安全 |
+| 剪貼簿拖入檔案（`process_clipboard_file`）| 原始外部路徑 | `files/<id>_<name>` ✅ KB 內副本 | ✅ 完整內嵌；音訊為 Whisper transcript | ✅ 安全 |
+| 匯入文件（`ingest_file`）| 原始外部路徑 | `files/<id>_<name>` ✅ KB 內副本 | ✅ 完整內嵌；音訊為 Whisper transcript | ✅ 安全 |
 | 編輯器筆記（`editor_doc`）| 無 | `notes/draft_<ts>.md` ✅ KB 內 | 空（由磁碟讀取）| ✅ 安全（notes/ 隨 zip 打包） |
 | 對話臨時附件（`temp_attachment`）| 外部路徑 | 無 | ✅ 完整內嵌 | ✅ 安全（臨時用途，7天自動清除）|
 | URL / 網頁 | 無（URL 存 `sources.url`）| 無 | ✅ 爬取結果內嵌 | ✅ 安全 |
