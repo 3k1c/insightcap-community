@@ -140,7 +140,6 @@ impl OpenAiProvider {
     }
 }
 
-
 struct ThinkTagParser {
     in_think: bool,
     tag_buffer: String,
@@ -289,7 +288,6 @@ impl Gemma4ChannelParser {
         }
     }
 }
-
 
 impl LLMProvider for OpenAiProvider {
     async fn complete(&self, prompt: &str, options: LLMOptions) -> Result<String, LLMError> {

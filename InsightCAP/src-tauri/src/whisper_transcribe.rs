@@ -12,12 +12,8 @@ pub enum WhisperModel {
 impl WhisperModel {
     pub fn download_url(&self) -> &'static str {
         match self {
-            Self::Tiny => {
-                "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
-            }
-            Self::Base => {
-                "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
-            }
+            Self::Tiny => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+            Self::Base => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
             Self::Small => {
                 "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
             }
@@ -126,7 +122,12 @@ pub fn read_model_preference() -> WhisperModel {
     }
 
     // 找第一個已下載的模型（從小到大）
-    for model in &[WhisperModel::Tiny, WhisperModel::Base, WhisperModel::Small, WhisperModel::Medium] {
+    for model in &[
+        WhisperModel::Tiny,
+        WhisperModel::Base,
+        WhisperModel::Small,
+        WhisperModel::Medium,
+    ] {
         if is_model_downloaded(*model) {
             return *model;
         }
@@ -140,6 +141,20 @@ pub fn write_model_preference(model: WhisperModel) -> Result<(), String> {
     let json = serde_json::json!({ "model": model.config_name() });
     std::fs::write(config_path(), json.to_string())
         .map_err(|e| format!("Failed to save whisper config: {}", e))
+}
+
+fn delete_model_file_at_path(path: &Path, model: WhisperModel) -> Result<String, String> {
+    if !path.exists() {
+        return Ok(format!("{} is not downloaded", model.filename()));
+    }
+
+    std::fs::remove_file(path)
+        .map_err(|e| format!("Failed to delete {}: {}", model.filename(), e))?;
+    Ok(format!("{} deleted successfully", model.filename()))
+}
+
+pub fn delete_model(model: WhisperModel) -> Result<String, String> {
+    delete_model_file_at_path(&model_path(model), model)
 }
 
 pub async fn download_model(
@@ -228,7 +243,9 @@ pub async fn download_audio_as_wav(
             "--js-runtimes",
             "node",
             "-o",
-            &output_dir.join(format!("{}.%(ext)s", file_id)).to_string_lossy(),
+            &output_dir
+                .join(format!("{}.%(ext)s", file_id))
+                .to_string_lossy(),
             url,
         ])
         .output()
@@ -277,21 +294,80 @@ pub struct TranscriptSegment {
     pub text: String,
 }
 
+struct WhisperCliOutput {
+    text: String,
+    segments: Vec<TranscriptSegment>,
+}
+
 pub async fn transcribe_wav(
     wav_path: &Path,
     model: WhisperModel,
     language: Option<&str>,
 ) -> Result<Vec<TranscriptSegment>, String> {
-    let transcript = run_whisper_cli(wav_path, model, language).await?;
-    if transcript.trim().is_empty() {
+    let output = run_whisper_cli(wav_path, model, language).await?;
+    if !output.segments.is_empty() {
+        return Ok(output.segments);
+    }
+    if output.text.trim().is_empty() {
         return Ok(Vec::new());
     }
 
     Ok(vec![TranscriptSegment {
         start_ms: 0,
         end_ms: 0,
-        text: transcript,
+        text: output.text,
     }])
+}
+
+pub async fn transcribe_audio_file(
+    audio_path: &Path,
+    model: WhisperModel,
+    language: Option<&str>,
+) -> Result<Vec<TranscriptSegment>, String> {
+    let ext = audio_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if whisper_cli_supports_audio_ext(&ext) {
+        return transcribe_wav(audio_path, model, language).await;
+    }
+
+    let ffmpeg = find_ffmpeg().ok_or(
+        "Cannot find runnable ffmpeg. Place a working ffmpeg.exe next to the app or install it in PATH.",
+    )?;
+    let temp_dir = std::env::temp_dir().join("insightcap_audio_import");
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let wav_path = temp_dir.join(format!("{}.wav", uuid::Uuid::now_v7()));
+
+    let output = tokio::process::Command::new(&ffmpeg)
+        .args([
+            "-i",
+            audio_path.to_str().unwrap_or("audio"),
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-y",
+            wav_path.to_str().unwrap_or("out.wav"),
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("ffmpeg conversion error: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg conversion failed: {}", stderr.trim()));
+    }
+
+    let result = transcribe_wav(&wav_path, model, language).await;
+    let _ = std::fs::remove_file(&wav_path);
+    result
+}
+
+fn whisper_cli_supports_audio_ext(ext: &str) -> bool {
+    matches!(ext, "wav")
 }
 
 pub async fn transcribe_video(
@@ -306,7 +382,7 @@ pub async fn transcribe_video(
     let wav_path = download_audio_as_wav(ytdlp, url, &temp_dir, video_id).await?;
     let transcript = run_whisper_cli(&wav_path, model, Some("auto")).await;
     let _ = std::fs::remove_file(&wav_path);
-    let transcript = transcript?;
+    let transcript = transcript?.text;
 
     if transcript.trim().is_empty() {
         return Err("Whisper returned empty transcript".to_string());
@@ -334,15 +410,48 @@ fn whisper_cli_candidates_from_base(base: &Path) -> Vec<PathBuf> {
     ]
 }
 
+fn first_runnable_candidate(
+    candidates: Vec<PathBuf>,
+    is_runnable: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.exists() && is_runnable(candidate))
+}
+
+fn whisper_cli_is_runnable(path: &Path) -> bool {
+    std::process::Command::new(path)
+        .arg("--help")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn ffmpeg_candidates_from_base(base: &Path) -> Vec<PathBuf> {
+    vec![
+        base.join("ffmpeg.exe"),
+        base.join("resources").join("ffmpeg.exe"),
+    ]
+}
+
+fn ffmpeg_is_runnable(path: &Path) -> bool {
+    std::process::Command::new(path)
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 fn find_whisper_cli() -> Option<PathBuf> {
     if let Ok(current_exe) = std::env::current_exe() {
         let mut dir = current_exe.parent().map(|p| p.to_path_buf());
         for _ in 0..5 {
             if let Some(d) = dir {
-                for candidate in whisper_cli_candidates_from_base(&d) {
-                    if candidate.exists() {
-                        return Some(candidate);
-                    }
+                if let Some(candidate) = first_runnable_candidate(
+                    whisper_cli_candidates_from_base(&d),
+                    whisper_cli_is_runnable,
+                ) {
+                    return Some(candidate);
                 }
                 dir = d.parent().map(|p| p.to_path_buf());
             } else {
@@ -352,11 +461,34 @@ fn find_whisper_cli() -> Option<PathBuf> {
     }
 
     for candidate in ["whisper-cli.exe", "whisper-cli", "main.exe", "main"] {
-        if std::process::Command::new(candidate)
-            .arg("--help")
-            .output()
-            .is_ok()
-        {
+        let path = PathBuf::from(candidate);
+        if whisper_cli_is_runnable(&path) {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+fn find_ffmpeg() -> Option<PathBuf> {
+    if let Ok(current_exe) = std::env::current_exe() {
+        let mut dir = current_exe.parent().map(|p| p.to_path_buf());
+        for _ in 0..5 {
+            if let Some(d) = dir {
+                if let Some(candidate) =
+                    first_runnable_candidate(ffmpeg_candidates_from_base(&d), ffmpeg_is_runnable)
+                {
+                    return Some(candidate);
+                }
+                dir = d.parent().map(|p| p.to_path_buf());
+            } else {
+                break;
+            }
+        }
+    }
+
+    for candidate in ["ffmpeg.exe", "ffmpeg"] {
+        if ffmpeg_is_runnable(Path::new(candidate)) {
             return Some(PathBuf::from(candidate));
         }
     }
@@ -380,7 +512,7 @@ fn whisper_binary_status_from_candidates(candidate: Option<PathBuf>) -> serde_js
 fn build_whisper_cli_args(
     wav_path: &Path,
     model: WhisperModel,
-    output_dir: &Path,
+    output_base: &Path,
     language: Option<&str>,
 ) -> Vec<String> {
     // 預設使用實體核心數量來最佳化速度
@@ -403,8 +535,9 @@ fn build_whisper_cli_args(
     }
 
     args.push("-otxt".to_string());
+    args.push("-osrt".to_string());
     args.push("-of".to_string());
-    args.push(output_dir.join("transcript").to_string_lossy().to_string());
+    args.push(output_base.to_string_lossy().to_string());
     args
 }
 
@@ -412,7 +545,7 @@ async fn run_whisper_cli(
     wav_path: &Path,
     model: WhisperModel,
     language: Option<&str>,
-) -> Result<String, String> {
+) -> Result<WhisperCliOutput, String> {
     if !is_model_downloaded(model) {
         return Err(format!(
             "Model not downloaded: {}. Please download it first.",
@@ -425,10 +558,13 @@ async fn run_whisper_cli(
 
     let output_dir = std::env::temp_dir().join("insightcap_whisper_cli");
     let _ = std::fs::create_dir_all(&output_dir);
-    let output_path = output_dir.join("transcript.txt");
+    let output_base = output_dir.join(format!("transcript_{}", uuid::Uuid::now_v7()));
+    let output_path = output_base.with_extension("txt");
+    let srt_path = output_base.with_extension("srt");
     let _ = std::fs::remove_file(&output_path);
+    let _ = std::fs::remove_file(&srt_path);
 
-    let args = build_whisper_cli_args(wav_path, model, &output_dir, language);
+    let args = build_whisper_cli_args(wav_path, model, &output_base, language);
     let output = tokio::process::Command::new(&whisper_cli)
         .args(&args)
         .output()
@@ -446,9 +582,25 @@ async fn run_whisper_cli(
         ));
     }
 
-    std::fs::read_to_string(&output_path)
+    if !output_path.exists() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Whisper CLI did not produce transcript {:?}: {} {}",
+            output_path,
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let text = std::fs::read_to_string(&output_path)
         .map(|text| text.trim().to_string())
-        .map_err(|e| format!("Failed to read Whisper transcript {:?}: {}", output_path, e))
+        .map_err(|e| format!("Failed to read Whisper transcript {:?}: {}", output_path, e))?;
+    let segments = std::fs::read_to_string(&srt_path)
+        .map(|content| parse_srt_segments(&content))
+        .unwrap_or_default();
+
+    Ok(WhisperCliOutput { text, segments })
 }
 
 pub fn format_timestamp_ms(ms: i64) -> String {
@@ -458,6 +610,44 @@ pub fn format_timestamp_ms(ms: i64) -> String {
     let seconds = total_secs % 60;
     let millis = ms % 1000;
     format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis)
+}
+
+fn parse_srt_timestamp(value: &str) -> Option<i64> {
+    let normalized = value.trim().replace(',', ".");
+    let mut parts = normalized.split([':', '.']);
+    let hours: i64 = parts.next()?.parse().ok()?;
+    let minutes: i64 = parts.next()?.parse().ok()?;
+    let seconds: i64 = parts.next()?.parse().ok()?;
+    let millis: i64 = parts.next()?.parse().ok()?;
+    Some((((hours * 60 + minutes) * 60 + seconds) * 1000) + millis)
+}
+
+fn parse_srt_segments(content: &str) -> Vec<TranscriptSegment> {
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+    normalized
+        .split("\n\n")
+        .filter_map(|block| {
+            let mut lines = block.lines().map(str::trim).filter(|line| !line.is_empty());
+            let first = lines.next()?;
+            let timing = if first.contains("-->") {
+                first
+            } else {
+                lines.next()?
+            };
+            let (start_raw, end_raw) = timing.split_once("-->")?;
+            let start_ms = parse_srt_timestamp(start_raw)?;
+            let end_ms = parse_srt_timestamp(end_raw)?;
+            let text = lines.collect::<Vec<_>>().join(" ").trim().to_string();
+            if text.is_empty() {
+                return None;
+            }
+            Some(TranscriptSegment {
+                start_ms,
+                end_ms,
+                text,
+            })
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -530,6 +720,13 @@ pub async fn whisper_download_model(
     Ok(format!("{} downloaded successfully", model.filename()))
 }
 
+#[tauri::command]
+pub fn whisper_delete_model(model_name: String) -> Result<String, String> {
+    let model = WhisperModel::from_name(&model_name)
+        .ok_or_else(|| format!("Unknown model: {}", model_name))?;
+    delete_model(model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -539,8 +736,24 @@ mod tests {
         assert_eq!(WhisperModel::from_name("tiny"), Some(WhisperModel::Tiny));
         assert_eq!(WhisperModel::from_name("base"), Some(WhisperModel::Base));
         assert_eq!(WhisperModel::from_name("small"), Some(WhisperModel::Small));
-        assert_eq!(WhisperModel::from_name("medium"), Some(WhisperModel::Medium));
+        assert_eq!(
+            WhisperModel::from_name("medium"),
+            Some(WhisperModel::Medium)
+        );
         assert_eq!(WhisperModel::from_name("large"), None);
+    }
+
+    #[test]
+    fn deletes_model_file_at_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let model_file = temp.path().join(WhisperModel::Tiny.filename());
+        std::fs::write(&model_file, "model").expect("write model");
+
+        let deleted =
+            delete_model_file_at_path(&model_file, WhisperModel::Tiny).expect("delete model");
+
+        assert_eq!(deleted, "ggml-tiny.bin deleted successfully");
+        assert!(!model_file.exists());
     }
 
     #[test]
@@ -557,12 +770,67 @@ mod tests {
             vec![
                 base.join("whisper-cli.exe"),
                 base.join("main.exe"),
-                base.join("whisper.cpp").join("build").join("bin").join("Release").join("whisper-cli.exe"),
-                base.join("whisper.cpp").join("build").join("bin").join("Release").join("main.exe"),
+                base.join("whisper.cpp")
+                    .join("build")
+                    .join("bin")
+                    .join("Release")
+                    .join("whisper-cli.exe"),
+                base.join("whisper.cpp")
+                    .join("build")
+                    .join("bin")
+                    .join("Release")
+                    .join("main.exe"),
                 base.join("resources").join("whisper-cli.exe"),
                 base.join("resources").join("main.exe"),
             ]
         );
+    }
+
+    #[test]
+    fn resolves_ffmpeg_candidates_near_binary_and_resources() {
+        let base = Path::new(r"C:\app");
+        let candidates = ffmpeg_candidates_from_base(base);
+
+        assert_eq!(
+            candidates,
+            vec![
+                base.join("ffmpeg.exe"),
+                base.join("resources").join("ffmpeg.exe")
+            ]
+        );
+    }
+
+    #[test]
+    fn selects_first_existing_runnable_candidate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let broken = temp.path().join("broken-whisper-cli.exe");
+        let ok = temp.path().join("ok-whisper-cli.exe");
+        std::fs::write(&broken, "").expect("write broken");
+        std::fs::write(&ok, "").expect("write ok");
+
+        let candidates = vec![
+            temp.path().join("missing-whisper-cli.exe"),
+            broken,
+            ok.clone(),
+        ];
+
+        let selected = first_runnable_candidate(candidates, |path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("ok-"))
+        });
+
+        assert_eq!(selected, Some(ok));
+    }
+
+    #[test]
+    fn only_sends_wav_directly_to_whisper_cli() {
+        assert!(whisper_cli_supports_audio_ext("wav"));
+        assert!(!whisper_cli_supports_audio_ext("mp3"));
+        assert!(!whisper_cli_supports_audio_ext("flac"));
+        assert!(!whisper_cli_supports_audio_ext("ogg"));
+        assert!(!whisper_cli_supports_audio_ext("m4a"));
+        assert!(!whisper_cli_supports_audio_ext("webm"));
     }
 
     #[test]
@@ -582,7 +850,9 @@ mod tests {
             args,
             vec![
                 "-m".to_string(),
-                model_path(WhisperModel::Medium).to_string_lossy().to_string(),
+                model_path(WhisperModel::Medium)
+                    .to_string_lossy()
+                    .to_string(),
                 "-f".to_string(),
                 r"C:\tmp\audio.wav".to_string(),
                 "-t".to_string(),
@@ -590,10 +860,25 @@ mod tests {
                 "-l".to_string(),
                 "yue".to_string(),
                 "-otxt".to_string(),
+                "-osrt".to_string(),
                 "-of".to_string(),
-                r"C:\tmp\out\transcript".to_string(),
+                r"C:\tmp\out".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn parses_srt_segments_with_timestamps() {
+        let srt = "1\n00:00:01,200 --> 00:00:03,450\nHello there.\n\n2\n00:00:03,500 --> 00:00:05,000\nSecond line.\n";
+        let segments = parse_srt_segments(srt);
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].start_ms, 1200);
+        assert_eq!(segments[0].end_ms, 3450);
+        assert_eq!(segments[0].text, "Hello there.");
+        assert_eq!(segments[1].start_ms, 3500);
+        assert_eq!(segments[1].end_ms, 5000);
+        assert_eq!(segments[1].text, "Second line.");
     }
 
     #[test]

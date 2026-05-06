@@ -481,11 +481,7 @@ fn coalesce_subtitle_lines(raw: &str) -> String {
                     .last()
                     .map(is_cjk_char)
                     .unwrap_or(false);
-                let next_is_cjk = segment
-                    .chars()
-                    .next()
-                    .map(is_cjk_char)
-                    .unwrap_or(false);
+                let next_is_cjk = segment.chars().next().map(is_cjk_char).unwrap_or(false);
                 if prev_is_cjk && next_is_cjk {
                     current_para.push_str(&segment);
                 } else {
@@ -872,7 +868,6 @@ pub async fn parse_url_content(
     url_str: &str,
     sessdata: Option<String>,
 ) -> Result<ParsedDocument, String> {
-
     if url_str.contains("youtube.com/watch") || url_str.contains("youtu.be/") {
         match fetch_youtube_subtitles(url_str).await {
             Ok(content) if !content.trim().is_empty() => {
@@ -957,11 +952,17 @@ mod tests {
             parse_preferred_whisper_model_name(r#"{"model":"medium"}"#),
             Some("medium")
         );
-        assert_eq!(parse_preferred_whisper_model_name(r#"{"model":"ggml-small"}"#), None);
+        assert_eq!(
+            parse_preferred_whisper_model_name(r#"{"model":"ggml-small"}"#),
+            None
+        );
     }
 
     #[test]
     fn formats_whisper_timestamp_in_srt_style() {
-        assert_eq!(crate::whisper_transcribe::format_timestamp_ms(3_723_045), "01:02:03.045");
+        assert_eq!(
+            crate::whisper_transcribe::format_timestamp_ms(3_723_045),
+            "01:02:03.045"
+        );
     }
 }

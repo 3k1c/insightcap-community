@@ -9,12 +9,17 @@ import {
     Settings2, Server, Sparkles, BookOpen, PenLine,
     Plus, Trash2, Eye, EyeOff, ExternalLink,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
-    User, ShieldCheck, KeyRound, Save,
+    User, ShieldCheck, KeyRound, Save, Clock,
 } from 'lucide-react';
 import { useT } from '../hooks/useT';
 import { save } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
+import {
+    applyProviderOptionSelection,
+    buildProviderOptions,
+    getSelectedProviderOptionValue,
+} from './settings-provider-utils';
 
 
 interface ModelSettings {
@@ -125,7 +130,6 @@ interface ProviderCard {
     desc: string;
     defaultBaseUrl?: string;
     apiUrl?: string;
-    emoji: string;
     local?: boolean;
 }
 
@@ -135,42 +139,36 @@ const PROVIDER_CARDS: ProviderCard[] = [
         label: 'OpenAI',
         desc: 'GPT-4o, o1, o3...',
         apiUrl: 'https://platform.openai.com/api-keys',
-        emoji: 'OA',
     },
     {
         value: 'anthropic',
         label: 'Anthropic',
         desc: 'Claude 4, Claude 3.5...',
         apiUrl: 'https://console.anthropic.com/settings/keys',
-        emoji: 'AN',
     },
     {
         value: 'google',
         label: 'Google',
         desc: 'Gemini 2.0, 1.5 Pro...',
         apiUrl: 'https://aistudio.google.com/apikey',
-        emoji: 'GO',
     },
     {
         value: 'xai',
         label: 'xAI',
         desc: 'Grok 3, Grok 2...',
         apiUrl: 'https://console.x.ai/team/default/api-keys',
-        emoji: 'XA',
     },
     {
         value: 'openrouter',
         label: 'OpenRouter',
         desc: 'Unified gateway, supports hundreds of models',
         apiUrl: 'https://openrouter.ai/settings/keys',
-        emoji: 'OR',
     },
     {
         value: 'ollama',
         label: 'Ollama',
         desc: 'Run locally, no API key required',
         defaultBaseUrl: 'http://localhost:11434',
-        emoji: 'OL',
         local: true,
     },
 ];
@@ -228,6 +226,84 @@ const InputField: React.FC<{ value: string; onChange: (v: string) => void; place
         className={`bg-surface-base border border-stroke-divider rounded-lg px-3 py-1.5 text-fs-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent-default ${className ?? ''}`}
     />
 );
+
+const TimeField: React.FC<{ value: string; onChange: (v: string) => void; className?: string }> = ({ value, onChange, className }) => {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const [hour = '00', minute = '00'] = value.split(':');
+    const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+    const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
+    useEffect(() => {
+        if (!open) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!rootRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [open]);
+
+    const selectTimePart = (nextHour: string, nextMinute: string) => {
+        onChange(`${nextHour}:${nextMinute}`);
+    };
+
+    return (
+        <div ref={rootRef} className={`relative ${className ?? ''}`}>
+            <button
+                type="button"
+                onClick={() => setOpen(v => !v)}
+                className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-1.5 text-fs-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-default hover:border-accent-default/50 transition-colors flex items-center justify-between gap-2"
+            >
+                <span>{hour}:{minute}</span>
+                <Clock className="w-4 h-4 text-text-tertiary" />
+            </button>
+
+            {open && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-40 rounded-xl border border-stroke-divider bg-surface-base shadow-xl p-2">
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="max-h-56 overflow-y-auto pr-1">
+                            {hours.map(h => (
+                                <button
+                                    key={h}
+                                    type="button"
+                                    onClick={() => selectTimePart(h, minute)}
+                                    className={`w-full px-3 py-1.5 rounded-lg text-fs-sm transition-colors ${h === hour ? 'bg-accent-default text-white' : 'text-text-primary hover:bg-surface-subtle'}`}
+                                >
+                                    {h}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="max-h-56 overflow-y-auto pl-1 border-l border-stroke-divider">
+                            {minutes.map(m => (
+                                <button
+                                    key={m}
+                                    type="button"
+                                    onClick={() => selectTimePart(hour, m)}
+                                    className={`w-full px-3 py-1.5 rounded-lg text-fs-sm transition-colors ${m === minute ? 'bg-accent-default text-white' : 'text-text-primary hover:bg-surface-subtle'}`}
+                                >
+                                    {m}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; className?: string }> = ({ value, onChange, className }) => {
     const t = useT();
@@ -454,11 +530,11 @@ const SummaryModelField: React.FC<{
             <div className="flex items-center bg-surface-base border border-stroke-divider rounded-lg focus-within:ring-1 focus-within:ring-accent-default overflow-hidden">
                 <input
                     type="text"
-                    value={value}
-                    onChange={e => onChange(e.target.value)}
+                    value={displayLabel ?? value}
+                    readOnly
                     onFocus={() => setOpen(true)}
                     placeholder={displayLabel ?? inputPlaceholder}
-                    className="flex-1 bg-transparent px-3 py-1.5 text-fs-sm text-text-primary placeholder:text-text-tertiary focus:outline-none min-w-0"
+                    className="flex-1 cursor-default bg-transparent px-3 py-1.5 text-fs-sm text-text-primary placeholder:text-text-tertiary focus:outline-none min-w-0"
                 />
                 <button
                     type="button"
@@ -504,6 +580,7 @@ export const SettingsPage: React.FC = () => {
     const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
     const [bilibiliLoggingIn, setBilibiliLoggingIn] = useState(false);
     const [whisperStatus, setWhisperStatus] = useState<Record<string, { downloaded: boolean }>>({});
+    const [deletingWhisperModel, setDeletingWhisperModel] = useState<string | null>(null);
 
     const [exportModal, setExportModal] = useState<{
         open: boolean;
@@ -532,6 +609,7 @@ export const SettingsPage: React.FC = () => {
     const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
     const [personalLoading, setPersonalLoading] = useState(false);
     const [newRecoveryModal, setNewRecoveryModal] = useState<{ open: boolean; mnemonic: string; confirmed: boolean }>({ open: false, mnemonic: '', confirmed: false });
+    const [regenerateRecoveryModal, setRegenerateRecoveryModal] = useState<{ open: boolean; password: string; loading: boolean }>({ open: false, password: '', loading: false });
     const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
     const [verifyModal, setVerifyModal] = useState<{
         open: boolean;
@@ -549,6 +627,23 @@ export const SettingsPage: React.FC = () => {
             setWhisperStatus(status);
         } catch (e) {
             console.error('Failed to load whisper status', e);
+        }
+    };
+
+    const handleDeleteWhisperModel = async (modelName: string) => {
+        if (!window.confirm(t('settings.whisper_delete_confirm', { model: modelName }))) {
+            return;
+        }
+
+        setDeletingWhisperModel(modelName);
+        try {
+            const msg = await invoke<string>('whisper_delete_model', { modelName });
+            toast.success(msg);
+            await loadWhisperStatus();
+        } catch (e: any) {
+            toast.error(e.toString());
+        } finally {
+            setDeletingWhisperModel(null);
         }
     };
 
@@ -704,7 +799,7 @@ export const SettingsPage: React.FC = () => {
                         <Toggle checked={settings.reminders?.enabled ?? true} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.enabled = v; })} />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_daily_time')}>
-                        <InputField type="time" value={settings.reminders?.dailyReminderTime ?? '09:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.dailyReminderTime = v; })} className="w-32" />
+                        <TimeField value={settings.reminders?.dailyReminderTime ?? '09:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.dailyReminderTime = v; })} className="w-32" />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_test_pipeline')}>
                         <button
@@ -725,10 +820,10 @@ export const SettingsPage: React.FC = () => {
 
                 <SectionCard title={t('settings.reminders_quiet_hours')}>
                     <SettingRow label={t('settings.reminders_quiet_start')}>
-                        <InputField type="time" value={settings.reminders?.quietHoursStart ?? '22:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursStart = v; })} className="w-32" />
+                        <TimeField value={settings.reminders?.quietHoursStart ?? '22:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursStart = v; })} className="w-32" />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_quiet_end')}>
-                        <InputField type="time" value={settings.reminders?.quietHoursEnd ?? '08:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursEnd = v; })} className="w-32" />
+                        <TimeField value={settings.reminders?.quietHoursEnd ?? '08:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursEnd = v; })} className="w-32" />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_weekend_quiet')}>
                         <Toggle checked={settings.reminders?.weekendQuiet ?? false} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.weekendQuiet = v; })} />
@@ -786,7 +881,6 @@ export const SettingsPage: React.FC = () => {
                                 <div className="font-medium text-text-primary text-fs-sm">{p.name || t('settings.provider_unnamed')}</div>
                                 <div className="text-fs-xs text-text-tertiary mt-0.5">
                                     {PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label ?? p.provider}
-                                    {p.baseUrl ? ` | ${p.baseUrl}` : ''}
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
@@ -816,27 +910,12 @@ export const SettingsPage: React.FC = () => {
                                                     provider: card.value,
                                                     baseUrl: card.defaultBaseUrl ?? '',
                                                 })}
-                                                className={`flex flex-col items-start gap-1 rounded-xl p-3 border text-left transition-all ${isSelected
+                                                className={`relative flex flex-col items-start gap-1 rounded-xl p-3 border text-left transition-all ${isSelected
                                                     ? 'border-accent-default bg-accent-default/8 shadow-sm'
                                                     : 'border-stroke-divider hover:border-accent-default/40 hover:bg-surface-subtle'
                                                     }`}
                                             >
-                                                <div className="flex items-center justify-between w-full">
-                                                    <span className="text-base leading-none">{card.emoji}</span>
-                                                    {card.apiUrl && (
-                                                        <a
-                                                            href={card.apiUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={e => e.stopPropagation()}
-                                                            className="text-text-tertiary hover:text-accent-default transition-colors"
-                                                            title={t('settings.get_api_key')}
-                                                        >
-                                                            <ExternalLink className="w-3 h-3" />
-                                                        </a>
-                                                    )}
-                                                </div>
-                                                <div className={`text-fs-sm font-semibold ${isSelected ? 'text-accent-default' : 'text-text-primary'}`}>{card.label}</div>
+                                                <div className={`text-fs-sm font-semibold pr-5 ${isSelected ? 'text-accent-default' : 'text-text-primary'}`}>{card.label}</div>
                                                 <div className="text-fs-xs text-text-tertiary leading-snug">{card.desc}</div>
                                                 {card.local && (
                                                     <span className="text-fs-xs text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full">{t('settings.local_provider')}</span>
@@ -949,15 +1028,19 @@ export const SettingsPage: React.FC = () => {
             return;
         }
 
-        let baseUrl = undefined;
-        let apiKey = undefined;
+        let baseUrl = model.baseUrl;
+        let apiKey = model.apiKey;
 
-        const profile = settings?.aiModels.providerProfiles.find(p => p.provider === model.provider);
-        if (profile) {
+        const profile = settings?.aiModels.providerProfiles.find(p => {
+            if (p.provider !== model.provider) return false;
+            if (model.baseUrl) return p.baseUrl === model.baseUrl;
+            return true;
+        });
+        if ((!baseUrl || !apiKey) && profile) {
             baseUrl = profile.baseUrl;
-            apiKey = profile.apiKey;
+            apiKey = profile.apiKey ?? apiKey;
         } else if (model.provider === 'ollama') {
-            baseUrl = 'http://localhost:11434';
+            baseUrl = baseUrl || 'http://localhost:11434';
         }
 
         try {
@@ -974,30 +1057,8 @@ export const SettingsPage: React.FC = () => {
     };
 
     const renderModelField = (label: string, desc: string, model: ModelSettings, onChange: (m: ModelSettings) => void, includeLocal?: boolean, isSpeechToText?: boolean, category: 'embedding' | 'speech-to-text' | 'chat' = 'chat') => {
-        const providers = [
-            ...settings?.aiModels.providerProfiles ?? [],
-            ...PROVIDER_CARDS.map(c => ({
-                id: c.value,
-                name: c.label,
-                provider: c.value,
-                baseUrl: c.defaultBaseUrl,
-                apiKey: ''
-            })),
-        ];
-
-        const providerOptions = providers.map(p => ({
-            value: p.provider,
-            label: p.name || PROVIDER_OPTIONS.find(o => o.value === p.provider)?.label || p.provider,
-        }));
-        const seen = new Set<string>();
-        const uniqueOptions = providerOptions.filter(o => {
-            if (seen.has(o.value)) return false;
-            seen.add(o.value);
-            return true;
-        });
-        if (includeLocal) {
-            uniqueOptions.push({ value: 'local', label: t('settings.local_provider') });
-        }
+        const profileOptions = settings?.aiModels.providerProfiles ?? [];
+        const providerOptions = buildProviderOptions(profileOptions, PROVIDER_CARDS, !!includeLocal, t('settings.system_default_local_provider'));
         return (
             <div className="bg-surface-base rounded-lg px-4 py-3 border border-stroke-divider space-y-2">
                 <div className="text-fs-sm font-medium text-text-primary">{label}</div>
@@ -1006,17 +1067,11 @@ export const SettingsPage: React.FC = () => {
                     <div>
                         <label className="text-fs-xs text-text-secondary mb-1 block">{t('settings.provider_type')}</label>
                         <SelectField
-                            value={model.provider}
+                            value={getSelectedProviderOptionValue(model, profileOptions)}
                             onChange={v => {
-                                const rawPopular = POPULAR_MODELS[v] ?? [];
-                                const filtered = rawPopular.filter(m => {
-                                    if (category === 'chat') return !m.category;
-                                    return m.category === category;
-                                });
-                                const newModel = filtered.length > 0 ? filtered[0].value : '';
-                                onChange({ ...model, provider: v, model: newModel });
+                                onChange(applyProviderOptionSelection(v, model, profileOptions, PROVIDER_CARDS, category, POPULAR_MODELS));
                             }}
-                            options={uniqueOptions}
+                            options={providerOptions}
                             className="w-full"
                         />
                     </div>
@@ -1047,12 +1102,22 @@ export const SettingsPage: React.FC = () => {
                                 >
                                     {t('settings.whisper_download')}
                                 </button>
+                            ) : isSpeechToText && model.provider === 'local' ? (
+                                <button
+                                    onClick={() => handleDeleteWhisperModel(model.model)}
+                                    disabled={deletingWhisperModel === model.model}
+                                    className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-color-danger hover:border-color-danger disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0 inline-flex items-center gap-1.5"
+                                    title={t('settings.whisper_delete')}
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    {deletingWhisperModel === model.model ? t('settings.whisper_deleting') : t('settings.whisper_delete')}
+                                </button>
                             ) : (
                                 <button
                                     onClick={() => handleTestModel(model, category)}
                                     className="px-3 py-1.5 mt-0.5 bg-surface-subtle border border-stroke-divider text-text-secondary rounded-lg text-fs-sm hover:text-accent-default hover:border-accent-default/30 transition-colors shrink-0"
                                 >
-                                    Test
+                                    {t('settings.model_test_btn')}
                                 </button>
                             )}
                         </div>
@@ -1518,11 +1583,10 @@ export const SettingsPage: React.FC = () => {
 
     const handleRegenerateRecovery = async () => {
         if (!settings) return;
-        const password = window.prompt(t('auth.login.password_placeholder'));
+        const password = regenerateRecoveryModal.password;
         if (!password) return;
 
-        if (!window.confirm(t('settings.regenerate_confirm'))) return;
-
+        setRegenerateRecoveryModal(s => ({ ...s, loading: true }));
         setPersonalLoading(true);
         const tid = toast.loading(t('settings.recovery_generating'));
         try {
@@ -1533,9 +1597,11 @@ export const SettingsPage: React.FC = () => {
                 }
             });
             toast.success(t('settings.regenerate_success'), { id: tid });
+            setRegenerateRecoveryModal({ open: false, password: '', loading: false });
             setNewRecoveryModal({ open: true, mnemonic, confirmed: false });
         } catch (e: any) {
             toast.error(`${t('common.error')}: ${e.toString()}`, { id: tid });
+            setRegenerateRecoveryModal(s => ({ ...s, loading: false }));
         } finally {
             setPersonalLoading(false);
         }
@@ -1619,7 +1685,7 @@ export const SettingsPage: React.FC = () => {
                                 {t('settings.recovery_code_desc')}
                             </p>
                             <button
-                                onClick={handleRegenerateRecovery}
+                                onClick={() => setRegenerateRecoveryModal({ open: true, password: '', loading: false })}
                                 disabled={personalLoading}
                                 className="border border-stroke-divider text-text-primary px-4 py-1.5 rounded-lg text-fs-sm hover:bg-surface-subtle transition-colors disabled:opacity-50"
                             >
@@ -1952,6 +2018,73 @@ export const SettingsPage: React.FC = () => {
                                     <>
                                         <RefreshCw className="w-4 h-4 animate-spin" />
                                         {t('common.verifying')}
+                                    </>
+                                ) : (
+                                    t('common.confirm')
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {regenerateRecoveryModal.open && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-surface-base border border-stroke-divider rounded-2xl p-8 w-[440px] max-w-[calc(100vw-2rem)] shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-accent-default/10 rounded-full">
+                                <ShieldCheck className="w-6 h-6 text-accent-default" />
+                            </div>
+                            <h3 className="text-fs-xl font-bold text-text-primary">{t('settings.regenerate_recovery_code')}</h3>
+                        </div>
+
+                        <p className="text-fs-sm text-text-secondary mb-5 leading-relaxed">
+                            {t('settings.regenerate_confirm')}
+                        </p>
+
+                        <div className="space-y-1.5 mb-8">
+                            <label className="text-fs-xs text-text-secondary font-medium">{t('auth.login.password_label')}</label>
+                            <div className="relative">
+                                <input
+                                    autoFocus
+                                    type={showPasswords.recoveryRegenerate ? 'text' : 'password'}
+                                    value={regenerateRecoveryModal.password}
+                                    onChange={e => setRegenerateRecoveryModal(s => ({ ...s, password: e.target.value }))}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && !regenerateRecoveryModal.loading && regenerateRecoveryModal.password) {
+                                            handleRegenerateRecovery();
+                                        }
+                                    }}
+                                    className="w-full bg-surface-layer border border-stroke-divider rounded-xl px-4 py-2.5 pr-10 text-fs-sm focus:outline-none focus:ring-2 focus:ring-accent-default/20 focus:border-accent-default transition-all"
+                                    placeholder={t('auth.login.password_placeholder')}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPasswords(p => ({ ...p, recoveryRegenerate: !p.recoveryRegenerate }))}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
+                                >
+                                    {showPasswords.recoveryRegenerate ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setRegenerateRecoveryModal({ open: false, password: '', loading: false })}
+                                disabled={regenerateRecoveryModal.loading}
+                                className="px-5 py-2.5 text-fs-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-subtle rounded-xl transition-all disabled:opacity-50"
+                            >
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                onClick={handleRegenerateRecovery}
+                                disabled={regenerateRecoveryModal.loading || !regenerateRecoveryModal.password}
+                                className="px-8 py-2.5 bg-accent-default text-white rounded-xl font-semibold hover:bg-accent-light1 transition-all shadow-lg shadow-accent-default/20 disabled:opacity-50 active:scale-95 flex items-center gap-2"
+                            >
+                                {regenerateRecoveryModal.loading ? (
+                                    <>
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                        {t('settings.recovery_generating')}
                                     </>
                                 ) : (
                                     t('common.confirm')

@@ -9,7 +9,6 @@ use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::vector_store::local::VectorStore;
 
-
 const RELATION_CANDIDATES: usize = 10;
 const RELATION_THRESHOLD: f32 = 0.50;
 

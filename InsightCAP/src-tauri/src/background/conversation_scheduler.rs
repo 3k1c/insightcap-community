@@ -112,7 +112,6 @@ pub async fn enqueue_conversation(
     Ok(())
 }
 
-
 async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let pool = &state.db;

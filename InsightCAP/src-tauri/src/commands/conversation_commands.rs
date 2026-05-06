@@ -17,7 +17,10 @@ fn default_conversation_title(language: &str) -> &'static str {
 }
 
 fn is_default_conversation_title(title: &str) -> bool {
-    matches!(title, "Untitled Conversation" | "New Conversation" | "新對話" | "新对话")
+    matches!(
+        title,
+        "Untitled Conversation" | "New Conversation" | "新對話" | "新对话"
+    )
 }
 
 fn display_conversation_title(title: String, language: &str) -> String {

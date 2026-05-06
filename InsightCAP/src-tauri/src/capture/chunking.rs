@@ -354,10 +354,16 @@ fn looks_like_pattern(lower: &str) -> bool {
         "best practice",
     ];
     let cjk_markers = [
-        "必須", "應該", "規則", "原則", "最佳實踐", "禁止", "限制", "準則",
+        "必須",
+        "應該",
+        "規則",
+        "原則",
+        "最佳實踐",
+        "禁止",
+        "限制",
+        "準則",
     ];
-    ascii_markers.iter().any(|m| lower.contains(m))
-        || cjk_markers.iter().any(|m| lower.contains(m))
+    ascii_markers.iter().any(|m| lower.contains(m)) || cjk_markers.iter().any(|m| lower.contains(m))
 }
 
 fn has_headings(lines: &[&str]) -> bool {
@@ -385,7 +391,9 @@ fn is_heading(line: &str) -> bool {
         && !line.ends_with('：')
         && !line.ends_with(':')
         && !line.contains('\t')
-        && !line.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | ' '))
+        && !line
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | ' '))
 }
 
 // Fix #4: rewritten log event splitter — flush when the *next* event would overflow,
@@ -396,8 +404,8 @@ fn split_log_events(content: &str) -> Vec<SplitPart> {
 
     for line in content.lines() {
         let starts_new_event = has_timestamp_prefix(line);
-        let would_overflow = !current.is_empty()
-            && current.chars().count() + line.len() + 1 > MAX_CHUNK_CHARS;
+        let would_overflow =
+            !current.is_empty() && current.chars().count() + line.len() + 1 > MAX_CHUNK_CHARS;
 
         if starts_new_event && !current.trim().is_empty() && would_overflow {
             if current.chars().count() > MAX_CHUNK_CHARS {
@@ -621,7 +629,10 @@ fn sentence_boundary(chars: &[char], start: usize, hard_end: usize) -> Option<us
 
     // Priority 1: strong sentence-ending punctuation (ASCII + CJK)
     for idx in (min..hard_end).rev() {
-        if matches!(chars[idx], '.' | '!' | '?' | ';' | '。' | '！' | '？' | '；') {
+        if matches!(
+            chars[idx],
+            '.' | '!' | '?' | ';' | '。' | '！' | '？' | '；'
+        ) {
             return Some(idx + 1);
         }
     }
@@ -772,11 +783,16 @@ mod tests {
     #[test]
     fn wide_table_chunks_respect_char_limit() {
         // Each row is ~200 chars; 40 rows would be ~8000 chars (well over 2400)
-        let mut content = String::from("| Col1 | Col2 | Col3 | Col4 | Col5 |\n|---|---|---|---|---|\n");
+        let mut content =
+            String::from("| Col1 | Col2 | Col3 | Col4 | Col5 |\n|---|---|---|---|---|\n");
         for i in 0..40 {
             content.push_str(&format!(
                 "| {:>30} | {:>30} | {:>30} | {:>30} | {:>30} |\n",
-                i, i * 2, i * 3, i * 4, i * 5
+                i,
+                i * 2,
+                i * 3,
+                i * 4,
+                i * 5
             ));
         }
 
@@ -866,8 +882,14 @@ mod tests {
         ));
         let data = metadata(&chunks[0]);
 
-        assert!(data.get("estimated_tokens").is_some(), "estimated_tokens missing");
-        assert!(data.get("estimated_chars").is_none(), "estimated_chars should be removed");
+        assert!(
+            data.get("estimated_tokens").is_some(),
+            "estimated_tokens missing"
+        );
+        assert!(
+            data.get("estimated_chars").is_none(),
+            "estimated_chars should be removed"
+        );
         assert!(data["estimated_tokens"].as_u64().unwrap() > 0);
     }
 

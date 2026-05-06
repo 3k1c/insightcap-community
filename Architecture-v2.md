@@ -522,9 +522,11 @@ toast 顯示導入成功 / 失敗結果
 
 ### 新增提醒彈窗 (Add Reminder Modal)
 
-- **客製化組件**：為了避開瀏覽器原生組件的樣式不一致，全面採用客製化 UI：
+- **客製化組件**：為了避開瀏覽器原生組件的樣式不一致，全面採用 app 內自訂 UI：
   - **Custom Select**：主題感知（Theme-aware）的下拉選單，具備正確的深色/亮色樣式與動畫。
-  - **Theme-aware Input**：針對 `type="date"` 與 `type="time"`，動態切換 `color-scheme` 以確保系統原生選擇器與應用主題（如 Void 深色模式）保持一致。
+  - **DatePickerField**：取代原生 `input[type=date]`，使用 `bg-surface-flyout`、`border-stroke-divider`、`accent-default`，支援月份切換與今天快捷選擇。
+  - **TimePickerField**：取代原生 `input[type=time]`，使用小時 / 分鐘雙欄選擇器，支援清除時間。
+  - 所有 dropdown / flyout 均放在 `relative` 容器內，避免 absolute 定位跑位。
 - **i18n 全面支持**：所有標籤、提示與驗證訊息（Toast）均透過 i18n 系統管理，禁止寫死文字。
 
 ---
@@ -701,7 +703,7 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `aiModels` | `contentProcessorLlm` | Tagger / SpaceEngine 用的輕量模型（建議 3b 以下） |
 | `aiModels` | `visionModel` | 可選 Vision 模型，用於增強圖片和 PDF 掃描頁的 OCR 結果；若配置會在 parse_file / parse_content / ocr_worker 中自動探測能力並增強 |
 | `aiModels` | `embeddingModel` | Embedding 模型（預設 MultilingualE5Small，local） |
-| `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm） |
+| `aiModels` | `summaryModel` | 對話摘要模型（`"follow_chat"` 表示跟隨 chatLlm，`"follow_content_processor"` 表示跟隨 contentProcessorLlm）；Settings UI 必須顯示 i18n label，不直接暴露內部儲存值 |
 | `aiModels` | `whisperModel` | 本地 Whisper 模型選擇（Tiny / Base / Small / Medium）；Settings 可下載或刪除已下載模型檔 |
 | `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單）；同一 provider 可建立多個 profile，例如多台 Ollama 主機以不同 `baseUrl` 區分 |
 | `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |

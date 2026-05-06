@@ -1,6 +1,6 @@
 use crate::db::AppState;
 use sqlx::{Row, SqlitePool};
-use tauri::{Emitter, State, Runtime};
+use tauri::{Emitter, Runtime, State};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1535,7 +1535,7 @@ pub async fn run_knowledge_stress_test<R: Runtime>(
         let source_id = uuid::Uuid::now_v7().to_string();
         let title = format!("Stress Test Source Entity #{}", i);
         let content = format!("This is a long synthetic content for stress testing source {}. It contains multiple paragraphs to simulate real world data distribution patterns in the RAG engine.", i);
-        
+
         sqlx::query(
             "INSERT INTO sources (id, type, title, clean_content, captured_at, updated_at, capture_count, source_category, media_type) \
              VALUES (?, 'text', ?, ?, ?, ?, 5, 'captured', 'text')"
@@ -1551,7 +1551,10 @@ pub async fn run_knowledge_stress_test<R: Runtime>(
 
         for j in 0..5 {
             let chunk_id = uuid::Uuid::now_v7().to_string();
-            let chunk_content = format!("Synthetic chunk {} for source {}. Vector search relevance testing data.", j, i);
+            let chunk_content = format!(
+                "Synthetic chunk {} for source {}. Vector search relevance testing data.",
+                j, i
+            );
             sqlx::query(
                 "INSERT INTO captures (id, source_id, type, raw_content, clean_content, status, capture_method, chunk_index, created_at, updated_at) \
                  VALUES (?, ?, 'text', ?, ?, 'processed', 'source_import', ?, ?, ?)"

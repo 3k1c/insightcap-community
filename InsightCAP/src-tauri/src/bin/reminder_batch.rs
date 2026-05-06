@@ -71,11 +71,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
     }
 
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM reminders WHERE title LIKE 'Daily Review Task%'",
-    )
-    .fetch_one(&pool)
-    .await?;
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM reminders WHERE title LIKE 'Daily Review Task%'")
+            .fetch_one(&pool)
+            .await?;
     let notif_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM reminder_notifications WHERE reminder_id IN (SELECT id FROM reminders WHERE title LIKE 'Daily Review Task%')",
     )
@@ -92,10 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 1..=20 {
         let title = format!("Batch Reminder #{}", i);
         expected_titles.push(title.clone());
-        dialogue.push_str(&format!(
-            "{}. 2027-10-{:02} 09:00 {}\n",
-            i, i, title
-        ));
+        dialogue.push_str(&format!("{}. 2027-10-{:02} 09:00 {}\n", i, i, title));
     }
 
     let timestamp = "Context: Current date is 2026-04-27.";
@@ -131,10 +127,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\n>>> SCALE TEST COMPLETE. Cleaning up...");
-    sqlx::query("DELETE FROM reminders WHERE title LIKE 'Daily Review Task%' OR conversation_id = ?")
-        .bind(conv_id)
-        .execute(&pool)
-        .await?;
+    sqlx::query(
+        "DELETE FROM reminders WHERE title LIKE 'Daily Review Task%' OR conversation_id = ?",
+    )
+    .bind(conv_id)
+    .execute(&pool)
+    .await?;
     sqlx::query("DELETE FROM conversations WHERE id = ?")
         .bind(conv_id)
         .execute(&pool)

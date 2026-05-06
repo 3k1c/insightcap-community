@@ -182,10 +182,12 @@ impl SpaceEngine {
         &self,
         space_centers: &HashMap<String, Vec<f32>>,
     ) -> Result<Vec<(String, String)>, String> {
-        let count_rows = sqlx::query("SELECT id, chunk_count, is_user_managed FROM spaces WHERE is_archived = 0")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        let count_rows = sqlx::query(
+            "SELECT id, chunk_count, is_user_managed FROM spaces WHERE is_archived = 0",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
         let space_info: HashMap<String, (i64, bool)> = count_rows
             .iter()
@@ -194,8 +196,10 @@ impl SpaceEngine {
                     r.get::<String, _>("id"),
                     (
                         r.try_get::<i64, _>("chunk_count").unwrap_or(0),
-                        r.try_get::<i32, _>("is_user_managed").map(|v| v == 1).unwrap_or(false)
-                    )
+                        r.try_get::<i32, _>("is_user_managed")
+                            .map(|v| v == 1)
+                            .unwrap_or(false),
+                    ),
                 )
             })
             .collect();
@@ -226,7 +230,7 @@ impl SpaceEngine {
 
             let (count_a, is_user_a) = space_info.get(id_a).copied().unwrap_or((0, false));
             let (count_b, is_user_b) = space_info.get(id_b).copied().unwrap_or((0, false));
-            
+
             let (survivor, absorbed_id) = if is_user_a && !is_user_b {
                 (id_a.clone(), id_b.clone())
             } else if !is_user_a && is_user_b {
@@ -595,7 +599,6 @@ fn output_language_label(language: &str) -> &'static str {
         _ => "Traditional Chinese",
     }
 }
-
 
 fn best_matching_space(
     centers: &HashMap<String, Vec<f32>>,

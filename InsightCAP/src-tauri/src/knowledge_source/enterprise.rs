@@ -13,7 +13,6 @@ use crate::providers::embedding::fastembed::FastEmbedder;
 use crate::providers::embedding::Embedder;
 use crate::vector_store::multi_index::MultiIndexManager;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KbMetadata {
@@ -56,7 +55,6 @@ struct ExternalKbCompatibility {
     reason: Option<String>,
     metadata: KbMetadata,
 }
-
 
 pub struct EnterpriseKnowledgeSource {
     pub ekb_id: String,
@@ -177,7 +175,6 @@ impl KnowledgeSource for EnterpriseKnowledgeSource {
     }
 }
 
-
 async fn read_kb_metadata(conn: &SqlitePool) -> Result<KbMetadata, AppError> {
     let rows: Vec<(String, String)> =
         sqlx::query_as("SELECT key, value FROM settings WHERE key LIKE 'kb_%'")
@@ -254,7 +251,6 @@ async fn check_compatibility(
         metadata,
     })
 }
-
 
 #[tauri::command]
 pub async fn load_external_kb(

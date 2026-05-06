@@ -1,4 +1,3 @@
-
 use crate::capture::attachment_manager::copy_image_to_attachments;
 use crate::error::AppError;
 use docx_rs::*;

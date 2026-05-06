@@ -11,7 +11,6 @@ use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::settings::store::get_settings;
 use crate::vector_store::local::VectorStore;
 
-
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct TaggerResult {
@@ -33,7 +32,6 @@ impl MemoryEngine {
             embedder,
         }
     }
-
 
     pub async fn tag_capture(
         &self,
@@ -96,7 +94,6 @@ impl MemoryEngine {
         self.write_tags_to_capture(capture_id, &tags).await?;
         Ok(tags)
     }
-
 
     pub async fn process_conversation_summary(
         &self,
@@ -255,7 +252,6 @@ impl MemoryEngine {
         Ok(())
     }
 
-
     async fn deep_infer_knowledge_type(
         &self,
         content: &str,
@@ -330,7 +326,6 @@ impl MemoryEngine {
         }
     }
 
-
     async fn write_tags_to_capture(&self, capture_id: &str, tags: &[String]) -> Result<(), String> {
         let tags_json = serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string());
         sqlx::query("UPDATE captures SET tags = ?, updated_at = ? WHERE id = ?")
@@ -343,7 +338,6 @@ impl MemoryEngine {
         Ok(())
     }
 }
-
 
 fn output_language_label(language: &str) -> &'static str {
     match language {

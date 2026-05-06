@@ -2,7 +2,7 @@ use keyring::Entry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 use zeroize::Zeroize;
 
@@ -15,7 +15,6 @@ use crate::auth::{
 const KEYCHAIN_SERVICE: &str = "insightcap";
 const KEYCHAIN_AUTO_LOGIN: &str = "auto_login_key";
 const KEYCHAIN_RECOVERY_PENDING: &str = "recovery_pending_v1";
-
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +40,8 @@ pub struct SetupPayload {
     pub password: String,
     pub auto_login: bool,
     pub kb_path: String,
+    #[serde(default)]
+    pub initial_settings: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -66,7 +67,6 @@ pub struct RecoveryPayload {
     pub kb_path: String,
 }
 
-
 fn auth_dir(kb_path: &str) -> PathBuf {
     PathBuf::from(kb_path).join(".insightcap")
 }
@@ -81,6 +81,45 @@ fn recovery_bin_path(kb_path: &str) -> PathBuf {
 
 fn login_guard_path(kb_path: &str) -> PathBuf {
     auth_dir(kb_path).join("login_guard.json")
+}
+
+fn target_has_existing_knowledge_base(kb_path: &Path) -> bool {
+    let insightcap_dir = kb_path.join(".insightcap");
+    insightcap_dir.join("auth.json").exists()
+        || insightcap_dir.join("recovery.bin").exists()
+        || insightcap_dir.join("insightcap.db").exists()
+}
+
+#[cfg(test)]
+mod existing_kb_tests {
+    use super::*;
+
+    #[test]
+    fn detects_existing_knowledge_base_auth_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let insightcap_dir = temp.path().join(".insightcap");
+        std::fs::create_dir_all(&insightcap_dir).expect("create .insightcap");
+        std::fs::write(insightcap_dir.join("auth.json"), "{}").expect("write auth");
+
+        assert!(target_has_existing_knowledge_base(temp.path()));
+    }
+
+    #[test]
+    fn detects_existing_knowledge_base_database_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let insightcap_dir = temp.path().join(".insightcap");
+        std::fs::create_dir_all(&insightcap_dir).expect("create .insightcap");
+        std::fs::write(insightcap_dir.join("insightcap.db"), "").expect("write db");
+
+        assert!(target_has_existing_knowledge_base(temp.path()));
+    }
+
+    #[test]
+    fn allows_empty_or_new_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        assert!(!target_has_existing_knowledge_base(temp.path()));
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -109,7 +148,6 @@ fn save_auth_json(kb_path: &str, salt_hex: &str) -> Result<(), String> {
     std::fs::rename(&tmp, auth_json_path(kb_path)).map_err(|e| e.to_string())?;
     Ok(())
 }
-
 
 #[tauri::command]
 pub async fn get_auth_status(kb_path: String) -> Result<AuthStatus, String> {
@@ -142,6 +180,11 @@ pub async fn setup_auth(
     app: tauri::AppHandle,
     payload: SetupPayload,
 ) -> Result<String, String> {
+    let target_kb_path = PathBuf::from(&payload.kb_path);
+    if target_has_existing_knowledge_base(&target_kb_path) {
+        return Err("WORKSPACE_ALREADY_INITIALIZED".to_string());
+    }
+
     let dir = auth_dir(&payload.kb_path);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -190,6 +233,35 @@ pub async fn setup_auth(
         .map_err(|e: tauri::Error| e.to_string())?;
     crate::db::connection::write_bootstrap(&app_data_dir, &payload.kb_path)?;
 
+    // Write initial settings (e.g. AI provider) into the freshly-created target KB
+    if let Some(initial_settings) = payload.initial_settings {
+        let target_kb = std::path::PathBuf::from(&payload.kb_path);
+        let _ = std::fs::create_dir_all(&target_kb);
+        match crate::db::connection::init_db(&target_kb, Some(&db_key_hex)).await {
+            Ok(new_pool) => {
+                let now = chrono::Utc::now().to_rfc3339();
+                if let Some(ai_models) = initial_settings.get("aiModels") {
+                    if let Ok(ai_json) = serde_json::to_string(ai_models) {
+                        let _ = sqlx::query(
+                            "INSERT INTO settings (key, value, updated_at) VALUES ('ai_models', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+                        )
+                        .bind(&ai_json)
+                        .bind(&now)
+                        .execute(&new_pool)
+                        .await;
+                    }
+                }
+                new_pool.close().await;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[SETUP] Failed to write initial settings to target KB: {}",
+                    e
+                );
+            }
+        }
+    }
+
     db_key.zeroize();
 
     Ok(mnemonic)
@@ -225,8 +297,7 @@ pub async fn login(payload: LoginPayload) -> Result<(), String> {
     let rec_path = recovery_bin_path(&payload.kb_path);
     if rec_path.exists() {
         let bin_data = std::fs::read(&rec_path).map_err(|e| e.to_string())?;
-        if bin_data.len() >= 77 {
-        }
+        if bin_data.len() >= 77 {}
     }
 
     let key_hex = hex::encode(&candidate_key);

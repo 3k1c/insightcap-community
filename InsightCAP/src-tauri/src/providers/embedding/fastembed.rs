@@ -66,7 +66,6 @@ impl Embedder for FastEmbedder {
     }
 }
 
-
 fn resolve_embedding_model(name: &str) -> fastembed::EmbeddingModel {
     match name.trim().to_lowercase().as_str() {
         "bge-small-en-v1.5" | "bge_small_en" => fastembed::EmbeddingModel::BGESmallENV15,

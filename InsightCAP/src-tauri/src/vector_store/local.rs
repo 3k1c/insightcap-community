@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
-
 struct SearchCache {
     map: HashMap<u64, Vec<(u64, f32)>>,
     order: VecDeque<u64>,
@@ -49,7 +48,6 @@ impl SearchCache {
         self.order.clear();
     }
 }
-
 
 #[derive(Clone)]
 pub struct VectorStore {

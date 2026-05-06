@@ -7,7 +7,6 @@ use std::sync::Arc;
 use crate::providers::embedding::Embedder;
 use crate::vector_store::local::VectorStore;
 
-
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
@@ -40,7 +39,6 @@ impl AppState {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DbState {
@@ -82,7 +80,6 @@ pub fn write_db_state(app_data_dir: &Path, state: &DbState) -> Result<(), String
     Ok(())
 }
 
-
 pub fn write_bootstrap(app_data_dir: &Path, kb_path: &str) -> Result<(), String> {
     let bootstrap_path = app_data_dir.join("bootstrap.json");
     let json = serde_json::json!({ "kb_path": kb_path });
@@ -99,7 +96,6 @@ pub fn read_bootstrap(app_data_dir: &Path) -> Option<String> {
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
     json["kb_path"].as_str().map(|s| s.to_string())
 }
-
 
 fn ensure_insightcap_dir(kb_path: &Path) -> Result<(), String> {
     let dir = kb_path.join(".insightcap");
@@ -191,10 +187,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             "013",
             include_str!("../../migrations/013_compiled_knowledge.sql"),
         ),
-        (
-            "014",
-            include_str!("../../migrations/014_reminders.sql"),
-        ),
+        ("014", include_str!("../../migrations/014_reminders.sql")),
         (
             "015",
             include_str!("../../migrations/015_patch_space_knowledge_guide.sql"),
@@ -249,9 +242,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
                     let sql_preview = &trimmed[..preview_len];
                     return Err(format!(
                         "Migration {} failed: {} | SQL: {}",
-                        id,
-                        e,
-                        sql_preview
+                        id, e, sql_preview
                     ));
                 }
             }
@@ -269,7 +260,6 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
 
     Ok(())
 }
-
 
 #[derive(Debug)]
 pub enum HealthCheckResult {

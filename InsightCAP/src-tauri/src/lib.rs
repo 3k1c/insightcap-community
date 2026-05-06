@@ -1,4 +1,3 @@
-
 pub mod auth;
 pub mod background;
 pub mod capture;
@@ -37,7 +36,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .skip_initial_state("quick-capture")
+                .build()
+        )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -76,6 +79,12 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // 確保 quick-capture 視窗在啟動時一定是隱藏的
+            // （防止 window-state plugin 在全新安裝時意外顯示）
+            if let Some(qc_win) = app.get_webview_window("quick-capture") {
+                let _ = qc_win.hide();
+            }
+
             let handle = app.handle().clone();
 
             let app_data_dir = handle
@@ -434,6 +443,7 @@ pub fn run() {
             whisper_transcribe::whisper_binary_status,
             whisper_transcribe::whisper_model_status,
             whisper_transcribe::whisper_download_model,
+            whisper_transcribe::whisper_delete_model,
             capture::video_parser::set_whisper_model_preference,
             set_zoom,
         ])

@@ -59,7 +59,7 @@ const FILE_MENU_ITEMS = [
         key: 'document' as const,
         labelKey: 'chat.add_document',
         icon: <FileText className="w-3 h-3" />,
-        accept: '.txt,.md,.doc,.docx,.xlsx,.csv,.pptx,.pdf,.py,.js,.ts,.jsx,.tsx,.swift,.rs,.go,.java,.cpp,.c,.h,.rb,.php,.html',
+        accept: '.txt,.md,.doc,.docx,.xlsx,.csv,.pptx,.pdf,.py,.js,.ts,.jsx,.tsx,.swift,.rs,.go,.java,.cpp,.c,.h,.rb,.php,.html,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.webm',
         multiple: true,
     },
     {

@@ -11,7 +11,6 @@ use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::vector_store::local::VectorStore;
 
-
 const CAPTURES_LIMIT: usize = 10;
 const CAPTURES_THRESHOLD: f32 = 0.25;
 const MEMORY_DATA_LIMIT: usize = 5;
@@ -32,6 +31,181 @@ pub struct RagEngine {
     pool: SqlitePool,
     vector_store: VectorStore,
     embedder: Arc<dyn Embedder>,
+}
+
+struct SourceScopeGuidance {
+    scope: &'static str,
+    phrase: &'static str,
+    guidance: String,
+}
+
+fn build_source_scope_guidance(
+    selected_source_count: usize,
+    temp_attachment_count: usize,
+    citation_source_count: usize,
+    data_count: usize,
+    pattern_count: usize,
+    log_count: usize,
+    compiled_count: usize,
+    external_count: usize,
+    source_types: &[String],
+) -> SourceScopeGuidance {
+    let has_memory = pattern_count > 0 || log_count > 0;
+    let has_context = temp_attachment_count
+        + selected_source_count
+        + citation_source_count
+        + data_count
+        + pattern_count
+        + log_count
+        + compiled_count
+        + external_count
+        > 0;
+
+    let source_kind_phrase = source_scope_kind_phrase(source_types);
+
+    let (scope, phrase) = if temp_attachment_count > 0 {
+        ("attached_content", "the material the user just attached")
+    } else if selected_source_count == 1 {
+        (
+            "selected_single_source",
+            source_kind_phrase.unwrap_or("the selected source"),
+        )
+    } else if selected_source_count > 1 {
+        ("selected_multiple_sources", "the selected sources")
+    } else if external_count > 0 && data_count == 0 && !has_memory && compiled_count == 0 {
+        ("external_knowledge", "the external knowledge base")
+    } else if compiled_count > 0 && data_count == 0 && !has_memory {
+        ("compiled_knowledge", "the compiled knowledge")
+    } else if has_memory && data_count == 0 {
+        ("memory_only", "the user's previous related records")
+    } else if citation_source_count == 1 && data_count > 0 && !has_memory && compiled_count == 0 {
+        (
+            "single_retrieved_source",
+            source_kind_phrase.unwrap_or("this source"),
+        )
+    } else if citation_source_count > 1 || data_count > 1 {
+        (
+            "multiple_retrieved_sources",
+            "the sources found in the user's data",
+        )
+    } else if has_context {
+        ("mixed_user_data", "the user's available data")
+    } else {
+        ("insufficient_context", "the available material")
+    };
+
+    let guidance = if has_context {
+        format!(
+            "Available knowledge scope: {phrase}. When using retrieved material, express this boundary naturally in the user's language. Do not use mechanical wording such as \"based on the retrieved context\". Do not present local, selected, benchmark, memory, or synthesized material as a universal fact. For numbers, rankings, benchmark results, comparisons, or named claims, state the scope when it matters. If the provided material does not directly support a claim, say the material is insufficient instead of filling the gap."
+        )
+    } else {
+        "No directly relevant local reference material was retrieved. If answering from general knowledge, say so naturally when it matters, and do not imply the user's data supports the answer.".to_string()
+    };
+
+    SourceScopeGuidance {
+        scope,
+        phrase,
+        guidance,
+    }
+}
+
+fn source_scope_kind_phrase(source_types: &[String]) -> Option<&'static str> {
+    let normalized = source_types
+        .iter()
+        .map(|s| s.to_lowercase())
+        .collect::<Vec<_>>();
+
+    if normalized.iter().any(|s| {
+        s.contains("youtube")
+            || s.contains("bilibili")
+            || s.contains("video")
+            || s.contains("subtitle")
+            || s.contains("transcript")
+    }) {
+        return Some("the video");
+    }
+
+    if normalized
+        .iter()
+        .any(|s| s.contains("url") || s.contains("web") || s.contains("html"))
+    {
+        return Some("the web page");
+    }
+
+    if normalized.iter().any(|s| {
+        s.contains("pdf")
+            || s.contains("doc")
+            || s.contains("ppt")
+            || s.contains("xls")
+            || s.contains("file")
+            || s.contains("document")
+    }) {
+        return Some("the document");
+    }
+
+    None
+}
+
+fn insert_source_type(source_types: &mut HashSet<String>, value: Option<String>) {
+    if let Some(value) = value.map(|s| s.trim().to_string()) {
+        if !value.is_empty() {
+            source_types.insert(value);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_scope_guidance_identifies_single_selected_source() {
+        let guidance = build_source_scope_guidance(1, 0, 1, 3, 0, 0, 0, 0, &[]);
+
+        assert_eq!(guidance.scope, "selected_single_source");
+        assert!(guidance.guidance.contains("the selected source"));
+        assert!(guidance.guidance.contains("universal fact"));
+    }
+
+    #[test]
+    fn source_scope_guidance_identifies_multiple_retrieved_sources() {
+        let guidance = build_source_scope_guidance(0, 0, 3, 5, 0, 0, 0, 0, &[]);
+
+        assert_eq!(guidance.scope, "multiple_retrieved_sources");
+        assert!(guidance
+            .guidance
+            .contains("the sources found in the user's data"));
+    }
+
+    #[test]
+    fn source_scope_guidance_identifies_memory_only_context() {
+        let guidance = build_source_scope_guidance(0, 0, 0, 0, 2, 1, 0, 0, &[]);
+
+        assert_eq!(guidance.scope, "memory_only");
+        assert!(guidance
+            .guidance
+            .contains("the user's previous related records"));
+    }
+
+    #[test]
+    fn source_scope_guidance_requires_insufficient_context_when_empty() {
+        let guidance = build_source_scope_guidance(0, 0, 0, 0, 0, 0, 0, 0, &[]);
+
+        assert_eq!(guidance.scope, "insufficient_context");
+        assert!(guidance
+            .guidance
+            .contains("No directly relevant local reference material"));
+    }
+
+    #[test]
+    fn source_scope_guidance_uses_video_phrase_for_youtube_context() {
+        let source_types = vec!["youtube_subtitle".to_string()];
+        let guidance = build_source_scope_guidance(0, 0, 1, 1, 0, 0, 0, 0, &source_types);
+
+        assert_eq!(guidance.scope, "single_retrieved_source");
+        assert_eq!(guidance.phrase, "the video");
+        assert!(guidance.guidance.contains("the video"));
+    }
 }
 
 impl RagEngine {
@@ -64,10 +238,11 @@ impl RagEngine {
 
         let mut data_context: Vec<String> = Vec::new();
         let mut citation_sources: Vec<String> = Vec::new();
+        let mut source_types: HashSet<String> = HashSet::new();
         let mut retrieved_capture_ids: Vec<String> = Vec::new();
         for (vec_id, score) in &capture_ids {
             let mut sql = String::from(
-                "SELECT c.id, c.clean_content, c.is_user_edited, s.title AS source_title, s.use_frequency \
+                "SELECT c.id, c.clean_content, c.is_user_edited, c.type AS capture_type, c.content_type, s.title AS source_title, s.type AS source_type, s.url AS source_url, s.use_frequency \
                  FROM captures c LEFT JOIN sources s ON c.source_id = s.id \
                  WHERE c.vector_id = ? AND c.status = 'processed'"
             );
@@ -115,6 +290,10 @@ impl RagEngine {
                 let capture_id: String = r.try_get("id").unwrap_or_default();
                 let content: String = r.try_get("clean_content").unwrap_or_default();
                 let source_title = r.try_get::<String, _>("source_title").ok();
+                insert_source_type(&mut source_types, r.try_get("source_type").ok());
+                insert_source_type(&mut source_types, r.try_get("source_url").ok());
+                insert_source_type(&mut source_types, r.try_get("capture_type").ok());
+                insert_source_type(&mut source_types, r.try_get("content_type").ok());
                 let use_freq: i32 = r.try_get("use_frequency").unwrap_or(0);
                 let is_user_edited: i32 = r.try_get("is_user_edited").unwrap_or(0);
 
@@ -161,7 +340,7 @@ impl RagEngine {
 
         for (vec_id, score) in &memory_results {
             let mut msql = String::from(
-                "SELECT m.id, m.content, m.knowledge_type, m.project_id, m.trigger_context, m.placed_by, s.title AS source_title \
+                "SELECT m.id, m.content, m.knowledge_type, m.project_id, m.trigger_context, m.placed_by, s.title AS source_title, s.type AS source_type, s.url AS source_url \
                  FROM memory_chunks m \
                  LEFT JOIN sources s ON m.source_id = s.id \
                  WHERE m.vector_id = ?"
@@ -212,6 +391,8 @@ impl RagEngine {
                 let content: String = r.try_get("content").unwrap_or_default();
                 let chunk_project: Option<String> = r.try_get("project_id").unwrap_or(None);
                 let source_title: Option<String> = r.try_get("source_title").ok();
+                insert_source_type(&mut source_types, r.try_get("source_type").ok());
+                insert_source_type(&mut source_types, r.try_get("source_url").ok());
                 let placed_by: String = r.try_get("placed_by").unwrap_or_else(|_| "ai".to_string());
 
                 let mut adjusted = *score;
@@ -269,7 +450,7 @@ impl RagEngine {
         }
 
         let mut log_sql = String::from(
-            "SELECT m.content, m.trigger_context, s.title AS source_title \
+            "SELECT m.content, m.trigger_context, s.title AS source_title, s.type AS source_type, s.url AS source_url \
              FROM memory_chunks m \
              LEFT JOIN sources s ON m.source_id = s.id \
              WHERE m.knowledge_type = 'log'",
@@ -322,6 +503,8 @@ impl RagEngine {
                 .any(|t| query_lower.contains(&t.trim().to_lowercase()));
             if triggered {
                 let content: String = r.try_get("content").unwrap_or_default();
+                insert_source_type(&mut source_types, r.try_get("source_type").ok());
+                insert_source_type(&mut source_types, r.try_get("source_url").ok());
                 let hint = content.chars().take(50).collect::<String>();
                 log_hints.push(hint);
                 log_context.push(content);
@@ -452,6 +635,7 @@ impl RagEngine {
             "data": data_context,
             "external": external_context,
             "citation_sources": citation_sources,
+            "source_types": source_types.into_iter().collect::<Vec<_>>(),
             "pattern_hints": pattern_hints,
             "log_hints": log_hints,
         }))
@@ -574,6 +758,7 @@ impl RagEngine {
 
         let mut system_parts: Vec<String> = Vec::new();
         let mut extra_citations: Vec<String> = Vec::new();
+        let mut extra_source_types: HashSet<String> = HashSet::new();
 
         if let Some(ids) = &temp_chunk_ids {
             if !ids.is_empty() {
@@ -606,7 +791,7 @@ impl RagEngine {
                 let placeholders = sids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
                 let cap_sql = format!(
-                    "SELECT c.clean_content, s.title AS source_title \
+                    "SELECT c.clean_content, c.type AS capture_type, c.content_type, s.title AS source_title, s.type AS source_type, s.url AS source_url \
                      FROM captures c \
                      LEFT JOIN sources s ON c.source_id = s.id \
                      WHERE c.source_id IN ({}) AND c.status = 'processed' AND c.capture_method != 'temp_attachment' \
@@ -624,6 +809,22 @@ impl RagEngine {
                             if !content.is_empty() {
                                 let title =
                                     r.try_get::<String, _>("source_title").unwrap_or_default();
+                                insert_source_type(
+                                    &mut extra_source_types,
+                                    r.try_get("source_type").ok(),
+                                );
+                                insert_source_type(
+                                    &mut extra_source_types,
+                                    r.try_get("source_url").ok(),
+                                );
+                                insert_source_type(
+                                    &mut extra_source_types,
+                                    r.try_get("capture_type").ok(),
+                                );
+                                insert_source_type(
+                                    &mut extra_source_types,
+                                    r.try_get("content_type").ok(),
+                                );
                                 if !title.is_empty() {
                                     source_contents.push(format!("[  : {}]\n{}", title, content));
                                     if !extra_citations.iter().any(|s| s == &title) {
@@ -640,7 +841,7 @@ impl RagEngine {
                 if source_contents.is_empty() {
                     eprintln!("[RAG] No captures found for @ sources, falling back to sources.clean_content");
                     let src_sql = format!(
-                        "SELECT id, title, clean_content, file_path FROM sources WHERE id IN ({})",
+                        "SELECT id, title, type AS source_type, url AS source_url, clean_content, file_path FROM sources WHERE id IN ({})",
                         placeholders
                     );
                     let mut q2 = sqlx::query(&src_sql);
@@ -650,6 +851,14 @@ impl RagEngine {
                     if let Ok(src_rows) = q2.fetch_all(&self.pool).await {
                         for r in &src_rows {
                             let title: String = r.try_get("title").unwrap_or_default();
+                            insert_source_type(
+                                &mut extra_source_types,
+                                r.try_get("source_type").ok(),
+                            );
+                            insert_source_type(
+                                &mut extra_source_types,
+                                r.try_get("source_url").ok(),
+                            );
                             let mut content: String =
                                 r.try_get("clean_content").unwrap_or_default();
 
@@ -770,6 +979,44 @@ impl RagEngine {
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_EXTERNAL, text));
         }
 
+        let ctx_citation_count = ctx["citation_sources"]
+            .as_array()
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let total_citation_count = ctx_citation_count + extra_citations.len();
+        let selected_source_count = source_ids.as_ref().map(|ids| ids.len()).unwrap_or(0);
+        let temp_attachment_count = temp_chunk_ids.as_ref().map(|ids| ids.len()).unwrap_or(0);
+        let mut all_source_types = ctx["source_types"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        all_source_types.extend(extra_source_types.iter().cloned());
+        all_source_types.sort();
+        all_source_types.dedup();
+        let source_scope_guidance = if rag_enabled {
+            Some(build_source_scope_guidance(
+                selected_source_count,
+                temp_attachment_count,
+                total_citation_count,
+                data_items,
+                patterns,
+                logs,
+                compiled,
+                externals,
+                &all_source_types,
+            ))
+        } else {
+            None
+        };
+
+        if let Some(guidance) = &source_scope_guidance {
+            system_parts.push(format!("## Source Scope\n{}", guidance.guidance));
+        }
+
         let user_instruction = instruction_override
             .unwrap_or_else(|| settings.chat_prompt_instruction.trim().to_string());
 
@@ -820,6 +1067,10 @@ impl RagEngine {
             "patternCount": ctx["pattern"].as_array().map(|a| a.len()).unwrap_or(0),
             "logCount": ctx["log"].as_array().map(|a| a.len()).unwrap_or(0),
             "dataCount": ctx["data"].as_array().map(|a| a.len()).unwrap_or(0),
+            "sourceScope": source_scope_guidance.as_ref().map(|g| g.scope).unwrap_or("rag_disabled"),
+            "sourceScopePhrase": source_scope_guidance.as_ref().map(|g| g.phrase).unwrap_or("no RAG context"),
+            "sourceCount": total_citation_count,
+            "sourceTypes": all_source_types,
             "patternHints": ctx.get("pattern_hints").cloned().unwrap_or(json!([])),
             "logHints": ctx.get("log_hints").cloned().unwrap_or(json!([])),
         });

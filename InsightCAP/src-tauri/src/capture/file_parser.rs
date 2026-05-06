@@ -20,6 +20,99 @@ pub struct ParsedDocument {
     pub title: String,
 }
 
+const AUDIO_TRANSCRIPT_CHUNK_CHARS: usize = 2200;
+
+fn format_transcript_line(segment: &crate::whisper_transcribe::TranscriptSegment) -> String {
+    if segment.end_ms > segment.start_ms {
+        format!(
+            "[{} - {}] {}",
+            crate::whisper_transcribe::format_timestamp_ms(segment.start_ms),
+            crate::whisper_transcribe::format_timestamp_ms(segment.end_ms),
+            segment.text.trim()
+        )
+    } else {
+        segment.text.trim().to_string()
+    }
+}
+
+fn build_audio_transcript_chunk(
+    lines: &[String],
+    start_ms: i64,
+    end_ms: i64,
+    segment_count: usize,
+    file_name: &str,
+) -> FileChunk {
+    FileChunk {
+        content: lines.join("\n"),
+        chunk_type: "audio_transcript".to_string(),
+        source_type: "audio_transcript".to_string(),
+        metadata: json!({
+            "source_type": "audio_transcript",
+            "file_name": file_name,
+            "transcript_start_ms": start_ms,
+            "transcript_end_ms": end_ms,
+            "transcript_start": crate::whisper_transcribe::format_timestamp_ms(start_ms),
+            "transcript_end": crate::whisper_transcribe::format_timestamp_ms(end_ms),
+            "segment_count": segment_count,
+        }),
+        image_path: None,
+        status: "processed".to_string(),
+    }
+}
+
+fn transcript_segments_to_file_chunks(
+    segments: &[crate::whisper_transcribe::TranscriptSegment],
+    file_name: &str,
+) -> Vec<FileChunk> {
+    let mut chunks = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
+    let mut current_chars = 0usize;
+    let mut current_start_ms = 0i64;
+    let mut current_end_ms = 0i64;
+    let mut current_segment_count = 0usize;
+
+    for segment in segments {
+        let line = format_transcript_line(segment);
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let line_chars = line.chars().count();
+        if !lines.is_empty() && current_chars + line_chars > AUDIO_TRANSCRIPT_CHUNK_CHARS {
+            chunks.push(build_audio_transcript_chunk(
+                &lines,
+                current_start_ms,
+                current_end_ms,
+                current_segment_count,
+                file_name,
+            ));
+            lines.clear();
+            current_chars = 0;
+            current_segment_count = 0;
+        }
+
+        if lines.is_empty() {
+            current_start_ms = segment.start_ms;
+        }
+        current_end_ms = segment.end_ms;
+        current_chars += line_chars + 1;
+        current_segment_count += 1;
+        lines.push(line);
+    }
+
+    if !lines.is_empty() {
+        chunks.push(build_audio_transcript_chunk(
+            &lines,
+            current_start_ms,
+            current_end_ms,
+            current_segment_count,
+            file_name,
+        ));
+    }
+
+    chunks
+}
+
 pub async fn parse_file(
     kb_path: &str,
     file_path: &str,
@@ -272,7 +365,10 @@ pub async fn parse_file(
             let (ocr_text, ocr_failed) = match crate::ocr::perform_ocr(&image_bytes).await {
                 Ok(raw) => {
                     let lang = crate::ocr::postprocess::detect_language(&raw);
-                    (crate::ocr::postprocess::postprocess_ocr_text(&raw, lang), false)
+                    (
+                        crate::ocr::postprocess::postprocess_ocr_text(&raw, lang),
+                        false,
+                    )
                 }
                 Err(e) => {
                     eprintln!("[FileParser] OCR failed for {}: {}", title, e);
@@ -313,6 +409,15 @@ pub async fn parse_file(
                 status: final_status,
             }]
         }
+        "wav" | "mp3" | "m4a" | "aac" | "flac" | "ogg" | "opus" | "webm" => {
+            let model = crate::whisper_transcribe::read_model_preference();
+            let segments =
+                crate::whisper_transcribe::transcribe_audio_file(path, model, Some("auto")).await?;
+            if segments.is_empty() {
+                return Err("Whisper returned empty transcript".to_string());
+            }
+            transcript_segments_to_file_chunks(&segments, &title)
+        }
         _ => return Err(format!("Unsupported file extension: {}", ext)),
     };
 
@@ -333,6 +438,39 @@ pub async fn parse_content(
         return crate::capture::video_parser::parse_url_content(&url_str, sessdata).await;
     }
     Err("Requires either a file path or URL".to_string())
+}
+
+#[cfg(test)]
+mod audio_tests {
+    use super::*;
+
+    #[test]
+    fn groups_transcript_segments_with_time_metadata() {
+        let segments = vec![
+            crate::whisper_transcribe::TranscriptSegment {
+                start_ms: 1_000,
+                end_ms: 2_500,
+                text: "First segment.".to_string(),
+            },
+            crate::whisper_transcribe::TranscriptSegment {
+                start_ms: 2_500,
+                end_ms: 4_000,
+                text: "Second segment.".to_string(),
+            },
+        ];
+
+        let chunks = transcript_segments_to_file_chunks(&segments, "meeting.m4a");
+
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].source_type, "audio_transcript");
+        assert!(chunks[0]
+            .content
+            .contains("[00:00:01.000 - 00:00:02.500] First segment."));
+        assert_eq!(chunks[0].metadata["transcript_start_ms"], 1_000);
+        assert_eq!(chunks[0].metadata["transcript_end_ms"], 4_000);
+        assert_eq!(chunks[0].metadata["segment_count"], 2);
+        assert_eq!(chunks[0].metadata["file_name"], "meeting.m4a");
+    }
 }
 
 pub fn take_screenshot() -> Result<String, String> {

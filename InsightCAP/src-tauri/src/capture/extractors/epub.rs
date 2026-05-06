@@ -1,4 +1,3 @@
-
 use crate::error::AppError;
 use epub::doc::EpubDoc;
 use std::io::Cursor;
@@ -49,5 +48,4 @@ pub async fn extract_epub(
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

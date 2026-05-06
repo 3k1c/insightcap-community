@@ -38,8 +38,10 @@ mod integration_tests {
                 for (i, chunk) in doc.chunks.iter().enumerate() {
                     println!("\n--- chunk {} ---", i);
                     println!("類型：{}", chunk.source_type);
-                    println!("內容預覽（前 500 字）：\n{}",
-                        &chunk.content.chars().take(500).collect::<String>());
+                    println!(
+                        "內容預覽（前 500 字）：\n{}",
+                        &chunk.content.chars().take(500).collect::<String>()
+                    );
                     if chunk.content.len() > 500 {
                         println!("...（總共 {} 字）", chunk.content.len());
                     }
@@ -88,9 +90,16 @@ mod integration_tests {
         let status = insightcap_lib::whisper_transcribe::whisper_model_status();
         println!("\n===== Whisper 模型診斷 =====");
         println!("current_exe: {:?}", std::env::current_exe().ok());
-        println!("model_dir: {:?}", insightcap_lib::whisper_transcribe::model_dir());
-        println!("config_path: {:?}", insightcap_lib::whisper_transcribe::config_path());
-        println!("preferred model: {} ({})",
+        println!(
+            "model_dir: {:?}",
+            insightcap_lib::whisper_transcribe::model_dir()
+        );
+        println!(
+            "config_path: {:?}",
+            insightcap_lib::whisper_transcribe::config_path()
+        );
+        println!(
+            "preferred model: {} ({})",
             insightcap_lib::whisper_transcribe::read_model_preference().config_name(),
             insightcap_lib::whisper_transcribe::read_model_preference().filename(),
         );
@@ -118,7 +127,10 @@ mod integration_tests {
         let elapsed = start.elapsed();
 
         println!("\n===== 效能測試 =====");
-        println!("fetch_youtube_subtitles 耗時：{:.2} 秒", elapsed.as_secs_f64());
+        println!(
+            "fetch_youtube_subtitles 耗時：{:.2} 秒",
+            elapsed.as_secs_f64()
+        );
 
         match result {
             Ok(content) => {

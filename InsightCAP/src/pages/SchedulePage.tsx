@@ -1,8 +1,7 @@
 ﻿import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../hooks/useT';
-import { useThemeStore } from '../stores/themeStore';
-import { Calendar, Clock, Check, X, Bell, Plus, Search, Tag, FileText, Layers, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, Check, X, Bell, Plus, Search, Tag, FileText, Layers, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 // --- Sub-components ---
@@ -61,6 +60,230 @@ const CustomSelect: React.FC<{
                                 {opt.label}
                             </button>
                         ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const pad2 = (value: number) => String(value).padStart(2, '0');
+
+function formatDateValue(date: Date) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function parseDateValue(value: string) {
+    const [year, month, day] = value.split('-').map(Number);
+    if (!year || !month || !day) return new Date();
+    return new Date(year, month - 1, day);
+}
+
+const DatePickerField: React.FC<{ value: string; onChange: (value: string) => void }> = ({ value, onChange }) => {
+    const t = useT();
+    const [isOpen, setIsOpen] = useState(false);
+    const [viewDate, setViewDate] = useState(() => parseDateValue(value));
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false);
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setIsOpen(false);
+        };
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        setViewDate(parseDateValue(value));
+    }, [value]);
+
+    const selectedValue = formatDateValue(parseDateValue(value));
+    const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const gridStart = new Date(monthStart);
+    gridStart.setDate(monthStart.getDate() - monthStart.getDay());
+    const days = Array.from({ length: 42 }, (_, index) => {
+        const day = new Date(gridStart);
+        day.setDate(gridStart.getDate() + index);
+        return day;
+    });
+    const weekdays = [
+        t('repository.weekday_sun'),
+        t('repository.weekday_mon'),
+        t('repository.weekday_tue'),
+        t('repository.weekday_wed'),
+        t('repository.weekday_thu'),
+        t('repository.weekday_fri'),
+        t('repository.weekday_sat'),
+    ];
+
+    const shiftMonth = (offset: number) => {
+        setViewDate(current => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+    };
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(open => !open)}
+                className="flex h-12 w-full items-center justify-between rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all hover:bg-surface-control-hover focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+            >
+                <span>{value}</span>
+                <Calendar className="h-4 w-4 text-text-tertiary" />
+            </button>
+
+            {isOpen && (
+                <div className="absolute right-0 top-full z-[100] mt-2 w-72 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="rounded-2xl border border-stroke-divider bg-surface-flyout p-3 shadow-xl ring-1 ring-black/5">
+                        <div className="mb-3 flex items-center justify-between">
+                            <div className="text-fs-sm font-semibold text-text-primary">
+                                {viewDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button type="button" onClick={() => shiftMonth(-1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-subtle hover:text-text-primary">
+                                    <ChevronLeft className="h-4 w-4" />
+                                </button>
+                                <button type="button" onClick={() => shiftMonth(1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-subtle hover:text-text-primary">
+                                    <ChevronRight className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 text-center text-fs-xs font-medium text-text-tertiary">
+                            {weekdays.map(day => <div key={day} className="py-1">{day}</div>)}
+                        </div>
+                        <div className="mt-1 grid grid-cols-7 gap-1">
+                            {days.map(day => {
+                                const dayValue = formatDateValue(day);
+                                const isCurrentMonth = day.getMonth() === viewDate.getMonth();
+                                const isSelected = dayValue === selectedValue;
+                                return (
+                                    <button
+                                        key={dayValue}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(dayValue);
+                                            setIsOpen(false);
+                                        }}
+                                        className={`flex h-8 items-center justify-center rounded-lg text-fs-sm transition-colors ${isSelected
+                                            ? 'bg-accent-default text-white'
+                                            : isCurrentMonth
+                                                ? 'text-text-primary hover:bg-surface-subtle'
+                                                : 'text-text-tertiary/60 hover:bg-surface-subtle'
+                                            }`}
+                                    >
+                                        {day.getDate()}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="mt-3 flex justify-end border-t border-stroke-divider pt-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const today = formatDateValue(new Date());
+                                    onChange(today);
+                                    setViewDate(new Date());
+                                    setIsOpen(false);
+                                }}
+                                className="rounded-lg px-3 py-1.5 text-fs-sm font-medium text-accent-default hover:bg-accent-default/10"
+                            >
+                                {t('repository.today')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const TimePickerField: React.FC<{ value: string; onChange: (value: string) => void }> = ({ value, onChange }) => {
+    const t = useT();
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [hour = '09', minute = '00'] = (value || '09:00').split(':');
+    const hours = Array.from({ length: 24 }, (_, index) => pad2(index));
+    const minutes = Array.from({ length: 60 }, (_, index) => pad2(index));
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false);
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setIsOpen(false);
+        };
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen]);
+
+    const selectPart = (nextHour: string, nextMinute: string) => {
+        onChange(`${nextHour}:${nextMinute}`);
+    };
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(open => !open)}
+                className="flex h-12 w-full items-center justify-between rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all hover:bg-surface-control-hover focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+            >
+                <span>{value || '--:--'}</span>
+                <Clock className="h-4 w-4 text-text-tertiary" />
+            </button>
+
+            {isOpen && (
+                <div className="absolute left-0 top-full z-[100] mt-2 w-44 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="rounded-2xl border border-stroke-divider bg-surface-flyout p-2 shadow-xl ring-1 ring-black/5">
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="max-h-56 overflow-y-auto pr-1">
+                                {hours.map(h => (
+                                    <button
+                                        key={h}
+                                        type="button"
+                                        onClick={() => selectPart(h, minute)}
+                                        className={`w-full rounded-lg px-3 py-1.5 text-fs-sm transition-colors ${value && h === hour ? 'bg-accent-default text-white' : 'text-text-primary hover:bg-surface-subtle'}`}
+                                    >
+                                        {h}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="max-h-56 overflow-y-auto border-l border-stroke-divider pl-1">
+                                {minutes.map(m => (
+                                    <button
+                                        key={m}
+                                        type="button"
+                                        onClick={() => selectPart(hour, m)}
+                                        className={`w-full rounded-lg px-3 py-1.5 text-fs-sm transition-colors ${value && m === minute ? 'bg-accent-default text-white' : 'text-text-primary hover:bg-surface-subtle'}`}
+                                    >
+                                        {m}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="mt-2 border-t border-stroke-divider pt-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onChange('');
+                                    setIsOpen(false);
+                                }}
+                                className="w-full rounded-lg px-3 py-1.5 text-left text-fs-sm font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary"
+                            >
+                                {t('common.clear')}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -157,8 +380,6 @@ function safeDateKey(value: string | number | undefined | null): string {
 
 export const SchedulePage: React.FC = () => {
     const t = useT();
-    const { theme } = useThemeStore();
-    const isDark = theme === 'void';
 
     const [activeReminders, setActiveReminders] = useState<Reminder[]>([]);
     const [pendingReminders, setPendingReminders] = useState<Reminder[]>([]);
@@ -694,12 +915,9 @@ export const SchedulePage: React.FC = () => {
                                             <Calendar className="h-4 w-4" />
                                             {t('schedule.date_label')}
                                         </label>
-                                        <input
-                                            type="date"
+                                        <DatePickerField
                                             value={draft.eventDate}
-                                            onChange={(e) => setDraft((current) => ({ ...current, eventDate: e.target.value }))}
-                                            style={{ colorScheme: isDark ? 'dark' : 'light' }}
-                                            className="h-12 w-full rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+                                            onChange={(value) => setDraft((current) => ({ ...current, eventDate: value }))}
                                         />
                                     </div>
                                 </div>
@@ -709,12 +927,9 @@ export const SchedulePage: React.FC = () => {
                                         <Clock className="h-4 w-4" />
                                         {t('schedule.time_label')}
                                     </label>
-                                    <input
-                                        type="time"
+                                    <TimePickerField
                                         value={draft.eventTime}
-                                        onChange={(e) => setDraft((current) => ({ ...current, eventTime: e.target.value }))}
-                                        style={{ colorScheme: isDark ? 'dark' : 'light' }}
-                                        className="h-12 w-full rounded-2xl border border-stroke-control bg-surface-control px-4 text-fs-base text-text-primary outline-none transition-all focus:border-accent-default focus:ring-4 focus:ring-accent-default/10"
+                                        onChange={(value) => setDraft((current) => ({ ...current, eventTime: value }))}
                                     />
                                     <div className="flex items-center gap-1.5 px-1 py-1 text-fs-xs text-text-tertiary">
                                         <Bell className="h-3.5 w-3.5 shrink-0 text-amber-500" />

@@ -18,7 +18,6 @@ const POLL_TIMEOUT_SECS: u64 = 30;
 const RETRY_DELAY_SECS: u64 = 10;
 const TELEGRAM_MSG_LIMIT: usize = 4096;
 
-
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy)]
@@ -389,7 +388,9 @@ fn tg_reminder_created_count(lang: TelegramLanguage, count: usize) -> String {
     match lang {
         TelegramLanguage::ZhTw => format!("已建立 {count} 個提醒。可用 /reminders 查看。"),
         TelegramLanguage::ZhCn => format!("已建立 {count} 个提醒。可用 /reminders 查看。"),
-        TelegramLanguage::En => format!("Created {count} reminder(s). Use /reminders to view them."),
+        TelegramLanguage::En => {
+            format!("Created {count} reminder(s). Use /reminders to view them.")
+        }
     }
 }
 
@@ -859,27 +860,8 @@ fn is_reminder_request(text: &str) -> bool {
     .any(|kw| lower.contains(kw));
 
     let has_time_hint = [
-        "今日",
-        "今天",
-        "明日",
-        "明天",
-        "下午",
-        "上午",
-        "今晚",
-        "早上",
-        "中午",
-        "晚上",
-        "點",
-        "点",
-        ":",
-        "：",
-        "am",
-        "pm",
-        "a.m.",
-        "p.m.",
-        "tomorrow",
-        "today",
-        "tonight",
+        "今日", "今天", "明日", "明天", "下午", "上午", "今晚", "早上", "中午", "晚上", "點", "点",
+        ":", "：", "am", "pm", "a.m.", "p.m.", "tomorrow", "today", "tonight",
     ]
     .iter()
     .any(|kw| lower.contains(kw));
@@ -1320,10 +1302,8 @@ async fn handle_list_conversations(
     let mut keyboard: Vec<Value> = Vec::new();
     for row in &rows {
         let id: String = row.get("id");
-        let title: String = tg_display_conversation_title(
-            lang,
-            row.try_get("title").unwrap_or_default(),
-        );
+        let title: String =
+            tg_display_conversation_title(lang, row.try_get("title").unwrap_or_default());
         let marker = if id == current_conv {
             tg_current_marker(lang)
         } else {
@@ -1588,7 +1568,6 @@ async fn edit_message_text(
     }
     Ok(())
 }
-
 
 async fn send_chat_action(bot_token: &str, chat_id: i64) {
     let client = Client::new();
@@ -2096,7 +2075,9 @@ async fn handle_rag_query(
         // sendMessageDraft requires a draft_id to animate updates for the same draft.
         let thinking_display = format!("{}{}", prefix, thinking_text);
         let draft_id = 1;
-        let _ = send_message_draft(bot_token, chat_id, draft_id, &thinking_display).await.ok();
+        let _ = send_message_draft(bot_token, chat_id, draft_id, &thinking_display)
+            .await
+            .ok();
 
         // Step 2: Get the complete LLM answer
         let stream_result = llm
@@ -2105,7 +2086,7 @@ async fn handle_rag_query(
                 &history_vec,
                 final_query,
                 llm_opts,
-                |_token| {}, 
+                |_token| {},
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -2125,7 +2106,7 @@ async fn handle_rag_query(
         let streamable = total.min(4000); // Drafts are also limited to 4096 chars
 
         if streamable > 0 {
-            let step = 80usize;  // chunks per edit
+            let step = 80usize; // chunks per edit
             let delay_ms = 400u64;
 
             let mut shown = step.min(streamable);
@@ -2143,7 +2124,7 @@ async fn handle_rag_query(
         let final_reply = format!("{}{}", prefix, full_content);
         send_long_message(bot_token, chat_id, &final_reply).await?;
 
-        stream_result.content 
+        stream_result.content
     };
 
     save_message(pool, &conv_id, "user", final_query).await?;
@@ -2177,11 +2158,13 @@ async fn send_message_draft(
 
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     if body["ok"].as_bool() != Some(true) {
-        return Err(body["description"].as_str().unwrap_or("unknown").to_string());
+        return Err(body["description"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string());
     }
     Ok(())
 }
-
 
 async fn send_long_message(bot_token: &str, chat_id: i64, text: &str) -> Result<(), String> {
     let client = Client::new();

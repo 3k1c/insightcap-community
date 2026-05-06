@@ -145,6 +145,7 @@ pub async fn ingest_file(
     _conversation_id: Option<String>,
 ) -> Result<(), String> {
     let db = &state.db;
+    println!("[IngestFile] Starting import: {}", file_path);
 
     let settings = crate::settings::store::get_settings(db)
         .await
@@ -155,8 +156,15 @@ pub async fn ingest_file(
     );
 
     let parsed =
-        crate::capture::file_parser::parse_file(&kb_path, &file_path, vision_config.as_ref())
-            .await?;
+        match crate::capture::file_parser::parse_file(&kb_path, &file_path, vision_config.as_ref())
+            .await
+        {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                eprintln!("[IngestFile] Parse failed for {}: {}", file_path, e);
+                return Err(e);
+            }
+        };
     let now = Utc::now().to_rfc3339();
     let source_id = Uuid::now_v7().to_string();
 
@@ -207,6 +215,14 @@ pub async fn ingest_file(
                 | "htm"
                 | "rtf"
                 | "epub"
+                | "wav"
+                | "mp3"
+                | "m4a"
+                | "aac"
+                | "flac"
+                | "ogg"
+                | "opus"
+                | "webm"
         );
         if should_copy && !kb_path.is_empty() && src_path.exists() {
             let files_dir = Path::new(&kb_path).join("files");

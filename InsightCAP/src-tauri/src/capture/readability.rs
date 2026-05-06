@@ -1,5 +1,6 @@
 use chrono::Utc;
 use regex::Regex;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE};
 use reqwest::Client;
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -9,6 +10,30 @@ use std::net::{IpAddr, ToSocketAddrs};
 use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
+
+const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+fn public_web_default_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        ACCEPT,
+        HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    );
+    headers.insert(
+        ACCEPT_LANGUAGE,
+        HeaderValue::from_static("zh-TW,zh;q=0.9,en;q=0.8"),
+    );
+    headers
+}
+
+fn build_public_web_client(timeout: Duration) -> Result<Client, reqwest::Error> {
+    Client::builder()
+        .user_agent(BROWSER_USER_AGENT)
+        .default_headers(public_web_default_headers())
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .timeout(timeout)
+        .build()
+}
 
 fn is_url_safe(url: &Url) -> Result<(), String> {
     let scheme = url.scheme();
@@ -123,6 +148,97 @@ fn html_to_text(input: &str) -> String {
     re_space.replace_all(&s, " ").trim().to_string()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_web_client_sends_browser_like_headers() {
+        let headers = public_web_default_headers();
+        let accept = headers
+            .get(reqwest::header::ACCEPT)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+
+        assert!(BROWSER_USER_AGENT.contains("Mozilla/5.0"));
+        assert!(accept.contains("text/html"));
+    }
+
+    #[test]
+    fn reader_fallback_text_removes_navigation_link_lists() {
+        let raw = r#"Title: What is a PDF?
+
+PDF is an abbreviation that stands for Portable Document Format.
+
+Features
+
+* [Modify PDFs](https://www.adobe.com/acrobat/features/modify-pdfs.html)
+* [Create PDFs](https://www.adobe.com/acrobat/features/create-pdf.html)
+* [Sign PDFs](https://www.adobe.com/acrobat/features/sign-fillable-pdf-forms.html)
+
+You can open, view, and share PDF files across devices."#;
+
+        let cleaned = sanitize_reader_fallback_text(raw);
+
+        assert!(cleaned.contains("Portable Document Format"));
+        assert!(cleaned.contains("share PDF files across devices"));
+        assert!(!cleaned.contains("[Modify PDFs]"));
+        assert!(!cleaned.contains("features/create-pdf.html"));
+    }
+
+    #[test]
+    fn reader_fallback_text_removes_images_auth_and_promo_links() {
+        let raw = r#"Adobe Acrobat
+
+Trusted PDF tools enhanced with AI to answer questions and generate summaries.
+
+Sign in
+
+* /[Adobe Acrobat](https://www.adobe.com/acrobat.html)
+* /What is a PDF? Portable Document Format
+
+![Image 8](https://www.adobe.com/acrobat/media_1.png?width=750&format=png)
+
+[Free trial](https://www.adobe.com/acrobat/free-trial-download.html)
+
+Learn how the PDF was created and how its invention has made converting, editing, signing, and sharing documents easier than ever."#;
+
+        let cleaned = sanitize_reader_fallback_text(raw);
+
+        assert!(cleaned.contains("Trusted PDF tools"));
+        assert!(cleaned.contains("Learn how the PDF was created"));
+        assert!(!cleaned.contains("Sign in"));
+        assert!(!cleaned.contains("![Image"));
+        assert!(!cleaned.contains("free-trial-download.html"));
+        assert!(!cleaned.contains("/[Adobe Acrobat]"));
+    }
+
+    #[test]
+    fn reader_fallback_text_removes_inline_image_markdown() {
+        let raw = r#"Title: What is a PDF? Portable Document Format | Adobe Acrobat
+
+* ![Image 16](https://www.adobe.com/dc-shared/assets/images/shared-images/about-adobe-pdf/icons/share-bw.svg) Share PDFs for review
+
+Try 25+ online tools for free.
+
+* ![Image 17](https://www.adobe.com/dc-shared/assets/images/shared-images/about-adobe-pdf/icons/add-text-bw.svg) Add text and highlights
+
+Adobe created the PDF.
+
+In 1991, Adobe co-founder Dr. John Warnock launched the paper-to-digital revolution."#;
+
+        let cleaned = sanitize_reader_fallback_text(raw);
+
+        assert!(cleaned.contains("Share PDFs for review"));
+        assert!(cleaned.contains("Add text and highlights"));
+        assert!(cleaned.contains("Adobe created the PDF"));
+        assert!(cleaned.contains("paper-to-digital revolution"));
+        assert!(!cleaned.contains("![Image"));
+        assert!(!cleaned.contains("share-bw.svg"));
+        assert!(!cleaned.contains("add-text-bw.svg"));
+    }
+}
+
 fn looks_like_noise(s: &str) -> bool {
     let t = s.trim();
     if t.len() < 24 {
@@ -219,6 +335,133 @@ fn dedup_and_join_texts(parts: Vec<String>, max_len: usize) -> String {
     out
 }
 
+fn is_markdown_navigation_link_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let re_markdown_link = Regex::new(r#"^[-*]\s+\[[^\]]+\]\(https?://[^)]+\)\s*$"#).unwrap();
+    let re_slash_markdown_link =
+        Regex::new(r#"^[-*]\s+/?\[[^\]]+\]\(https?://[^)]+\)\s*$"#).unwrap();
+    let re_plain_markdown_link = Regex::new(r#"^\[[^\]]+\]\(https?://[^)]+\)\s*$"#).unwrap();
+    re_markdown_link.is_match(trimmed)
+        || re_slash_markdown_link.is_match(trimmed)
+        || re_plain_markdown_link.is_match(trimmed)
+}
+
+fn is_markdown_image_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    let re_markdown_image = Regex::new(r#"^!\[[^\]]*\]\(https?://[^)]+\)\s*$"#).unwrap();
+    re_markdown_image.is_match(trimmed)
+}
+
+fn strip_inline_markdown_images(line: &str) -> String {
+    let re_inline_image = Regex::new(r#"!?\[[^\]]*\]\(https?://[^)]+\)"#).unwrap();
+    let without_images = re_inline_image.replace_all(line, " ");
+    let re_list_marker = Regex::new(r#"^\s*[-*]\s+"#).unwrap();
+    let without_marker = re_list_marker.replace(&without_images, "");
+    let re_space = Regex::new(r"[ \t]+").unwrap();
+    re_space
+        .replace_all(&without_marker, " ")
+        .trim()
+        .to_string()
+}
+
+fn is_reader_promo_link_line(line: &str) -> bool {
+    let trimmed = line.trim().to_lowercase();
+    if !trimmed.contains("](http") && !trimmed.starts_with("http") {
+        return false;
+    }
+
+    let promo_markers = [
+        "free-trial",
+        "download",
+        "pricing",
+        "compare-versions",
+        "promo",
+        "sign-in",
+        "login",
+    ];
+    promo_markers.iter().any(|marker| trimmed.contains(marker))
+}
+
+fn is_reader_auth_navigation_line(line: &str) -> bool {
+    matches!(
+        line.trim().to_lowercase().as_str(),
+        "sign in" | "log in" | "login" | "create account" | "adobe account"
+    )
+}
+
+fn is_reader_noise_line(line: &str) -> bool {
+    is_markdown_navigation_link_line(line)
+        || is_markdown_image_line(line)
+        || is_reader_promo_link_line(line)
+        || is_reader_auth_navigation_line(line)
+}
+
+fn looks_like_short_reader_heading(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.len() > 48 {
+        return false;
+    }
+    !trimmed.ends_with('.')
+        && !trimmed.ends_with('。')
+        && !trimmed.ends_with('!')
+        && !trimmed.ends_with('?')
+}
+
+fn sanitize_reader_fallback_text(input: &str) -> String {
+    let mut kept_blocks = Vec::new();
+    let mut previous_short_heading: Option<String> = None;
+
+    for block in input.split("\n\n") {
+        let non_empty_lines: Vec<&str> = block
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        if non_empty_lines.is_empty() {
+            continue;
+        }
+
+        let link_lines = non_empty_lines
+            .iter()
+            .filter(|line| is_reader_noise_line(line))
+            .count();
+        let is_link_list_block = link_lines > 0 && link_lines * 2 >= non_empty_lines.len();
+
+        if is_link_list_block {
+            previous_short_heading = None;
+            continue;
+        }
+
+        if non_empty_lines.len() == 1 && looks_like_short_reader_heading(non_empty_lines[0]) {
+            previous_short_heading = Some(non_empty_lines[0].trim().to_string());
+            continue;
+        }
+
+        if let Some(heading) = previous_short_heading.take() {
+            kept_blocks.push(heading);
+        }
+
+        let cleaned_lines: Vec<String> = non_empty_lines
+            .into_iter()
+            .filter(|line| !is_reader_noise_line(line))
+            .map(strip_inline_markdown_images)
+            .filter(|line| !line.is_empty())
+            .collect();
+        if !cleaned_lines.is_empty() {
+            kept_blocks.push(cleaned_lines.join("\n"));
+        }
+    }
+
+    if let Some(heading) = previous_short_heading {
+        kept_blocks.push(heading);
+    }
+
+    kept_blocks.join("\n\n").trim().to_string()
+}
+
 fn recover_dynamic_text(html: &str) -> String {
     let mut parts = extract_json_script_text(html);
     let main_text = extract_main_article_text(html);
@@ -241,9 +484,7 @@ fn should_merge_recovered_text(current: &str, recovered: &str) -> bool {
 }
 
 async fn fetch_reader_mirror_text(url_str: &str) -> Result<String, String> {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
+    let client = build_public_web_client(Duration::from_secs(20))
         .map_err(|e| format!("Failed to build reader fallback client: {}", e))?;
 
     let reader_url = format!("https://r.jina.ai/{}", url_str);
@@ -252,15 +493,40 @@ async fn fetch_reader_mirror_text(url_str: &str) -> Result<String, String> {
         .send()
         .await
         .map_err(|e| format!("Reader fallback fetch failed: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("Reader fallback returned HTTP error: {}", e))?
         .text()
         .await
         .map_err(|e| format!("Reader fallback read failed: {}", e))?;
 
-    let trimmed = text.trim();
+    let cleaned = sanitize_reader_fallback_text(&text);
+    let trimmed = cleaned.trim();
     if trimmed.is_empty() {
         return Err("Reader fallback returned empty content".to_string());
     }
     Ok(trimmed.to_string())
+}
+
+async fn reader_fallback_document(
+    url_str: &str,
+    host: &str,
+) -> Result<crate::capture::file_parser::ParsedDocument, String> {
+    let content = fetch_reader_mirror_text(url_str).await?;
+    Ok(crate::capture::file_parser::ParsedDocument {
+        title: crate::capture::video_parser::readable_title_from_url(url_str),
+        chunks: vec![crate::capture::file_parser::FileChunk {
+            content,
+            chunk_type: "document".to_string(),
+            source_type: "reader_fallback".to_string(),
+            metadata: serde_json::json!({
+                "source_type": "reader_fallback",
+                "url": url_str,
+                "domain": host,
+            }),
+            image_path: None,
+            status: "processed".to_string(),
+        }],
+    })
 }
 
 pub async fn scrape_and_ingest_url(
@@ -310,16 +576,18 @@ pub async fn scrape_and_ingest_url(
             }
         }
     } else if host.contains("bilibili.com") {
-        eprintln!("[SCRAPER] Bilibili requires SESSDATA, skipping: {}", url_str);
+        eprintln!(
+            "[SCRAPER] Bilibili requires SESSDATA, skipping: {}",
+            url_str
+        );
         title = url_str.to_string();
-        clean_content = "Bilibili 影片需透過 video_parser::parse_url_content 並提供 SESSDATA".to_string();
+        clean_content =
+            "Bilibili 影片需透過 video_parser::parse_url_content 並提供 SESSDATA".to_string();
         html = format!("<h1>{}</h1><p>{}</p>", title, clean_content);
     }
 
     if clean_content.is_empty() {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(15))
-            .build()
+        let client = build_public_web_client(Duration::from_secs(15))
             .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
         html = client
@@ -327,6 +595,8 @@ pub async fn scrape_and_ingest_url(
             .send()
             .await
             .map_err(|e| format!("Failed to fetch URL: {}", e))?
+            .error_for_status()
+            .map_err(|e| format!("URL returned HTTP error: {}", e))?
             .text()
             .await
             .map_err(|e| format!("Failed to read HTML: {}", e))?;
@@ -437,23 +707,52 @@ pub async fn scrape_url(
         );
     }
 
-    let client = Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()
+    let client = build_public_web_client(Duration::from_secs(15))
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let html = client
-        .get(parsed_url.clone())
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch URL: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read HTML: {}", e))?;
+    let html = match client.get(parsed_url.clone()).send().await {
+        Ok(response) => match response.error_for_status() {
+            Ok(response) => response
+                .text()
+                .await
+                .map_err(|e| format!("Failed to read HTML: {}", e))?,
+            Err(e) => {
+                return reader_fallback_document(url_str, host)
+                    .await
+                    .map_err(|fallback_error| {
+                        format!(
+                            "URL returned HTTP error: {}; reader fallback failed: {}",
+                            e, fallback_error
+                        )
+                    });
+            }
+        },
+        Err(e) => {
+            return reader_fallback_document(url_str, host)
+                .await
+                .map_err(|fallback_error| {
+                    format!(
+                        "Failed to fetch URL: {}; reader fallback failed: {}",
+                        e, fallback_error
+                    )
+                });
+        }
+    };
 
     let mut cursor = Cursor::new(html.clone());
-    let product = readability::extractor::extract(&mut cursor, &parsed_url)
-        .map_err(|e| format!("Readability extraction failed: {:?}", e))?;
+    let product = match readability::extractor::extract(&mut cursor, &parsed_url) {
+        Ok(product) => product,
+        Err(e) => {
+            return reader_fallback_document(url_str, host)
+                .await
+                .map_err(|fallback_error| {
+                    format!(
+                        "Readability extraction failed: {:?}; reader fallback failed: {}",
+                        e, fallback_error
+                    )
+                });
+        }
+    };
 
     let mut final_content = product.text;
     let recovered = recover_dynamic_text(&html);

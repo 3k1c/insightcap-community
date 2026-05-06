@@ -10,9 +10,9 @@ pub mod readability;
 pub mod source_group;
 pub mod video_parser;
 
+use crate::tray_status::{set_tray_status, TrayStatus};
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
-use crate::tray_status::{set_tray_status, TrayStatus};
 
 fn normalize_video_url(url: &str) -> String {
     let trimmed = url.trim();
@@ -114,7 +114,8 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
                 if [
-                    "pdf", "docx", "xlsx", "csv", "txt", "md", "png", "jpg", "jpeg", "webp",
+                    "pdf", "docx", "xlsx", "csv", "txt", "md", "png", "jpg", "jpeg", "webp", "wav",
+                    "mp3", "m4a", "aac", "flac", "ogg", "opus", "webm",
                 ]
                 .contains(&ext.as_str())
                 {
@@ -191,6 +192,14 @@ fn should_copy_to_kb(ext: &str) -> bool {
             | "rtf"
             | "epub"
             | "code"
+            | "wav"
+            | "mp3"
+            | "m4a"
+            | "aac"
+            | "flac"
+            | "ogg"
+            | "opus"
+            | "webm"
     )
 }
 

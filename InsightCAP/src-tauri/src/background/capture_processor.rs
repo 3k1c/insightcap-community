@@ -71,7 +71,10 @@ async fn bilibili_thumbnail_url(url: &str) -> Option<String> {
     );
     let json = client
         .get(api_url)
-        .header("Referer", format!("https://www.bilibili.com/video/{}", bvid))
+        .header(
+            "Referer",
+            format!("https://www.bilibili.com/video/{}", bvid),
+        )
         .send()
         .await
         .ok()?
@@ -408,7 +411,6 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
                 Err(e) => eprintln!("[CaptureProcessor] Embedding failed (chunk {}): {}", idx, e),
             }
 
-
             let space_engine = crate::services::space_engine::SpaceEngine::new(
                 pool.clone(),
                 app_state.embedder.clone(),
@@ -557,7 +559,5 @@ fn is_low_signal_url_chunk(content: &str) -> bool {
         return true;
     }
 
-    lines.len() <= 4
-        && short_plain_lines + url_line_count >= lines.len()
-        && char_count < 220
+    lines.len() <= 4 && short_plain_lines + url_line_count >= lines.len() && char_count < 220
 }

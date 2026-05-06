@@ -12,10 +12,8 @@ use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::settings::store::get_settings;
 
-
 const DEFAULT_FREQUENCY_MINUTES: u64 = 30;
 const LLM_TIMEOUT_SECS: u64 = 60;
-
 
 #[derive(Debug, Deserialize)]
 struct SynthesisResult {
@@ -67,7 +65,6 @@ struct Contradiction {
     confidence: f32,
 }
 
-
 pub fn start_deep_synthesis_worker(app: AppHandle) {
     let mut shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();
 
@@ -96,7 +93,6 @@ async fn run_deep_synthesis(app: &AppHandle) {
     let app_state = app.state::<AppState>();
     let pool = app_state.db.clone();
 
-
     let settings = match get_settings(&pool).await {
         Ok(s) => s,
         Err(e) => {
@@ -124,7 +120,6 @@ async fn run_deep_synthesis(app: &AppHandle) {
         return;
     }
 
-
     let max_chunks = settings.background_synthesis.max_chunks_per_batch as i64;
     let candidates = match fetch_candidates(&pool, max_chunks).await {
         Ok(c) => c,
@@ -139,7 +134,6 @@ async fn run_deep_synthesis(app: &AppHandle) {
     }
 
     println!("[DeepSynthesis]    {}     chunk     ", candidates.len());
-
 
     let llm = OpenAiProvider::new(
         api_key,
@@ -194,7 +188,6 @@ async fn run_deep_synthesis(app: &AppHandle) {
             return;
         }
     };
-
 
     let synthesis: SynthesisResult = match serde_json::from_value(result.clone()) {
         Ok(s) => s,
@@ -327,14 +320,12 @@ async fn generate_compiled_knowledge(
     Ok(())
 }
 
-
 struct CandidateChunk {
     id: String,
     content: String,
     space_id: Option<String>,
     knowledge_type: String,
 }
-
 
 async fn fetch_candidates(pool: &SqlitePool, limit: i64) -> Result<Vec<CandidateChunk>, String> {
     let rows = sqlx::query(
@@ -383,7 +374,6 @@ async fn fetch_existing_knowledge(pool: &SqlitePool) -> Result<String, String> {
         Ok(rows.join("\n---\n"))
     }
 }
-
 
 async fn process_entities(
     pool: &SqlitePool,
@@ -559,7 +549,6 @@ async fn process_contradictions(
     }
     count
 }
-
 
 async fn append_tag(pool: &SqlitePool, chunk_id: &str, new_tag: &str) -> Result<(), String> {
     let existing: String = sqlx::query_scalar("SELECT tags FROM memory_chunks WHERE id = ?")

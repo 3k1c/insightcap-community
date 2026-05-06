@@ -710,7 +710,7 @@ export const RepositoryPage: React.FC = () => {
                 multiple: true,
                 filters: [{
                     name: t('repository.file_label'),
-                    extensions: ['txt', 'md', 'doc', 'docx', 'xlsx', 'csv', 'pptx', 'pdf', 'py', 'js', 'ts', 'jsx', 'tsx', 'swift', 'rs', 'go', 'java', 'cpp', 'c', 'h', 'rb', 'php', 'html'],
+                    extensions: ['txt', 'md', 'doc', 'docx', 'xlsx', 'csv', 'pptx', 'pdf', 'py', 'js', 'ts', 'jsx', 'tsx', 'swift', 'rs', 'go', 'java', 'cpp', 'c', 'h', 'rb', 'php', 'html', 'wav', 'mp3', 'm4a', 'aac', 'flac', 'ogg', 'opus', 'webm'],
                 }],
             });
 
@@ -719,13 +719,20 @@ export const RepositoryPage: React.FC = () => {
 
             const results = await Promise.allSettled(paths.map((path) => tauriCmd.ingestFile(path)));
             const successCount = results.filter((r) => r.status === 'fulfilled').length;
-            const failCount = results.length - successCount;
+            const failures = results
+                .map((result, index) => ({ result, path: paths[index] }))
+                .filter((entry): entry is { result: PromiseRejectedResult; path: string } => entry.result.status === 'rejected');
+            const failCount = failures.length;
 
             if (successCount > 0) {
                 toast.success(t('repository.toast_import_success', { count: successCount }));
             }
             if (failCount > 0) {
-                toast.error(t('repository.toast_import_failed', { count: failCount }));
+                failures.forEach(({ result, path }) => {
+                    console.error('[Repository] Failed to import file:', path, result.reason);
+                });
+                const firstError = String(failures[0].result.reason ?? '');
+                toast.error(`${t('repository.toast_import_failed', { count: failCount })}${firstError ? `: ${firstError}` : ''}`);
             }
 
             await loadTimeline();
@@ -773,6 +780,12 @@ export const RepositoryPage: React.FC = () => {
 
     const totalCount = filteredSources.length + filteredNotes.length;
     const todayKey = new Date().toISOString().slice(0, 10);
+    const shouldShowImportOnlyTodayGroup =
+        totalCount === 0 &&
+        !keyword &&
+        !selectedTag &&
+        !spaceFilter &&
+        typeFilter !== 'note';
 
     const [tagSourceIds, setTagSourceIds] = useState<Set<string> | null>(null);
 
@@ -792,6 +805,10 @@ export const RepositoryPage: React.FC = () => {
 
     const visibleGroups = useMemo(() => {
         let groups = dayGroups;
+
+        if (shouldShowImportOnlyTodayGroup && groups.length === 0) {
+            groups = [{ dateKey: todayKey, sourceItems: [], noteItems: [] }];
+        }
 
         if (typeFilter !== 'all') {
             groups = groups
@@ -813,7 +830,7 @@ export const RepositoryPage: React.FC = () => {
         }
 
         return groups;
-    }, [dayGroups, typeFilter, todayKey, tagSourceIds]);
+    }, [dayGroups, shouldShowImportOnlyTodayGroup, typeFilter, todayKey, tagSourceIds]);
 
     return (
         <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface-base">
@@ -959,7 +976,7 @@ export const RepositoryPage: React.FC = () => {
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-default/20 border-t-accent-default" />
                         <p className="mt-3 text-fs-sm text-text-tertiary">{t('repository.loading')}</p>
                     </div>
-                ) : totalCount === 0 ? (
+                ) : visibleGroups.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20">
                         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-subtle">
                             <Database className="h-6 w-6 text-text-tertiary" />

@@ -499,9 +499,11 @@ pub async fn save_settings(
     let now = chrono::Utc::now().to_rfc3339();
 
     settings.encrypt_all();
-    
+
     // Sync whisper model preference
-    if let Some(model) = crate::whisper_transcribe::WhisperModel::from_name(&settings.ai_models.speech_to_text_model.model) {
+    if let Some(model) = crate::whisper_transcribe::WhisperModel::from_name(
+        &settings.ai_models.speech_to_text_model.model,
+    ) {
         let _ = crate::whisper_transcribe::write_model_preference(model);
     }
 

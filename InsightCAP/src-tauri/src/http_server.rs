@@ -27,14 +27,12 @@ use crate::{
     settings,
 };
 
-
 #[derive(Clone)]
 struct ApiState {
     pool: SqlitePool,
     token: Arc<String>,
     app: AppHandle,
 }
-
 
 #[derive(Deserialize)]
 struct CaptureRequest {
@@ -92,7 +90,6 @@ struct HealthResponse {
     version: &'static str,
 }
 
-
 fn bearer_ok(headers: &HeaderMap, expected: &str) -> bool {
     headers
         .get("authorization")
@@ -101,7 +98,6 @@ fn bearer_ok(headers: &HeaderMap, expected: &str) -> bool {
         .map(|t| t == expected)
         .unwrap_or(false)
 }
-
 
 async fn handle_health() -> Json<HealthResponse> {
     Json(HealthResponse {
@@ -296,7 +292,6 @@ async fn handle_pwa() -> Html<&'static str> {
     Html(PWA_HTML)
 }
 
-
 fn rag_to_text(ctx: &serde_json::Value) -> String {
     let mut parts: Vec<String> = Vec::new();
 
@@ -331,7 +326,6 @@ fn rag_to_text(ctx: &serde_json::Value) -> String {
     parts.join("\n\n---\n\n")
 }
 
-
 async fn load_or_create_token(pool: &SqlitePool) -> String {
     if let Ok(Some(token)) =
         sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'mobile_api_token'")
@@ -356,7 +350,6 @@ async fn load_or_create_token(pool: &SqlitePool) -> String {
     println!("[HTTP] Generated mobile API token: {} ", &token[..8]);
     token
 }
-
 
 pub async fn start_api_server(app: AppHandle) {
     let pool = app.state::<SqlitePool>().inner().clone();
@@ -390,7 +383,6 @@ pub async fn start_api_server(app: AppHandle) {
         Err(e) => eprintln!("[HTTP] Failed to bind 0.0.0.0:3030   {}", e),
     }
 }
-
 
 async fn handle_list_conversations(
     State(s): State<ApiState>,
@@ -490,7 +482,6 @@ async fn handle_get_messages(
     Ok(Json(items))
 }
 
-
 async fn handle_list_sources(
     State(s): State<ApiState>,
     headers: HeaderMap,
@@ -526,7 +517,6 @@ async fn handle_list_sources(
 
     Ok(Json(items))
 }
-
 
 const PWA_HTML: &str = r#"<!DOCTYPE html>
   <html lang="en">

@@ -74,7 +74,10 @@ fn reminder_status_updated_message(
             format!("提醒状态已更新\n\n标题：{}\n状态：{}", title, status)
         }
         ReminderMessageLanguage::En => {
-            format!("Reminder status updated\n\nTitle: {}\nStatus: {}", title, status)
+            format!(
+                "Reminder status updated\n\nTitle: {}\nStatus: {}",
+                title, status
+            )
         }
     }
 }
@@ -120,7 +123,10 @@ impl ReminderEngine {
             return Err("Title is required".to_string());
         }
 
-        if !matches!(event_type, "meeting" | "deliverable" | "event" | "appointment") {
+        if !matches!(
+            event_type,
+            "meeting" | "deliverable" | "event" | "appointment"
+        ) {
             return Err("Invalid event type".to_string());
         }
 
@@ -156,9 +162,7 @@ impl ReminderEngine {
             return Err("Duplicate reminder already exists".to_string());
         }
 
-        let description = description
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+        let description = description.map(str::trim).filter(|value| !value.is_empty());
 
         let mut schedule = generate_notification_schedule(
             event_type,
@@ -174,17 +178,11 @@ impl ReminderEngine {
         }
         let unschedulable_reason = determine_unschedulable_reason(event_date, &schedule);
         let pending_confirm = if unschedulable_reason.is_some() { 1 } else { 0 };
-        let final_description = merge_description_with_reason(description, unschedulable_reason.as_deref());
+        let final_description =
+            merge_description_with_reason(description, unschedulable_reason.as_deref());
 
-        if let Some(existing_id) = find_reschedule_target_tx(
-            &mut tx,
-            None,
-            title,
-            event_type,
-            event_date,
-            90,
-        )
-        .await?
+        if let Some(existing_id) =
+            find_reschedule_target_tx(&mut tx, None, title, event_type, event_date, 90).await?
         {
             sqlx::query(
                 "UPDATE reminders SET title = ?, description = ?, event_type = ?, date_status = 'confirmed', \
@@ -203,11 +201,13 @@ impl ReminderEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-            sqlx::query("DELETE FROM reminder_notifications WHERE reminder_id = ? AND sent_at IS NULL")
-                .bind(&existing_id)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "DELETE FROM reminder_notifications WHERE reminder_id = ? AND sent_at IS NULL",
+            )
+            .bind(&existing_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
 
             insert_reminder_notifications_tx(&mut tx, &existing_id, &schedule, &now).await?;
             tx.commit().await.map_err(|e| e.to_string())?;
@@ -331,7 +331,11 @@ impl ReminderEngine {
             let description = item["description"].as_str().unwrap_or("").trim();
 
             if status_req == "cancelled" || status_req == "completed" {
-                let db_status = if status_req == "cancelled" { "dismissed" } else { "completed" };
+                let db_status = if status_req == "cancelled" {
+                    "dismissed"
+                } else {
+                    "completed"
+                };
                 let rows_affected = update_existing_reminder_status_tx(
                     &mut tx,
                     Some(conversation_id),
@@ -407,13 +411,12 @@ impl ReminderEngine {
             )
             .await?;
 
-            let pending_confirm: i32 = sqlx::query_scalar(
-                "SELECT pending_confirm FROM reminders WHERE id = ?",
-            )
-            .bind(&reminder_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+            let pending_confirm: i32 =
+                sqlx::query_scalar("SELECT pending_confirm FROM reminders WHERE id = ?")
+                    .bind(&reminder_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
             println!(
                 "[ReminderEngine] Created reminder: {} (type={}, status={}, confidence={:.2}, pending={})",
@@ -523,9 +526,7 @@ impl ReminderEngine {
             processed_chunks += 1;
             println!(
                 "[ReminderEngine] Extraction chunk {}/{} returned {} reminders.",
-                processed_chunks,
-                initial_chunk_count,
-                actual_count
+                processed_chunks, initial_chunk_count, actual_count
             );
             merged.extend(items);
         }
@@ -725,9 +726,7 @@ impl ReminderEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-            let latest_sent_dt = latest_sent_at
-                .as_deref()
-                .and_then(parse_rfc3339_utc_to_utc);
+            let latest_sent_dt = latest_sent_at.as_deref().and_then(parse_rfc3339_utc_to_utc);
 
             for row in pending_rows {
                 let notif_id: String = row.get("id");
@@ -841,7 +840,6 @@ impl ReminderEngine {
         Ok(results)
     }
 }
-
 
 fn generate_notification_schedule(
     event_type: &str,
@@ -1043,7 +1041,12 @@ fn fallback_extraction_or_empty(
     primary_error: String,
 ) -> Result<serde_json::Value, String> {
     fallback_result
-        .map_err(|e2| format!("All reminder extraction attempts failed: {}; {}", primary_error, e2))
+        .map_err(|e2| {
+            format!(
+                "All reminder extraction attempts failed: {}; {}",
+                primary_error, e2
+            )
+        })
         .or_else(|combined_error| {
             eprintln!(
                 "[ReminderEngine] Emergency reminder extraction fallback failed: {}",
@@ -1108,7 +1111,8 @@ fn collect_reminder_candidate_items(dialogue: &str) -> Vec<String> {
 
 fn is_reminder_candidate_start(line: &str) -> bool {
     let candidate = strip_speaker_prefix(line);
-    reminder_candidate_start_regex().is_match(candidate) || reminder_date_regex().is_match(candidate)
+    reminder_candidate_start_regex().is_match(candidate)
+        || reminder_date_regex().is_match(candidate)
 }
 
 fn strip_speaker_prefix(line: &str) -> &str {
@@ -1338,8 +1342,8 @@ async fn upsert_extracted_reminder_tx(
         }
     }
 
-    let unschedulable_reason = event_date
-        .and_then(|date| determine_unschedulable_reason(date, &schedule));
+    let unschedulable_reason =
+        event_date.and_then(|date| determine_unschedulable_reason(date, &schedule));
     let pending_confirm = if confidence < 0.49 || unschedulable_reason.is_some() {
         1_i32
     } else {
@@ -1434,7 +1438,7 @@ async fn upsert_extracted_reminder_tx(
         "INSERT INTO reminders (id, conversation_id, space_id, project_id, title, description, \
          event_type, date_status, event_date, event_date_end, event_time, confidence, \
          status, pending_confirm, created_at, updated_at) \
-         VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)"
+         VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)",
     )
     .bind(&reminder_id)
     .bind(conversation_id)
@@ -1801,13 +1805,13 @@ fn try_parse_partial_reminder_items(text: &str) -> Option<Vec<serde_json::Value>
 
 #[cfg(test)]
 mod tests {
-    use crate::db::connection::init_db;
     use super::{
-        build_reminder_extraction_dialogue_chunks, dedupe_reminder_items, merge_reminder_items,
+        build_reminder_extraction_dialogue_chunks, dedupe_reminder_items,
+        generate_imminent_fallback, is_empty_raw_parse_error, merge_reminder_items,
+        naive_local_to_utc_str, normalize_event_time, normalize_event_time_with_status,
         parse_structured_reminder_candidate_items,
-        generate_imminent_fallback, is_empty_raw_parse_error, naive_local_to_utc_str,
-        normalize_event_time, normalize_event_time_with_status,
     };
+    use crate::db::connection::init_db;
     use chrono::{Duration, Local, NaiveDate, NaiveTime, Utc};
     use serde_json::json;
     use sqlx::SqlitePool;
@@ -1898,7 +1902,8 @@ mod tests {
 
     #[test]
     fn test_build_reminder_extraction_dialogue_chunks_keeps_small_batch() {
-        let dialogue = "1. 2027-10-01 完成任務 1\n2. 2027-10-02 完成任務 2\n3. 2027-10-03 完成任務 3";
+        let dialogue =
+            "1. 2027-10-01 完成任務 1\n2. 2027-10-02 完成任務 2\n3. 2027-10-03 完成任務 3";
         let chunks = build_reminder_extraction_dialogue_chunks(dialogue);
         assert_eq!(chunks, vec![dialogue.to_string()]);
     }
@@ -2047,7 +2052,9 @@ mod tests {
 
         let merged = merge_reminder_items(llm_items, fallback_items);
         assert_eq!(merged.len(), 3);
-        assert!(merged.iter().any(|item| item["title"] == "Batch Reminder #2"));
+        assert!(merged
+            .iter()
+            .any(|item| item["title"] == "Batch Reminder #2"));
     }
 
     #[test]
@@ -2065,16 +2072,29 @@ mod tests {
     #[test]
     fn test_is_within_reschedule_window_limits_match_range() {
         let base = "2027-10-01";
-        assert!(super::is_within_reschedule_window(Some("2027-12-01"), base, 90));
-        assert!(!super::is_within_reschedule_window(Some("2028-02-01"), base, 90));
+        assert!(super::is_within_reschedule_window(
+            Some("2027-12-01"),
+            base,
+            90
+        ));
+        assert!(!super::is_within_reschedule_window(
+            Some("2028-02-01"),
+            base,
+            90
+        ));
         assert!(super::is_within_reschedule_window(None, base, 90));
     }
 
     #[tokio::test]
-    async fn test_reschedule_request_should_replace_existing_active_reminder_instead_of_duplication() {
+    async fn test_reschedule_request_should_replace_existing_active_reminder_instead_of_duplication(
+    ) {
         let (engine, pool, _dir) = setup_test_engine().await;
-        let first_date = (Local::now().date_naive() + Duration::days(10)).format("%Y-%m-%d").to_string();
-        let second_date = (Local::now().date_naive() + Duration::days(12)).format("%Y-%m-%d").to_string();
+        let first_date = (Local::now().date_naive() + Duration::days(10))
+            .format("%Y-%m-%d")
+            .to_string();
+        let second_date = (Local::now().date_naive() + Duration::days(12))
+            .format("%Y-%m-%d")
+            .to_string();
 
         engine
             .create_reminder("Project Review", None, "event", &first_date, Some("09:00"))
@@ -2152,19 +2172,24 @@ mod tests {
             .to_string();
 
         let result = engine
-            .create_reminder("Past-due Follow-up", None, "event", &past_date, Some("09:00"))
+            .create_reminder(
+                "Past-due Follow-up",
+                None,
+                "event",
+                &past_date,
+                Some("09:00"),
+            )
             .await;
 
         match result {
             Err(_) => {}
             Ok(reminder_id) => {
-                let pending_confirm: i32 = sqlx::query_scalar(
-                    "SELECT pending_confirm FROM reminders WHERE id = ?",
-                )
-                .bind(&reminder_id)
-                .fetch_one(&pool)
-                .await
-                .expect("load pending_confirm");
+                let pending_confirm: i32 =
+                    sqlx::query_scalar("SELECT pending_confirm FROM reminders WHERE id = ?")
+                        .bind(&reminder_id)
+                        .fetch_one(&pool)
+                        .await
+                        .expect("load pending_confirm");
 
                 let pending_notifications: i64 = sqlx::query_scalar(
                     "SELECT COUNT(*) FROM reminder_notifications WHERE reminder_id = ? AND sent_at IS NULL",
@@ -2245,13 +2270,12 @@ mod tests {
         .expect("count active");
         assert_eq!(active_count, 1);
 
-        let stored_date: Option<String> = sqlx::query_scalar(
-            "SELECT event_date FROM reminders WHERE id = ?",
-        )
-        .bind(&reminder_id)
-        .fetch_one(&pool)
-        .await
-        .expect("load updated date");
+        let stored_date: Option<String> =
+            sqlx::query_scalar("SELECT event_date FROM reminders WHERE id = ?")
+                .bind(&reminder_id)
+                .fetch_one(&pool)
+                .await
+                .expect("load updated date");
         assert_eq!(stored_date.as_deref(), Some(second_date.as_str()));
     }
 

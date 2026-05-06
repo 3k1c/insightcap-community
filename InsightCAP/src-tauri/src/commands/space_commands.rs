@@ -219,7 +219,7 @@ pub async fn create_manual_space(
 ) -> Result<String, String> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    
+
     sqlx::query(
         "INSERT INTO spaces (id, name, description, is_user_managed, created_at, updated_at) VALUES (?, ?, '', 1, ?, ?)"
     )
@@ -230,15 +230,12 @@ pub async fn create_manual_space(
     .execute(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
-    
+
     Ok(id)
 }
 
 #[tauri::command]
-pub async fn delete_space(
-    pool: State<'_, SqlitePool>,
-    space_id: String,
-) -> Result<(), String> {
+pub async fn delete_space(pool: State<'_, SqlitePool>, space_id: String) -> Result<(), String> {
     // 檢查是否為用戶建立或是可以刪除
     // 目前允許用戶刪除任何 Space，但標註為 is_archived = 1 而非直接物理刪除
     sqlx::query("UPDATE spaces SET is_archived = 1, updated_at = ? WHERE id = ?")
@@ -247,14 +244,14 @@ pub async fn delete_space(
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
-        
+
     // 同時把該 Space 下的所有 chunks 設為 null space
     sqlx::query("UPDATE captures SET space_id = NULL WHERE space_id = ?")
         .bind(&space_id)
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
-        
+
     sqlx::query("UPDATE memory_chunks SET space_id = NULL WHERE space_id = ?")
         .bind(&space_id)
         .execute(pool.inner())

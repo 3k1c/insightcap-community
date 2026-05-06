@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "InsightCAP",
-        "width": 1000,
-        "height": 600,
+        "width": 1580,
+        "height": 1000,
         "center": true,
         "resizable": true,
         "fullscreen": false,
@@ -62,10 +62,16 @@
     ],
     "resources": [
       "yt-dlp.exe",
-      "resources/vc-runtime/*"
+      "ffmpeg.exe",
+      "pdfium.dll",
+      "resources/whisper-cli.exe",
+      "resources/main.exe",
+      "resources/vc-runtime/*",
+      "resources/vc_redist.x64.exe"
     ],
     "windows": {
       "nsis": {
+        "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
         "languages": [
           "English",
