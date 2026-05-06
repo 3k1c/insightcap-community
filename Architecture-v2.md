@@ -514,11 +514,12 @@ toast 顯示導入成功 / 失敗結果
 
 ### 提醒生命週期 (Lifecycle)
 
-1. **偵測 (Detection)**：從對話文本或 Markdown 企劃書中自動識別 Deadline 與事件類型。
-2. **提取 (Extraction)**：LLM 轉化為 JSON 實體，設定 `confirmed` 狀態（高信心度）或 `pending` 狀態（低信心度）。
-3. **確認 (Confirmation)**：用戶一鍵將待確認項轉為活躍排程。
-4. **排程 (Scheduling)**：`ReminderScheduler` 動態計算多個預警點（Imminent/Soon/Final）。
-5. **更新與撤回 (Update/Snooze)**：支援全體延期或特定項目時間調整，對應更新排程。
+1. **意圖閘門 (Intent Gate)**：在進入 LLM 提取前先做 deterministic 分流。明確「提醒我 / 幫我提醒 / 通知我」或「AI 提醒建議 + 用戶確認」才可進入提取；明確「不用出席 / 不參加 / 不需提醒 / 不用跟進」且沒有提醒要求時直接跳過。
+2. **待確認保守策略 (Needs Confirmation)**：粵語、日文、錯別字、上下文不足或語意模糊時，不額外呼叫 AI classifier，也不建立 active reminder；目前僅記錄為需要確認的情境，避免拖慢對話或誤建提醒。
+3. **提取 (Extraction)**：只有通過意圖閘門的內容才送入 `ReminderEngine.extract_reminders()`，由 LLM 轉化為 JSON 實體。提取結果若沒有具體日期且沒有具體時間，後端直接跳過。
+4. **確認 (Confirmation)**：低信心度、排程不可用或需要用戶確認的提醒不得直接進入已排定列表；用戶確認後才轉為活躍排程。
+5. **排程 (Scheduling)**：`ReminderScheduler` 動態計算多個預警點（Imminent/Soon/Final）。
+6. **更新與撤回 (Update/Snooze)**：支援單項完成、延時與關閉。批量延期、批量取消、連鎖變更等 `reminder_change_proposals` 流程暫停開發，不得由 `extract_reminders()` 自動修改多筆既有提醒。
 
 ### 新增提醒彈窗 (Add Reminder Modal)
 
@@ -1195,11 +1196,14 @@ CREATE INDEX idx_reminder_notif_reminder
 智慧提醒（雙路徑）
   路徑 A — 常規（ConversationScheduler 非同步 spawn）：
     對話摘要完成後 → ReminderEngine.extract_reminders()
-    → LLM 提取事件 → 去重 → 排程生成 → 寫入 reminders + notifications
+    → deterministic intent gate（Create / NoAction / NeedsConfirmation）
+    → 只有 Create 進入 LLM 提取事件 → 去重 → 排程生成 → 寫入 reminders + notifications
+    → NoAction / NeedsConfirmation 不建立 active reminder，且不額外呼叫 AI classifier
   路徑 B — Hot Path（即時偵測，繞過 Scheduler 延遲）：
     用戶訊息含時間關鍵字（前端 Regex 偵測）
     → AI 回應完成 → invoke trigger_urgent_reminder_check
     → 同一 ReminderEngine.extract_reminders() 立即執行
+    → 同樣套用 deterministic intent gate，避免 assistant 建議、RAG 內容或不需出席事件誤建提醒
     → generate_imminent_fallback() 補近未來通知（事件 -5 分鐘或立即 +30 秒）
   投遞：
     ReminderScheduler 每 60 秒輪詢 → emit "reminder-notification" event → 前端 ReminderToast
@@ -1432,7 +1436,7 @@ rag_commands 傳給 RAGEngine：
 | TagEngine | per-source 標籤生成 + per-capture 標籤生成、CRUD、頻率統計、推薦；`process_source()` 輸入整份文件產出 3-5 代表標籤，跳過已有標籤以提升效率 |
 | VisionEngine | Vision model 可選增強層，對圖片與掃描頁 OCR 結果進一步理解；`probe_vision_support()` 探測模型能力（4×4 紅色測試圖，結果快取整個 App 生命週期），`try_vision_enhance()` 非阻塞調用 vision model 增強辨識 |
 | ChunkRelationEngine | 分析 chunk 之間的語意關聯（references / contradicts / extends），寫入 `chunk_relations` 表 |
-| ReminderEngine | 智慧提醒：LLM 提取對話中的日期/事件 → 去重（Layer 1: 對話內同日同分；Layer 2: 跨對話「同標題+同日+同分」）→ 意圖式排程生成（meeting/deliverable/appointment/event × confirmed/time_inferred/range/month_only）→ 寫入 reminders + reminder_notifications；支援確認/延後/完成/關閉操作。時區處理使用 `chrono::Local` 本地時間轉 UTC |
+| ReminderEngine | 智慧提醒：先以 deterministic intent gate 過濾對話內容（明確提醒/AI 建議已確認才建立；明確不需出席或不需提醒則跳過；模糊、多語言、錯字情境標記為 needs confirmation 並不建立 active reminder）→ LLM 提取日期/事件 → 去重（Layer 1: 對話內同日同分；Layer 2: 跨對話「同標題+同日+同分」）→ 意圖式排程生成（meeting/deliverable/appointment/event × confirmed/time_inferred/range/month_only）→ 寫入 reminders + reminder_notifications；無日期且無時間的提取結果直接丟棄。支援確認/延後/完成/關閉操作。時區處理使用 `chrono::Local` 本地時間轉 UTC |
 | SpaceKnowledgeGuideEngine | 根據 space 內最新 chunk 自動生成/更新 `spaces.knowledge_guide_content` |
 | DeepSynthesisEngine | 背景深度合成引擎：多目標合成（entity/concept/synthesis/contradiction）+ 編譯後知識生成；強制使用 `content_processor_llm`，僅在無活躍對話時執行 |
 | WebSearch | 聯網搜尋，呼叫外部搜尋 API，供對話時「聯網搜尋」功能使用 |

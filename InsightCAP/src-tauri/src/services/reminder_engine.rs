@@ -242,7 +242,7 @@ impl ReminderEngine {
     pub async fn extract_reminders(
         &self,
         conversation_id: &str,
-        summary: &str,
+        _summary: &str,
         dialogue: &str,
         conversation_timestamp: &str,
         project_id: Option<&str>,
@@ -250,13 +250,25 @@ impl ReminderEngine {
         let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
         let primary_cfg = settings.ai_models.content_processor_llm.clone();
         let fallback_cfg = settings.ai_models.chat_llm.clone();
+        let extraction_dialogue = match build_reminder_intent_gate(dialogue) {
+            ReminderIntentGate::Create(dialogue) => dialogue,
+            ReminderIntentGate::NoAction => return Ok(vec![]),
+            ReminderIntentGate::NeedsConfirmation(dialogue) => {
+                println!(
+                    "[ReminderEngine] Reminder intent needs confirmation; skipped active extraction: conversation_id={}, preview={}",
+                    conversation_id,
+                    dialogue.chars().take(120).collect::<String>()
+                );
+                return Ok(vec![]);
+            }
+        };
         let json = self
             .extract_reminder_json(
                 &primary_cfg,
                 &fallback_cfg,
                 conversation_timestamp,
-                summary,
-                dialogue,
+                "",
+                &extraction_dialogue,
             )
             .await?;
 
@@ -378,6 +390,14 @@ impl ReminderEngine {
                         }
                     }
                 }
+                continue;
+            }
+
+            if event_date.is_empty() && event_time.is_none() {
+                eprintln!(
+                    "[ReminderEngine] Skipping extracted reminder without concrete date/time: title='{}', conversation_id={}",
+                    title, conversation_id
+                );
                 continue;
             }
 
@@ -781,7 +801,10 @@ impl ReminderEngine {
               (SELECT COUNT(*) FROM reminder_notifications WHERE reminder_id = r.id AND sent_at IS NULL) as pending_notifs \
               FROM reminders r \
               WHERE r.status = 'active' \
-              AND (r.event_date >= date('now', 'localtime') OR r.event_date IS NULL OR r.event_date = '') \
+              AND r.pending_confirm = 0 \
+              AND r.event_date IS NOT NULL \
+              AND r.event_date != '' \
+              AND r.event_date >= date('now', 'localtime') \
               ORDER BY r.event_date ASC NULLS LAST"
         )
         .fetch_all(&self.pool)
@@ -1122,6 +1145,289 @@ fn strip_speaker_prefix(line: &str) -> &str {
         .or_else(|| line.strip_prefix("assistant:"))
         .map(str::trim)
         .unwrap_or(line)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ReminderIntentGate {
+    Create(String),
+    NoAction,
+    NeedsConfirmation(String),
+}
+
+#[cfg(test)]
+fn build_user_confirmed_reminder_dialogue(dialogue: &str) -> String {
+    match build_reminder_intent_gate(dialogue) {
+        ReminderIntentGate::Create(dialogue) | ReminderIntentGate::NeedsConfirmation(dialogue) => {
+            dialogue
+        }
+        ReminderIntentGate::NoAction => String::new(),
+    }
+}
+
+fn build_reminder_intent_gate(dialogue: &str) -> ReminderIntentGate {
+    let turns = parse_dialogue_turns(dialogue);
+    if turns.is_empty() {
+        let trimmed = dialogue.trim();
+        if trimmed.is_empty() {
+            return ReminderIntentGate::NoAction;
+        }
+        return ReminderIntentGate::NeedsConfirmation(trimmed.to_string());
+    }
+
+    let mut scoped_blocks = Vec::new();
+    let mut has_hard_create = false;
+    let mut has_classifier_candidate = false;
+
+    for index in 0..turns.len() {
+        let turn = &turns[index];
+        if !is_user_dialogue_role(&turn.role) {
+            continue;
+        }
+
+        let content = turn.content.trim();
+        if content.is_empty() {
+            continue;
+        }
+        if is_user_no_action_statement(content) {
+            continue;
+        }
+
+        let previous_assistant = turns[..index]
+            .iter()
+            .rev()
+            .find(|candidate| candidate.role.eq_ignore_ascii_case("assistant"));
+
+        if is_user_confirmation(content) {
+            if let Some(assistant_turn) = previous_assistant {
+                if is_assistant_reminder_proposal(&assistant_turn.content) {
+                    scoped_blocks.push(format!(
+                        "Assistant proposal confirmed by user:\n{}\nUser confirmation: {}",
+                        assistant_turn.content.trim(),
+                        content
+                    ));
+                    has_hard_create = true;
+                    continue;
+                }
+            }
+        }
+
+        scoped_blocks.push(format!("User: {}", content));
+        if has_explicit_reminder_request(&content.to_ascii_lowercase()) {
+            has_hard_create = true;
+        } else {
+            has_classifier_candidate = true;
+        }
+    }
+
+    if scoped_blocks.is_empty() {
+        ReminderIntentGate::NoAction
+    } else if has_hard_create && !has_classifier_candidate {
+        ReminderIntentGate::Create(scoped_blocks.join("\n\n"))
+    } else {
+        ReminderIntentGate::NeedsConfirmation(scoped_blocks.join("\n\n"))
+    }
+}
+
+fn split_dialogue_role_prefix(line: &str) -> Option<(&str, &str)> {
+    let (role, content) = line.split_once(':')?;
+    let role = role.trim();
+    if matches!(
+        role.to_ascii_lowercase().as_str(),
+        "user" | "assistant" | "system" | "tool"
+    ) {
+        Some((role, content))
+    } else {
+        None
+    }
+}
+
+fn is_user_dialogue_role(role: &str) -> bool {
+    role.eq_ignore_ascii_case("user")
+}
+
+struct DialogueTurn {
+    role: String,
+    content: String,
+}
+
+fn parse_dialogue_turns(dialogue: &str) -> Vec<DialogueTurn> {
+    let mut turns = Vec::new();
+    let mut current_role: Option<String> = None;
+    let mut current_content: Vec<String> = Vec::new();
+    let mut saw_explicit_role = false;
+
+    for raw_line in dialogue.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some((role, content)) = split_dialogue_role_prefix(line) {
+            saw_explicit_role = true;
+            if let Some(role) = current_role.take() {
+                turns.push(DialogueTurn {
+                    role,
+                    content: current_content.join("\n"),
+                });
+                current_content.clear();
+            }
+            current_role = Some(role.to_string());
+            if !content.trim().is_empty() {
+                current_content.push(content.trim().to_string());
+            }
+        } else if let Some(_) = current_role {
+            current_content.push(line.to_string());
+        } else if !saw_explicit_role {
+            current_role = Some("user".to_string());
+            current_content.push(line.to_string());
+        }
+    }
+
+    if let Some(role) = current_role {
+        turns.push(DialogueTurn {
+            role,
+            content: current_content.join("\n"),
+        });
+    }
+
+    turns
+}
+
+fn is_assistant_reminder_proposal(content: &str) -> bool {
+    let lower = content.to_ascii_lowercase();
+    let has_reminder_keyword = [
+        "提醒",
+        "reminder",
+        "remind",
+        "schedule",
+        "scheduled",
+        "deadline",
+        "appointment",
+        "meeting",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword));
+
+    has_reminder_keyword || reminder_date_regex().is_match(content)
+}
+
+fn is_user_confirmation(content: &str) -> bool {
+    let lower = content.to_ascii_lowercase();
+    let rejection_keywords = [
+        "不用",
+        "不要",
+        "先不用",
+        "取消",
+        "否",
+        "不是",
+        "不需要",
+        "no",
+        "don't",
+        "do not",
+        "cancel",
+        "skip",
+    ];
+    if rejection_keywords
+        .iter()
+        .any(|keyword| lower.contains(keyword))
+    {
+        return false;
+    }
+
+    [
+        "好",
+        "好的",
+        "可以",
+        "同意",
+        "確認",
+        "照做",
+        "就這樣",
+        "幫我加入",
+        "幫我建立",
+        "新增",
+        "加入",
+        "建立",
+        "yes",
+        "ok",
+        "okay",
+        "confirm",
+        "confirmed",
+        "go ahead",
+        "please do",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+}
+
+fn is_user_no_action_statement(content: &str) -> bool {
+    let lower = content.to_ascii_lowercase();
+    if has_explicit_reminder_request(&lower) {
+        return false;
+    }
+
+    [
+        "不需要出席",
+        "不用出席",
+        "不必出席",
+        "不出席",
+        "不會出席",
+        "不參加",
+        "不用參加",
+        "不必參加",
+        "不需要參加",
+        "不用參與",
+        "不必參與",
+        "不需要參與",
+        "不用加入",
+        "不必加入",
+        "不需要加入",
+        "不用進去",
+        "不必進去",
+        "不需要進去",
+        "不用在場",
+        "不必在場",
+        "不需要在場",
+        "不必在現場",
+        "不用在現場",
+        "不需要在現場",
+        "不需要處理",
+        "不用處理",
+        "不需要跟進",
+        "不用跟進",
+        "不需要提醒",
+        "不用提醒",
+        "no need to attend",
+        "do not need to attend",
+        "don't need to attend",
+        "not attending",
+        "no need to handle",
+        "no need to follow up",
+        "no reminder needed",
+        "don't remind me",
+        "do not remind me",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+}
+
+fn has_explicit_reminder_request(lower_content: &str) -> bool {
+    [
+        "提醒我",
+        "通知我",
+        "幫我提醒",
+        "幫我通知",
+        "記得提醒",
+        "也要提醒",
+        "還是提醒",
+        "需要提醒",
+        "要提醒我",
+        "remind me",
+        "notify me",
+        "send me a reminder",
+        "set a reminder",
+    ]
+    .iter()
+    .any(|keyword| lower_content.contains(keyword))
 }
 
 fn reminder_candidate_start_regex() -> &'static Regex {
@@ -1906,6 +2212,144 @@ mod tests {
             "1. 2027-10-01 完成任務 1\n2. 2027-10-02 完成任務 2\n3. 2027-10-03 完成任務 3";
         let chunks = build_reminder_extraction_dialogue_chunks(dialogue);
         assert_eq!(chunks, vec![dialogue.to_string()]);
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_keeps_confirmed_assistant_suggestions() {
+        let dialogue = "Assistant: 建議新增 2027-10-01 09:00 提交品牌報告提醒。\nUser: 好的\nAssistant: 我已經加入提醒。";
+        let scoped = super::build_user_confirmed_reminder_dialogue(dialogue);
+
+        assert!(scoped.contains("Assistant proposal confirmed by user:"));
+        assert!(scoped.contains("2027-10-01"));
+        assert!(scoped.contains("提交品牌報告"));
+        assert!(scoped.contains("User confirmation: 好的"));
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_drops_unconfirmed_assistant_suggestions() {
+        let dialogue = "Assistant: 建議新增 2027-10-01 09:00 提交品牌報告提醒。\nUser: 這個建議不錯，但先不用。";
+        let scoped = super::build_user_confirmed_reminder_dialogue(dialogue);
+
+        assert!(!scoped.contains("2027-10-01"));
+        assert!(!scoped.contains("提交品牌報告"));
+        assert!(scoped.contains("User: 這個建議不錯，但先不用。"));
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_keeps_user_requests_and_continuations() {
+        let dialogue = "User: 請幫我建立以下提醒：\n1. 2027-10-01 09:00 完成任務 1\n2. 2027-10-02 10:00 完成任務 2\nAssistant: 好的，我會處理。";
+        let scoped = super::build_user_confirmed_reminder_dialogue(dialogue);
+
+        assert!(scoped.contains("User: 請幫我建立以下提醒"));
+        assert!(scoped.contains("2027-10-01 09:00 完成任務 1"));
+        assert!(scoped.contains("2027-10-02 10:00 完成任務 2"));
+        assert!(!scoped.contains("Assistant:"));
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_drops_events_user_does_not_need() {
+        let dialogue = "User: 今天下午2點有一個會議，我不需要出席";
+        let scoped = super::build_user_confirmed_reminder_dialogue(dialogue);
+
+        assert_eq!(scoped, "");
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_keeps_explicit_reminder_despite_no_attendance() {
+        let dialogue =
+            "User: 今天下午2點有一個會議主管都要出席，雖然我不需要出席，但也要提醒我，以免打擾主管";
+        let scoped = super::build_user_confirmed_reminder_dialogue(dialogue);
+
+        assert!(scoped.contains("User: 今天下午2點有一個會議主管都要出席"));
+        assert!(scoped.contains("也要提醒我"));
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_keeps_no_attendance_but_explicit_reminder_cases(
+    ) {
+        let cases = [
+            "今天下午1點半技術部有系統維護會議，我不用進去，但請提醒我那時候暫停所有大檔案傳輸。",
+            "明天中午12點主管要和外賓午餐，我不需要陪同，不過要提醒我先幫他們預訂好車輛。",
+            "下週二下午4點有新進員工培訓，我不必出席，但幫我提醒在那之前把講義放在門口。",
+            "5月15日早上9點有年度預算審核，我不用參加，但請提醒我那天早上別送任何報銷單去辦公室。",
+            "今天傍晚6點有清潔公司來打掃會議室，我不需要在場，但要提醒我提早把個人物品帶走。",
+            "明天上午11點研發部要進行壓力測試，我不用參與，但請提醒我那段時間不要進實驗室。",
+            "下週五下午2點有客戶參訪工廠，我不必跟隨，但幫我提醒那天提早檢查大廳的歡迎看板。",
+            "今天下午3點半有保險經紀人來訪，我不用出席，但請提醒我到時幫忙送兩杯咖啡進去。",
+            "明早10點半有個機密的解聘談話，我不用參加，但要提醒我絕對不要讓其他人靠近那一區。",
+            "下週四早上9點半有股東會預演，我不需要進場，但請提醒我預演結束後去收回投影機。",
+        ];
+
+        for case in cases {
+            let dialogue = format!("User: {}", case);
+            let scoped = super::build_user_confirmed_reminder_dialogue(&dialogue);
+            assert!(
+                scoped.contains(case),
+                "explicit reminder should be kept: {}",
+                case
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_user_confirmed_reminder_dialogue_drops_no_attendance_without_reminder_request_cases(
+    ) {
+        let cases = [
+            "今天下午2點營運部有週會，我不用參加，反正他們開會通常都不會用到我的資料。",
+            "明天早上9點有廠商要來修冷氣，我不必在現場盯著，反正警衛大哥會幫忙開門。",
+            "下週三下午有志工活動，我不參加，因為我那天已經請假要帶家人去看醫生了。",
+            "今天 15:00 業務部有內部競賽，我不需要出席，聽說他們這次只是簡單交流而已。",
+            "5月20日有大型招商會，我不用參與，那時候我應該已經在出差的路上了。",
+            "明天下午4點有線上課程，我不用加入，反正事後會有錄影檔可以隨時補看。",
+            "今晚7點有個歡送派對，我不出席，我已經私下跟離職同事打過招呼並送過禮物了。",
+            "下週一早上8點有環境清潔日，我不用參加，因為主管已經指派我處理另一個緊急專案。",
+            "今天下午1點有社團老師來訪，我不出席，他們只是來借用場地一下就走了。",
+            "明天上午10點有外部稽核，我不必在場，所有文件我上週就已經全部上傳到雲端了。",
+        ];
+
+        for case in cases {
+            let dialogue = format!("User: {}", case);
+            let scoped = super::build_user_confirmed_reminder_dialogue(&dialogue);
+            assert_eq!(scoped, "", "no-action event should be dropped: {}", case);
+        }
+    }
+
+    #[test]
+    fn test_build_reminder_intent_gate_marks_multilingual_and_typo_cases_needs_confirmation() {
+        let cases = [
+            "User: 聽日下午2點有個會，我唔使出席。",
+            "User: 明日午後2時に会議がありますが、私は出席しなくていいです。",
+            "User: 今天下午2點有會議，我不用出蓆。",
+            "User: 聽朝10點有會，我唔使去，但都幫我提一提。",
+        ];
+
+        for case in cases {
+            match super::build_reminder_intent_gate(case) {
+                super::ReminderIntentGate::NeedsConfirmation(context) => {
+                    assert!(
+                        context.contains("User:"),
+                        "confirmation context should keep user text"
+                    );
+                }
+                other => panic!(
+                    "expected needs-confirmation for multilingual/typo case, got {:?}",
+                    other
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn test_build_reminder_intent_gate_uses_hard_create_for_confirmed_assistant_proposal() {
+        let dialogue = "Assistant: 建議新增 2027-10-01 09:00 提交品牌報告提醒。\nUser: 好的";
+
+        match super::build_reminder_intent_gate(dialogue) {
+            super::ReminderIntentGate::Create(context) => {
+                assert!(context.contains("Assistant proposal confirmed by user"));
+                assert!(context.contains("2027-10-01"));
+            }
+            other => panic!("expected hard create for confirmed assistant proposal, got {:?}", other),
+        }
     }
 
     #[test]
