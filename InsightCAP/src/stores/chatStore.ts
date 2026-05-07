@@ -3,14 +3,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import i18n from '../i18n';
-
-function recentAssistantContext(messages: Message[]): string {
-    return messages
-        .filter(m => m.role === 'assistant')
-        .slice(-3)
-        .map(m => m.content)
-        .join('\n');
-}
+import { buildChatHistory } from '../lib/chat-history';
+import { appendReminderCreatedAck } from '../lib/reminder-ack';
+import { nextStreamingText } from './streaming-text';
 
 export interface Conversation {
     id: string;
@@ -42,6 +37,7 @@ export interface Message {
     created_at: string;
     attachedFiles?: { name: string; filePath: string; fileType: string; previewUrl?: string }[];
     mentionedSources?: { id: string; title: string }[];
+    mentionedTags?: { id: string; name: string }[];
     citationSources?: string[];
     reasoningContent?: string;
 }
@@ -65,7 +61,6 @@ interface ChatState {
     contextStats: ContextStats;
     expandedProjectIds: Set<string>;
     conversationTempChunkIds: string[];
-    pendingReminderAckByConversation: Record<string, boolean>;
 
     loadConversations: () => Promise<void>;
     loadProjects: () => Promise<void>;
@@ -80,12 +75,13 @@ interface ChatState {
     reorderProjects: (orderedIds: string[]) => Promise<void>;
     toggleProjectExpanded: (projectId: string) => void;
     loadMessages: (conversationId: string) => Promise<void>;
-    triggerUrgentReminderCheck: (conversationId: string, userMsg: string, aiMsg: string) => Promise<void>;
+    triggerUrgentReminderCheck: (conversationId: string, userMsg: string, aiMsg: string) => Promise<number>;
     sendMessage: (content: string, opts?: {
         ragEnabled?: boolean;
         webEnabled?: boolean;
         mentionedSourceIds?: string[];
         mentionedTagNames?: string[];
+        mentionedTags?: { id: string; name: string }[];
         attachedFiles?: { name: string; filePath: string; fileType: string; previewUrl?: string; tempChunkIds?: string[] }[];
         tempChunkIds?: string[];
         thinkingMode?: 'normal' | 'think';
@@ -104,7 +100,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     expandedProjectIds: new Set(),
     contextStats: { dataCount: 0, patternCount: 0, logCount: 0, patternHints: [], logHints: [] },
     conversationTempChunkIds: [],
-    pendingReminderAckByConversation: {},
 
     loadProjects: async () => {
         try {
@@ -297,18 +292,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 let attachedFiles: Message['attachedFiles'];
                 let citationSources: Message['citationSources'];
                 let mentionedSources: Message['mentionedSources'];
+                let mentionedTags: Message['mentionedTags'];
                 let reasoningContent: Message['reasoningContent'];
                 try {
                     const meta = JSON.parse(m.metadata || '{}');
                     if (Array.isArray(meta.attachedFiles)) attachedFiles = meta.attachedFiles;
                     if (Array.isArray(meta.citationSources)) citationSources = meta.citationSources;
                     if (Array.isArray(meta.mentionedSources)) mentionedSources = meta.mentionedSources;
+                    if (Array.isArray(meta.mentionedTags)) mentionedTags = meta.mentionedTags;
                     if (typeof meta.reasoningContent === 'string') reasoningContent = meta.reasoningContent;
                     if (m.role === 'user' && Array.isArray(meta.tempChunkIds)) {
                         restoredTempChunkIds = meta.tempChunkIds;
                     }
                 } catch { /* ignore */ }
-                return { ...m, attachedFiles, mentionedSources, citationSources, reasoningContent };
+                return { ...m, attachedFiles, mentionedSources, mentionedTags, citationSources, reasoningContent };
             });
             set({ messages, conversationTempChunkIds: restoredTempChunkIds });
         } catch (error) {
@@ -335,7 +332,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const isUrgent = URGENT_PATTERNS.some(p => p.test(userMsg)) || userMsg.includes('\u63d0\u9192');
         console.log('[UrgentReminder] Detection check:', { userMsg, isUrgent });
 
-        if (!isUrgent) return;
+        if (!isUrgent) return 0;
 
         const recentMessages = `User: ${userMsg}\nAssistant: ${aiMsg}`;
         try {
@@ -344,17 +341,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 recentMessages,
             });
             if (ids && ids.length > 0) {
-                set(state => ({
-                    pendingReminderAckByConversation: {
-                        ...state.pendingReminderAckByConversation,
-                        [conversationId]: true,
-                    },
-                }));
                 toast.success(i18n.t('chat.reminder_created_count', { count: ids.length }));
+                return ids.length;
             }
         } catch (e) {
             console.error('[UrgentReminder] Failed:', e);
         }
+        return 0;
     },
 
     sendMessage: async (content: string, opts?: {
@@ -363,6 +356,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         mentionedSourceIds?: string[];
         mentionedSources?: { id: string; title: string }[];
         mentionedTagNames?: string[];
+        mentionedTags?: { id: string; name: string }[];
         attachedFiles?: { name: string; filePath: string; fileType: string; previewUrl?: string; tempChunkIds?: string[] }[];
         tempChunkIds?: string[];
         thinkingMode?: 'normal' | 'think';
@@ -370,42 +364,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const { activeConversationId, activeProjectId, messages } = get();
         if (!activeConversationId) return;
 
-        const maybeShowReminderToastByAnswer = (answer: string) => {
-            const REMINDER_ACK_PATTERNS = [
-                /\u63d0\u9192\u5df2\u6210\u529f\u65b0\u589e\u81f3\u60a8\u7684\u884c\u7a0b/,
-                /\u5df2\u70ba\u60a8\u8a2d\u5b9a\u63d0\u9192/,
-                /\u5df2\u8a18\u9304\u60a8\u7684\u63d0\u9192/,
-                /\u5df2\u7eb3\u5165\u6d3b\u52a8\u63d0\u9192/,
-                /\u5df2\u7d0d\u5165\u6d3b\u52d5\u63d0\u9192/,
-                /\u8a2d\u5b9a\u4e86\u63d0\u9192/,
-                /\u8a2d\u5b9a\u6703\u8b70\u63d0\u9192/,
-            ];
-            if (REMINDER_ACK_PATTERNS.some((p) => p.test(answer))) {
-                toast.success(i18n.t('chat.reminder_added_to_schedule'));
-            }
-        };
-
-        const maybeAppendReminderAck = async (answer: string): Promise<string> => {
-            const pending = get().pendingReminderAckByConversation[activeConversationId];
-            if (!pending) return answer;
-            try {
-                const ack = await invoke<string | null>('decide_reminder_ack', {
-                    userMessage: content,
-                    recentAssistantContext: recentAssistantContext(messages),
-                    currentAnswer: answer,
-                });
-                const shouldAppend = !!(ack && ack.trim());
-                set(state => ({
-                    pendingReminderAckByConversation: {
-                        ...state.pendingReminderAckByConversation,
-                        [activeConversationId]: false,
-                    },
-                }));
-                if (shouldAppend) return `${answer.trimEnd()}\n${ack!.trim()}`;
-            } catch (e) {
-                console.warn('[ReminderAck] decide_reminder_ack failed:', e);
-            }
-            return answer;
+        const appendConfirmedReminderAck = async (answer: string): Promise<string> => {
+            const createdCount = await get().triggerUrgentReminderCheck(activeConversationId, content, answer);
+            return appendReminderCreatedAck(
+                answer,
+                createdCount,
+                i18n.t('chat.reminder_added_to_schedule'),
+            );
         };
 
         set({ isGenerating: true, streamingContent: '' });
@@ -423,34 +388,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 created_at: new Date().toISOString(),
                 attachedFiles: opts?.attachedFiles,
                 mentionedSources: opts?.mentionedSources?.length ? opts.mentionedSources : undefined,
+                mentionedTags: opts?.mentionedTags?.length ? opts.mentionedTags : undefined,
             };
             set(state => ({ messages: [...state.messages, userMsg] }));
-
-            const metaObj: Record<string, unknown> = {};
-            if (opts?.attachedFiles?.length) {
-                metaObj.attachedFiles = opts.attachedFiles.map(f => ({ name: f.name, filePath: f.filePath, fileType: f.fileType, previewUrl: f.previewUrl }));
-            }
-            if (opts?.mentionedSources?.length) {
-                metaObj.mentionedSources = opts.mentionedSources;
-            }
-            if (allTempChunkIds.length > 0) {
-                metaObj.tempChunkIds = allTempChunkIds;
-            }
-            const metadata = Object.keys(metaObj).length > 0 ? JSON.stringify(metaObj) : undefined;
-            await invoke('add_message', {
-                conversationId: activeConversationId,
-                role: 'user',
-                content,
-                metadata,
-            });
-
-            const history: [string, string][] = messages
-                .filter(m => m.role === 'user' || m.role === 'assistant')
-                .slice(-12)
-                .map(m => [m.role, m.content]);
-
-            const activeConv = get().conversations.find(c => c.id === activeConversationId);
-            const conversationSummary = activeConv?.summary?.trim() || null;
 
             const ragEnabled = opts?.ragEnabled ?? true;
             const placeholderMsgId = 'streaming-assistant-' + Date.now();
@@ -464,20 +404,131 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 }]
             }));
 
-            let accumulated = '';
-            let accumulatedReasoning = '';
+            const metaObj: Record<string, unknown> = {};
+            if (opts?.attachedFiles?.length) {
+                metaObj.attachedFiles = opts.attachedFiles.map(f => ({ name: f.name, filePath: f.filePath, fileType: f.fileType, previewUrl: f.previewUrl }));
+            }
+            if (opts?.mentionedSources?.length) {
+                metaObj.mentionedSources = opts.mentionedSources;
+            }
+            if (opts?.mentionedTags?.length) {
+                metaObj.mentionedTags = opts.mentionedTags;
+            }
+            if (allTempChunkIds.length > 0) {
+                metaObj.tempChunkIds = allTempChunkIds;
+            }
+            const metadata = Object.keys(metaObj).length > 0 ? JSON.stringify(metaObj) : undefined;
+            const userSavePromise = invoke('add_message', {
+                conversationId: activeConversationId,
+                role: 'user',
+                content,
+                metadata,
+            }).catch(e => {
+                console.error('Failed to save user message:', e);
+            });
+
+            const history: [string, string][] = buildChatHistory(messages);
+
+            const activeConv = get().conversations.find(c => c.id === activeConversationId);
+            const conversationSummary = activeConv?.summary?.trim() || null;
+
+            let targetContent = '';
+            let visibleContent = '';
+            let targetReasoning = '';
+            let visibleReasoning = '';
+            let streamTimer: ReturnType<typeof setInterval> | null = null;
+            let donePayload: {
+                finalAnswer: string;
+                finalReasoning?: string;
+                citationSources: string[];
+                hints?: { patternCount?: number; logCount?: number; dataCount?: number; patternHints?: string[]; logHints?: string[] };
+            } | null = null;
+            let finalized = false;
+
+            const clearStreamTimer = () => {
+                if (streamTimer) {
+                    clearInterval(streamTimer);
+                    streamTimer = null;
+                }
+            };
+
+            const finalizeStreamedMessage = () => {
+                if (!donePayload || finalized) return;
+                if (visibleContent !== targetContent || visibleReasoning !== targetReasoning) return;
+                finalized = true;
+                clearStreamTimer();
+
+                const { finalAnswer, finalReasoning, citationSources, hints } = donePayload;
+                set(state => ({
+                    isGenerating: false,
+                    streamingContent: '',
+                    contextStats: hints ? {
+                        patternCount: hints.patternCount ?? 0,
+                        logCount: hints.logCount ?? 0,
+                        dataCount: hints.dataCount ?? 0,
+                        patternHints: hints.patternHints ?? [],
+                        logHints: hints.logHints ?? [],
+                    } : state.contextStats,
+                    messages: state.messages.map(m =>
+                        m.id === placeholderMsgId ? { ...m, id: placeholderMsgId.replace('streaming-', ''), content: finalAnswer, citationSources, reasoningContent: finalReasoning } : m
+                    ),
+                }));
+
+                const metaObj: Record<string, unknown> = { citationSources };
+                if (finalReasoning) metaObj.reasoningContent = finalReasoning;
+
+                userSavePromise.then(() => invoke('add_message', {
+                    conversationId: activeConversationId,
+                    role: 'assistant',
+                    content: finalAnswer,
+                    metadata: JSON.stringify(metaObj),
+                })).then(() => {
+                    const msgCount = get().messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
+                    if (msgCount <= 4) {
+                        get().autoTitleConversation(activeConversationId!);
+                    }
+                }).catch(e => console.error('Failed to save assistant message:', e));
+
+                unlistenToken();
+                unlistenReasoning();
+                unlistenDone();
+            };
+
+            const drainStreamingText = () => {
+                const nextContent = nextStreamingText(visibleContent, targetContent);
+                const nextReasoning = nextStreamingText(visibleReasoning, targetReasoning);
+                const changed = nextContent !== visibleContent || nextReasoning !== visibleReasoning;
+                visibleContent = nextContent;
+                visibleReasoning = nextReasoning;
+
+                if (changed) {
+                    set(state => ({
+                        streamingContent: visibleContent,
+                        messages: state.messages.map(m =>
+                            m.id === placeholderMsgId
+                                ? { ...m, content: visibleContent, reasoningContent: visibleReasoning || undefined }
+                                : m
+                        ),
+                    }));
+                }
+
+                finalizeStreamedMessage();
+                if (!changed && !donePayload) {
+                    clearStreamTimer();
+                }
+            };
+
+            const ensureStreamTimer = () => {
+                if (streamTimer) return;
+                streamTimer = setInterval(drainStreamingText, 24);
+            };
 
             const unlistenToken = await listen<{ conversationId: string; token: string }>(
                 'rag-stream-token',
                 (event) => {
                     if (event.payload.conversationId !== activeConversationId) return;
-                    accumulated += event.payload.token;
-                    set(state => ({
-                        streamingContent: accumulated,
-                        messages: state.messages.map(m =>
-                            m.id === placeholderMsgId ? { ...m, content: accumulated } : m
-                        ),
-                    }));
+                    targetContent += event.payload.token;
+                    ensureStreamTimer();
                 }
             );
 
@@ -485,12 +536,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 'rag-stream-reasoning',
                 (event) => {
                     if (event.payload.conversationId !== activeConversationId) return;
-                    accumulatedReasoning += event.payload.token;
-                    set(state => ({
-                        messages: state.messages.map(m =>
-                            m.id === placeholderMsgId ? { ...m, reasoningContent: accumulatedReasoning } : m
-                        ),
-                    }));
+                    targetReasoning += event.payload.token;
+                    ensureStreamTimer();
                 }
             );
 
@@ -498,48 +545,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 'rag-stream-done',
                 async (event) => {
                     if (event.payload.conversationId !== activeConversationId) return;
-                    let finalAnswer = event.payload.fullAnswer || accumulated;
-                    const finalReasoning = event.payload.reasoning || accumulatedReasoning || undefined;
+                    let finalAnswer = event.payload.fullAnswer || targetContent;
+                    const finalReasoning = event.payload.reasoning || targetReasoning || undefined;
                     const citationSources = Array.isArray(event.payload.citationSources) ? event.payload.citationSources : [];
                     const hints = event.payload.contextHints;
-                    finalAnswer = await maybeAppendReminderAck(finalAnswer);
-                    maybeShowReminderToastByAnswer(finalAnswer);
+                    finalAnswer = await appendConfirmedReminderAck(finalAnswer);
 
-                    set(state => ({
-                        isGenerating: false,
-                        streamingContent: '',
-                        contextStats: hints ? {
-                            patternCount: hints.patternCount ?? 0,
-                            logCount: hints.logCount ?? 0,
-                            dataCount: hints.dataCount ?? 0,
-                            patternHints: hints.patternHints ?? [],
-                            logHints: hints.logHints ?? [],
-                        } : state.contextStats,
-                        messages: state.messages.map(m =>
-                            m.id === placeholderMsgId ? { ...m, id: placeholderMsgId.replace('streaming-', ''), content: finalAnswer, citationSources, reasoningContent: finalReasoning } : m
-                        ),
-                    }));
-
-                    const metaObj: Record<string, unknown> = { citationSources };
-                    if (finalReasoning) metaObj.reasoningContent = finalReasoning;
-
-                    invoke('add_message', {
-                        conversationId: activeConversationId,
-                        role: 'assistant',
-                        content: finalAnswer,
-                        metadata: JSON.stringify(metaObj),
-                    }).then(() => {
-                        const msgCount = get().messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
-                        if (msgCount <= 4) {
-                            get().autoTitleConversation(activeConversationId!);
-                        }
-                    }).catch(e => console.error('Failed to save assistant message:', e));
-
-                    get().triggerUrgentReminderCheck(activeConversationId!, content, finalAnswer);
-
-                    unlistenToken();
-                    unlistenReasoning();
-                    unlistenDone();
+                    targetContent = finalAnswer;
+                    targetReasoning = finalReasoning || '';
+                    donePayload = { finalAnswer, finalReasoning, citationSources, hints };
+                    ensureStreamTimer();
                 }
             );
 
@@ -563,6 +578,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             Promise.race([streamPromise, timeoutPromise]).catch(async (err) => {
                 console.error('rag_query_stream failed:', err);
+                clearStreamTimer();
                 unlistenToken();
                 unlistenReasoning();
                 unlistenDone();
@@ -581,10 +597,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         thinkingMode: opts?.thinkingMode ?? 'normal',
                     });
                     let fallbackAnswer = ragResponse.answer || '(No response)';
-                    fallbackAnswer = await maybeAppendReminderAck(fallbackAnswer);
-                    maybeShowReminderToastByAnswer(fallbackAnswer);
+                    fallbackAnswer = await appendConfirmedReminderAck(fallbackAnswer);
                     const fallbackCitations = Array.isArray(ragResponse.citationSources) ? ragResponse.citationSources : [];
                     const fbHints = ragResponse.contextHints;
+                    await userSavePromise;
                     await invoke('add_message', {
                         conversationId: activeConversationId,
                         role: 'assistant',
