@@ -232,6 +232,8 @@ export interface TranslationKeys {
         hotkeys: string;
         security: string;
         reminders: string;
+        reminders_ai_enabled: string;
+        reminders_notifications_enabled: string;
         reminders_enabled: string;
         reminders_daily_time: string;
         reminders_quiet_hours: string;

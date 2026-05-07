@@ -136,7 +136,7 @@ pub async fn process_due_notifications(app: &AppHandle, force: bool) -> Result<u
 
     let settings = get_settings(pool).await.map_err(|e| e.to_string())?;
     println!(
-        "[ReminderScheduler] Checking pending notifications... reminders: {}, telegram: {}, force: {}",
+        "[ReminderScheduler] Checking pending notifications... notifications: {}, telegram: {}, force: {}",
         settings.reminders.enabled, settings.telegram.enabled, force
     );
     if !settings.reminders.enabled && !force {

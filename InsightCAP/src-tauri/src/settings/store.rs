@@ -163,9 +163,15 @@ impl Default for TelegramSettings {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ReminderSettings {
+    #[serde(default = "default_true")]
+    pub ai_enabled: bool,
     pub enabled: bool,
     pub daily_reminder_time: String,
     pub quiet_hours_start: String,
@@ -176,6 +182,7 @@ pub struct ReminderSettings {
 impl Default for ReminderSettings {
     fn default() -> Self {
         Self {
+            ai_enabled: true,
             enabled: true,
             daily_reminder_time: "09:00".to_string(),
             quiet_hours_start: "22:00".to_string(),
@@ -205,12 +212,88 @@ impl Default for WebSearchSettings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct EditorAiAction {
+    pub id: String,
+    pub label_key: String,
+    pub icon: String,
+    pub category: String,
+    pub prompt: String,
+    pub enabled: bool,
+}
+
+fn default_editor_ai_actions() -> Vec<EditorAiAction> {
+    vec![
+        EditorAiAction {
+            id: "tone-business".to_string(),
+            label_key: "editor.ai_tone_business".to_string(),
+            icon: "Briefcase".to_string(),
+            category: "tone".to_string(),
+            prompt: "Rewrite the selected text in a concise business tone. Preserve the original meaning and formatting where possible. Return only the rewritten text.".to_string(),
+            enabled: true,
+        },
+        EditorAiAction {
+            id: "tone-friendly".to_string(),
+            label_key: "editor.ai_tone_friendly".to_string(),
+            icon: "Smile".to_string(),
+            category: "tone".to_string(),
+            prompt: "Rewrite the selected text in a friendly and approachable tone. Preserve the original meaning and formatting where possible. Return only the rewritten text.".to_string(),
+            enabled: true,
+        },
+        EditorAiAction {
+            id: "tone-formal".to_string(),
+            label_key: "editor.ai_tone_formal".to_string(),
+            icon: "Shield".to_string(),
+            category: "tone".to_string(),
+            prompt: "Rewrite the selected text in a formal written tone. Preserve the original meaning and formatting where possible. Return only the rewritten text.".to_string(),
+            enabled: true,
+        },
+        EditorAiAction {
+            id: "expand-moderate".to_string(),
+            label_key: "editor.ai_extend_moderate".to_string(),
+            icon: "Maximize".to_string(),
+            category: "expand".to_string(),
+            prompt: "Expand the selected text with useful context and clearer transitions. Do not add unsupported facts. Return only the expanded text.".to_string(),
+            enabled: true,
+        },
+        EditorAiAction {
+            id: "shorten-moderate".to_string(),
+            label_key: "editor.ai_shorten_moderate".to_string(),
+            icon: "Minimize".to_string(),
+            category: "shorten".to_string(),
+            prompt: "Shorten the selected text while keeping the core meaning and important details. Return only the shortened text.".to_string(),
+            enabled: true,
+        },
+        EditorAiAction {
+            id: "translate-zhtw".to_string(),
+            label_key: "editor.ai_translate_zhtw".to_string(),
+            icon: "Languages".to_string(),
+            category: "translate".to_string(),
+            prompt: "Translate the selected text into Traditional Chinese. Keep technical terms in English where appropriate. Return only the translation.".to_string(),
+            enabled: true,
+        },
+        EditorAiAction {
+            id: "translate-en".to_string(),
+            label_key: "editor.ai_translate_en".to_string(),
+            icon: "Languages".to_string(),
+            category: "translate".to_string(),
+            prompt: "Translate the selected text into English. Preserve technical terms and formatting where appropriate. Return only the translation.".to_string(),
+            enabled: true,
+        },
+    ]
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct EditorSettings {
     pub default_font: String,
     pub default_font_size: String,
     pub default_line_spacing: String,
     pub default_export_format: String, // "docx" | "md" | "txt"
     pub export_subdir: String,
+    #[serde(default = "default_editor_ai_actions")]
+    pub ai_actions: Vec<EditorAiAction>,
+    #[serde(default)]
+    pub prompt_instruction_override: Option<String>,
 }
 
 impl Default for EditorSettings {
@@ -221,6 +304,8 @@ impl Default for EditorSettings {
             default_line_spacing: "1.5".to_string(),
             default_export_format: "md".to_string(),
             export_subdir: "exports".to_string(),
+            ai_actions: default_editor_ai_actions(),
+            prompt_instruction_override: None,
         }
     }
 }
@@ -582,4 +667,26 @@ pub async fn save_settings(
 
     tx.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReminderSettings;
+
+    #[test]
+    fn reminder_settings_legacy_json_defaults_ai_enabled() {
+        let settings: ReminderSettings = serde_json::from_str(
+            r#"{
+                "enabled": false,
+                "dailyReminderTime": "09:00",
+                "quietHoursStart": "22:00",
+                "quietHoursEnd": "08:00",
+                "weekendQuiet": false
+            }"#,
+        )
+        .expect("legacy reminder settings should deserialize");
+
+        assert!(settings.ai_enabled);
+        assert!(!settings.enabled);
+    }
 }

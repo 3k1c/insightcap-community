@@ -96,10 +96,10 @@ fn build_source_scope_guidance(
 
     let guidance = if has_context {
         format!(
-            "Available knowledge scope: {phrase}. When using retrieved material, express this boundary naturally in the user's language. Do not use mechanical wording such as \"based on the retrieved context\". Do not present local, selected, benchmark, memory, or synthesized material as a universal fact. For numbers, rankings, benchmark results, comparisons, or named claims, state the scope when it matters. If the provided material does not directly support a claim, say the material is insufficient instead of filling the gap."
+            "Knowledge scope: {phrase}. State this boundary naturally when it matters. Do not turn local, benchmark, memory, or synthesized material into universal facts. If evidence is not direct, say it is insufficient."
         )
     } else {
-        "No directly relevant local reference material was retrieved. If answering from general knowledge, say so naturally when it matters, and do not imply the user's data supports the answer.".to_string()
+        "No directly relevant local material was retrieved. Do not imply the user's data supports the answer.".to_string()
     };
 
     SourceScopeGuidance {
@@ -164,7 +164,7 @@ mod tests {
 
         assert_eq!(guidance.scope, "selected_single_source");
         assert!(guidance.guidance.contains("the selected source"));
-        assert!(guidance.guidance.contains("universal fact"));
+        assert!(guidance.guidance.contains("universal facts"));
     }
 
     #[test]
@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(guidance.scope, "insufficient_context");
         assert!(guidance
             .guidance
-            .contains("No directly relevant local reference material"));
+            .contains("No directly relevant local material"));
     }
 
     #[test]
@@ -223,6 +223,7 @@ impl RagEngine {
         project_id: Option<&str>,
         source_ids: Option<&[String]>,
         tag_filter: Option<&[String]>,
+        only_memory: bool,
     ) -> Result<serde_json::Value, String> {
         let query_vec = self
             .embedder
@@ -230,98 +231,100 @@ impl RagEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-        let capture_results = self.vector_store.search(&query_vec, CAPTURES_LIMIT).await?;
-        let capture_ids: Vec<(u64, f32)> = capture_results
-            .into_iter()
-            .filter(|(_, score)| *score >= CAPTURES_THRESHOLD)
-            .collect();
-
         let mut data_context: Vec<String> = Vec::new();
         let mut citation_sources: Vec<String> = Vec::new();
         let mut source_types: HashSet<String> = HashSet::new();
         let mut retrieved_capture_ids: Vec<String> = Vec::new();
-        for (vec_id, score) in &capture_ids {
-            let mut sql = String::from(
+
+        if !only_memory {
+            let capture_results = self.vector_store.search(&query_vec, CAPTURES_LIMIT).await?;
+            let capture_ids: Vec<(u64, f32)> = capture_results
+                .into_iter()
+                .filter(|(_, score)| *score >= CAPTURES_THRESHOLD)
+                .collect();
+            for (vec_id, score) in &capture_ids {
+                let mut sql = String::from(
                 "SELECT c.id, c.clean_content, c.is_user_edited, c.type AS capture_type, c.content_type, s.title AS source_title, s.type AS source_type, s.url AS source_url, s.use_frequency \
                  FROM captures c LEFT JOIN sources s ON c.source_id = s.id \
                  WHERE c.vector_id = ? AND c.status = 'processed'"
             );
-            let mut sid_binds: Vec<&str> = Vec::new();
-            let mut filter_conds = Vec::new();
-            let mut is_filtered = false;
+                let mut sid_binds: Vec<&str> = Vec::new();
+                let mut filter_conds = Vec::new();
+                let mut is_filtered = false;
 
-            if let Some(sids) = source_ids {
-                is_filtered = true;
-                if !sids.is_empty() {
-                    let ph = sids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-                    filter_conds.push(format!("c.source_id IN ({})", ph));
-                    sid_binds.extend(sids.iter().map(|s| s.as_str()));
-                }
-            }
-
-            if let Some(tags) = tag_filter {
-                is_filtered = true;
-                if !tags.is_empty() {
-                    let tag_conds: Vec<String> = tags
-                        .iter()
-                        .map(|t| format!("c.tags LIKE '%\"{}%\"'", t.replace('\'', "''")))
-                        .collect();
-                    filter_conds.push(format!("({})", tag_conds.join(" OR ")));
-                }
-            }
-
-            let skip = is_filtered && filter_conds.is_empty();
-
-            if !filter_conds.is_empty() {
-                sql.push_str(&format!(" AND ({})", filter_conds.join(" OR ")));
-            }
-
-            let rows = if skip {
-                vec![]
-            } else {
-                let mut q = sqlx::query(&sql).bind(*vec_id as i64);
-                for sid in &sid_binds {
-                    q = q.bind(*sid);
-                }
-                q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?
-            };
-
-            for r in rows {
-                let capture_id: String = r.try_get("id").unwrap_or_default();
-                let content: String = r.try_get("clean_content").unwrap_or_default();
-                let source_title = r.try_get::<String, _>("source_title").ok();
-                insert_source_type(&mut source_types, r.try_get("source_type").ok());
-                insert_source_type(&mut source_types, r.try_get("source_url").ok());
-                insert_source_type(&mut source_types, r.try_get("capture_type").ok());
-                insert_source_type(&mut source_types, r.try_get("content_type").ok());
-                let use_freq: i32 = r.try_get("use_frequency").unwrap_or(0);
-                let is_user_edited: i32 = r.try_get("is_user_edited").unwrap_or(0);
-
-                let adjusted = score
-                    + if use_freq > 0 {
-                        BONUS_USE_FREQUENCY
-                    } else {
-                        0.0
-                    }
-                    + if is_user_edited == 1 {
-                        BONUS_USER_PLACED
-                    } else {
-                        0.0
-                    };
-
-                if !content.is_empty() && adjusted >= CAPTURES_THRESHOLD {
-                    if !capture_id.is_empty() {
-                        retrieved_capture_ids.push(capture_id);
-                    }
-                    if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
-                        data_context.push(format!("[  : {}]\n{}", title, content));
-                    } else {
-                        data_context.push(content);
+                if let Some(sids) = source_ids {
+                    is_filtered = true;
+                    if !sids.is_empty() {
+                        let ph = sids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                        filter_conds.push(format!("c.source_id IN ({})", ph));
+                        sid_binds.extend(sids.iter().map(|s| s.as_str()));
                     }
                 }
-                if let Some(title) = source_title {
-                    if !title.is_empty() && !citation_sources.iter().any(|s| s == &title) {
-                        citation_sources.push(title);
+
+                if let Some(tags) = tag_filter {
+                    is_filtered = true;
+                    if !tags.is_empty() {
+                        let tag_conds: Vec<String> = tags
+                            .iter()
+                            .map(|t| format!("c.tags LIKE '%\"{}%\"'", t.replace('\'', "''")))
+                            .collect();
+                        filter_conds.push(format!("({})", tag_conds.join(" OR ")));
+                    }
+                }
+
+                let skip = is_filtered && filter_conds.is_empty();
+
+                if !filter_conds.is_empty() {
+                    sql.push_str(&format!(" AND ({})", filter_conds.join(" OR ")));
+                }
+
+                let rows = if skip {
+                    vec![]
+                } else {
+                    let mut q = sqlx::query(&sql).bind(*vec_id as i64);
+                    for sid in &sid_binds {
+                        q = q.bind(*sid);
+                    }
+                    q.fetch_all(&self.pool).await.map_err(|e| e.to_string())?
+                };
+
+                for r in rows {
+                    let capture_id: String = r.try_get("id").unwrap_or_default();
+                    let content: String = r.try_get("clean_content").unwrap_or_default();
+                    let source_title = r.try_get::<String, _>("source_title").ok();
+                    insert_source_type(&mut source_types, r.try_get("source_type").ok());
+                    insert_source_type(&mut source_types, r.try_get("source_url").ok());
+                    insert_source_type(&mut source_types, r.try_get("capture_type").ok());
+                    insert_source_type(&mut source_types, r.try_get("content_type").ok());
+                    let use_freq: i32 = r.try_get("use_frequency").unwrap_or(0);
+                    let is_user_edited: i32 = r.try_get("is_user_edited").unwrap_or(0);
+
+                    let adjusted = score
+                        + if use_freq > 0 {
+                            BONUS_USE_FREQUENCY
+                        } else {
+                            0.0
+                        }
+                        + if is_user_edited == 1 {
+                            BONUS_USER_PLACED
+                        } else {
+                            0.0
+                        };
+
+                    if !content.is_empty() && adjusted >= CAPTURES_THRESHOLD {
+                        if !capture_id.is_empty() {
+                            retrieved_capture_ids.push(capture_id);
+                        }
+                        if let Some(title) = source_title.as_ref().filter(|t| !t.is_empty()) {
+                            data_context.push(format!("[  : {}]\n{}", title, content));
+                        } else {
+                            data_context.push(content);
+                        }
+                    }
+                    if let Some(title) = source_title {
+                        if !title.is_empty() && !citation_sources.iter().any(|s| s == &title) {
+                            citation_sources.push(title);
+                        }
                     }
                 }
             }
@@ -744,17 +747,18 @@ impl RagEngine {
             .await
             .map_err(|e| e.to_string())?;
 
-        let ctx = if rag_enabled {
-            self.retrieve_context(
+        // 無論 RAG 開關，我們都執行檢索
+        // RAG 開：檢索全部 (only_memory=false)
+        // RAG 關：僅檢索 Pattern/Log/Data 記憶 (only_memory=true)
+        let ctx = self
+            .retrieve_context(
                 query,
                 project_id.as_deref(),
                 source_ids.as_deref(),
                 tag_filter.as_deref(),
+                !rag_enabled,
             )
-            .await?
-        } else {
-            serde_json::json!({ "pattern": [], "log": [], "data": [], "external": [] })
-        };
+            .await?;
 
         let mut system_parts: Vec<String> = Vec::new();
         let mut extra_citations: Vec<String> = Vec::new();
@@ -979,6 +983,28 @@ impl RagEngine {
             system_parts.push(format!("{}\n{}", prompts::RAG_CONTEXT_EXTERNAL, text));
         }
 
+        // 注入提醒訊息 (Reminders) - 永遠啟用
+        if settings.reminders.ai_enabled {
+            let reminder_engine =
+                crate::services::reminder_engine::ReminderEngine::new(self.pool.clone());
+            if let Ok(active_reminders) = reminder_engine.get_active_reminders().await {
+                if !active_reminders.is_empty() {
+                    let now_local = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                    let mut reminder_text = format!("## 待辦提醒資訊 (當前時間: {})\n", now_local);
+                    for r in active_reminders {
+                        let title = r["title"].as_str().unwrap_or("Unknown");
+                        let date = r["event_date"].as_str().unwrap_or("");
+                        let time = r["event_time"].as_str().unwrap_or("");
+                        let r_type = r["event_type"].as_str().unwrap_or("event");
+                        reminder_text
+                            .push_str(&format!("- [{}] {} {} ({})\n", r_type, date, time, title));
+                    }
+                    reminder_text.push_str("\n若用戶詢問相關行程或待辦事項，請以此資訊回覆。");
+                    system_parts.push(reminder_text);
+                }
+            }
+        }
+
         let ctx_citation_count = ctx["citation_sources"]
             .as_array()
             .map(|a| a.len())
@@ -1015,6 +1041,20 @@ impl RagEngine {
 
         if let Some(guidance) = &source_scope_guidance {
             system_parts.push(format!("## Source Scope\n{}", guidance.guidance));
+        }
+        let has_source_scope = source_ids
+            .as_ref()
+            .map(|ids| !ids.is_empty())
+            .unwrap_or(false);
+        let has_tag_scope = tag_filter
+            .as_ref()
+            .map(|tags| !tags.is_empty())
+            .unwrap_or(false);
+        if has_source_scope || has_tag_scope {
+            system_parts.push(
+                "## User Selected Scope\n@ source chips and # tag chips are a union retrieval scope: any selected source or selected tag may provide usable context. Cite the actual source content you used; do not treat a tag itself as evidence."
+                    .to_string(),
+            );
         }
 
         let user_instruction = instruction_override
@@ -1136,9 +1176,14 @@ impl RagEngine {
         };
 
         let reasoning_style = crate::providers::llm::model_caps::detect(&cfg.model, &cfg.provider);
+        let thinking_control =
+            crate::providers::llm::model_caps::thinking_control(&cfg.model, &cfg.provider);
         let has_native_reasoning =
             reasoning_style != crate::providers::llm::model_caps::ReasoningStyle::None;
-        let system_prompt = if think_mode && !has_native_reasoning {
+        let system_prompt = if think_mode
+            && thinking_control == crate::providers::llm::model_caps::ThinkingControl::None
+            && !has_native_reasoning
+        {
             format!(
                 "{}{}",
                 crate::prompts::THINK_MODE_PREFIX,
@@ -1153,7 +1198,9 @@ impl RagEngine {
                 temperature: 0.6,
                 max_tokens: 8192,
                 stream: false,
-                think_mode: Some(true),
+                think_mode: Some(
+                    thinking_control != crate::providers::llm::model_caps::ThinkingControl::None,
+                ),
             }
         } else {
             LLMOptions {

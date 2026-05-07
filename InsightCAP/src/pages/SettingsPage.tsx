@@ -9,7 +9,7 @@ import {
     Settings2, Server, Sparkles, BookOpen, PenLine,
     Plus, Trash2, Eye, EyeOff, ExternalLink,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
-    User, ShieldCheck, KeyRound, Save, Clock,
+    User, ShieldCheck, KeyRound, Save, Clock, GripVertical, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { useT } from '../hooks/useT';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -20,7 +20,17 @@ import {
     buildProviderOptions,
     getSelectedProviderOptionValue,
 } from './settings-provider-utils';
-
+import {
+    cloneDefaultEditorAiActions,
+    createEditorAiAction,
+    getEnabledEditorAiActions,
+    moveEditorAiAction,
+    normalizeEditorAiActions,
+    reorderEditorAiAction,
+    removeEditorAiAction,
+    updateEditorAiAction,
+    type EditorAiAction,
+} from '../lib/editor-ai-actions';
 
 interface ModelSettings {
     provider: string;
@@ -76,6 +86,7 @@ interface AllSettings {
         defaultLineSpacing: string;
         defaultExportFormat: string;
         exportSubdir: string;
+        aiActions: EditorAiAction[];
         promptInstructionOverride?: string;
     };
     telegram: {
@@ -85,6 +96,7 @@ interface AllSettings {
         promptInstructionOverride?: string;
     };
     reminders: {
+        aiEnabled: boolean;
         enabled: boolean;
         dailyReminderTime: string;
         quietHoursStart: string;
@@ -619,6 +631,23 @@ export const SettingsPage: React.FC = () => {
         error: string;
         title: string;
     }>({ open: false, password: '', onVerified: () => { }, loading: false, error: '', title: '' });
+    const [draggingAiActionId, setDraggingAiActionId] = useState<string | null>(null);
+    const [dragOverAiActionId, setDragOverAiActionId] = useState<string | null>(null);
+    const aiActionDragRef = useRef<{
+        isMouseDown: boolean;
+        isDragging: boolean;
+        startX: number;
+        startY: number;
+        draggedId: string | null;
+        overId: string | null;
+    }>({
+        isMouseDown: false,
+        isDragging: false,
+        startX: 0,
+        startY: 0,
+        draggedId: null,
+        overId: null,
+    });
 
 
     const loadWhisperStatus = async () => {
@@ -656,8 +685,15 @@ export const SettingsPage: React.FC = () => {
     const loadSettings = async () => {
         try {
             const s = await invoke<AllSettings>('get_settings');
-            setSettings(s);
-            setOriginalSettings(s);
+            const hydrated = {
+                ...s,
+                editor: {
+                    ...s.editor,
+                    aiActions: normalizeEditorAiActions(s.editor?.aiActions),
+                },
+            };
+            setSettings(hydrated);
+            setOriginalSettings(hydrated);
         } catch (e) {
             console.error('Failed to load settings', e);
             toast.error(t('settings.load_failed'));
@@ -686,6 +722,69 @@ export const SettingsPage: React.FC = () => {
         updater(copy);
         setSettings(copy);
     };
+
+    useEffect(() => {
+        const resetAiActionDrag = () => {
+            aiActionDragRef.current = {
+                isMouseDown: false,
+                isDragging: false,
+                startX: 0,
+                startY: 0,
+                draggedId: null,
+                overId: null,
+            };
+            setDraggingAiActionId(null);
+            setDragOverAiActionId(null);
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        };
+
+        const handleMouseMove = (event: MouseEvent) => {
+            const drag = aiActionDragRef.current;
+            if (!drag.isMouseDown || !drag.draggedId) return;
+
+            if (!drag.isDragging) {
+                const dx = event.clientX - drag.startX;
+                const dy = event.clientY - drag.startY;
+                if (Math.hypot(dx, dy) <= 8) return;
+
+                drag.isDragging = true;
+                setDraggingAiActionId(drag.draggedId);
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'grabbing';
+            }
+
+            event.preventDefault();
+            const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+            const row = target?.closest<HTMLElement>('[data-ai-action-id]');
+            const overId = row?.dataset.aiActionId ?? null;
+            drag.overId = overId && overId !== drag.draggedId ? overId : null;
+            setDragOverAiActionId(drag.overId);
+        };
+
+        const handleMouseUp = () => {
+            const drag = aiActionDragRef.current;
+            const draggedId = drag.draggedId;
+            const overId = drag.overId;
+            const shouldReorder = drag.isDragging && draggedId && overId && draggedId !== overId;
+
+            resetAiActionDrag();
+
+            if (shouldReorder) {
+                updateSettings(s => {
+                    s.editor.aiActions = reorderEditorAiAction(s.editor.aiActions, draggedId, overId);
+                });
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            resetAiActionDrag();
+        };
+    }, [settings]);
 
     const handleBilibiliLogin = async () => {
         setBilibiliLoggingIn(true);
@@ -795,11 +894,14 @@ export const SettingsPage: React.FC = () => {
                 </SectionCard>
 
                 <SectionCard title={t('settings.reminders')}>
-                    <SettingRow label={t('settings.reminders_enabled')}>
-                        <Toggle checked={settings.reminders?.enabled ?? true} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.enabled = v; })} />
+                    <SettingRow label={t('settings.reminders_ai_enabled')}>
+                        <Toggle checked={settings.reminders?.aiEnabled ?? true} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { aiEnabled: true, enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.aiEnabled = v; })} />
+                    </SettingRow>
+                    <SettingRow label={t('settings.reminders_notifications_enabled')}>
+                        <Toggle checked={settings.reminders?.enabled ?? true} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { aiEnabled: true, enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.enabled = v; })} />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_daily_time')}>
-                        <TimeField value={settings.reminders?.dailyReminderTime ?? '09:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.dailyReminderTime = v; })} className="w-32" />
+                        <TimeField value={settings.reminders?.dailyReminderTime ?? '09:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { aiEnabled: true, enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.dailyReminderTime = v; })} className="w-32" />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_test_pipeline')}>
                         <button
@@ -820,13 +922,13 @@ export const SettingsPage: React.FC = () => {
 
                 <SectionCard title={t('settings.reminders_quiet_hours')}>
                     <SettingRow label={t('settings.reminders_quiet_start')}>
-                        <TimeField value={settings.reminders?.quietHoursStart ?? '22:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursStart = v; })} className="w-32" />
+                        <TimeField value={settings.reminders?.quietHoursStart ?? '22:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { aiEnabled: true, enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursStart = v; })} className="w-32" />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_quiet_end')}>
-                        <TimeField value={settings.reminders?.quietHoursEnd ?? '08:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursEnd = v; })} className="w-32" />
+                        <TimeField value={settings.reminders?.quietHoursEnd ?? '08:00'} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { aiEnabled: true, enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.quietHoursEnd = v; })} className="w-32" />
                     </SettingRow>
                     <SettingRow label={t('settings.reminders_weekend_quiet')}>
-                        <Toggle checked={settings.reminders?.weekendQuiet ?? false} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.weekendQuiet = v; })} />
+                        <Toggle checked={settings.reminders?.weekendQuiet ?? false} onChange={v => updateSettings(s => { if (!s.reminders) s.reminders = { aiEnabled: true, enabled: true, dailyReminderTime: '09:00', quietHoursStart: '22:00', quietHoursEnd: '08:00', weekendQuiet: false }; s.reminders.weekendQuiet = v; })} />
                     </SettingRow>
                 </SectionCard>
 
@@ -1500,9 +1602,24 @@ export const SettingsPage: React.FC = () => {
 
     const renderOther = () => {
         if (!settings) return null;
+        const aiActions = normalizeEditorAiActions(settings.editor.aiActions);
+        const enabledAiActions = getEnabledEditorAiActions(aiActions);
+        const displayAiActionLabel = (action: EditorAiAction) => (
+            action.labelKey.includes('.') ? t(action.labelKey as any) : action.labelKey
+        );
+        const setAiActions = (actions: EditorAiAction[]) => {
+            updateSettings(s => { s.editor.aiActions = actions; });
+        };
+        const patchAiAction = (id: string, patch: Partial<EditorAiAction>) => {
+            setAiActions(updateEditorAiAction(aiActions, id, patch));
+        };
+        const addAiAction = () => {
+            setAiActions([createEditorAiAction('custom'), ...aiActions]);
+        };
+
         return (
-            <div className="max-w-4xl mx-auto">
-                <div className="mb-8">
+            <div className="max-w-5xl mx-auto">
+                <div className="mb-7">
                     <h3 className="text-fs-2xl font-bold text-text-primary">{t('settings.other_section_title')}</h3>
                     <p className="text-fs-sm text-text-tertiary mt-1">{t('settings.other_section_desc')}</p>
                 </div>
@@ -1512,9 +1629,132 @@ export const SettingsPage: React.FC = () => {
                         value={settings.editor.promptInstructionOverride || ''}
                         onChange={e => updateSettings(s => { s.editor.promptInstructionOverride = e.target.value; })}
                         placeholder={t('settings.ai_prompt_instruction_placeholder')}
-                        rows={2}
-                        className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-accent-default"
+                        rows={4}
+                        className="w-full bg-surface-base border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-y min-h-[108px] focus:outline-none focus:ring-1 focus:ring-accent-default"
                     />
+                </SectionCard>
+
+                <SectionCard
+                    title={t('settings.ai_optimize_actions_title')}
+                    desc={t('settings.ai_optimize_actions_desc')}
+                    action={
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setAiActions(cloneDefaultEditorAiActions())}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stroke-divider text-fs-xs text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition-colors"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                {t('settings.ai_action_reset')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={addAiAction}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-default text-white text-fs-xs hover:bg-accent-light1 transition-colors"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                {t('settings.ai_action_add')}
+                            </button>
+                        </div>
+                    }
+                >
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_260px] gap-4">
+                        <div className="space-y-3">
+                        {aiActions.map((action, index) => (
+                            <div
+                                key={action.id}
+                                data-ai-action-id={action.id}
+                                className={`bg-surface-base border rounded-lg p-4 transition-colors ${draggingAiActionId === action.id
+                                    ? 'opacity-50 border-accent-default'
+                                    : dragOverAiActionId === action.id
+                                        ? 'border-accent-default bg-accent-default/5'
+                                        : 'border-stroke-divider'
+                                    }`}
+                            >
+                                <div className="grid grid-cols-1 lg:grid-cols-[2rem_minmax(10rem,14rem)_1fr_auto] gap-3 items-start">
+                                    <div
+                                        onMouseDown={event => {
+                                            if (event.button !== 0) return;
+                                            event.preventDefault();
+                                            aiActionDragRef.current = {
+                                                isMouseDown: true,
+                                                isDragging: false,
+                                                startX: event.clientX,
+                                                startY: event.clientY,
+                                                draggedId: action.id,
+                                                overId: null,
+                                            };
+                                        }}
+                                        onDragStart={event => event.preventDefault()}
+                                        className="hidden lg:block pt-2 text-text-tertiary cursor-grab active:cursor-grabbing hover:text-text-secondary"
+                                        title={t('settings.ai_action_drag')}
+                                    >
+                                        <GripVertical className="w-4 h-4" />
+                                    </div>
+                                    <InputField
+                                        value={displayAiActionLabel(action)}
+                                        onChange={value => patchAiAction(action.id, { labelKey: value })}
+                                        placeholder={t('settings.ai_action_name_placeholder')}
+                                        className="w-full"
+                                    />
+                                    <div className="flex items-center justify-end gap-2">
+                                        <Toggle checked={action.enabled} onChange={value => patchAiAction(action.id, { enabled: value })} />
+                                        <button
+                                            type="button"
+                                            onClick={() => setAiActions(moveEditorAiAction(aiActions, action.id, 'up'))}
+                                            disabled={index === 0}
+                                            className="w-8 h-8 rounded-lg border border-stroke-divider text-text-secondary hover:bg-surface-subtle disabled:opacity-40 disabled:hover:bg-transparent"
+                                            title={t('settings.ai_action_move_up')}
+                                        >
+                                            <ArrowUp className="w-4 h-4 mx-auto" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAiActions(moveEditorAiAction(aiActions, action.id, 'down'))}
+                                            disabled={index === aiActions.length - 1}
+                                            className="w-8 h-8 rounded-lg border border-stroke-divider text-text-secondary hover:bg-surface-subtle disabled:opacity-40 disabled:hover:bg-transparent"
+                                            title={t('settings.ai_action_move_down')}
+                                        >
+                                            <ArrowDown className="w-4 h-4 mx-auto" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAiActions(removeEditorAiAction(aiActions, action.id))}
+                                            className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-red-500/20 text-red-500 hover:bg-red-500/5 transition-colors"
+                                            title={t('common.delete')}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <textarea
+                                    value={action.prompt}
+                                    onChange={event => patchAiAction(action.id, { prompt: event.target.value })}
+                                    placeholder={t('settings.ai_action_prompt_placeholder')}
+                                    rows={3}
+                                    className="w-full mt-3 bg-surface-layer border border-stroke-divider rounded-lg px-3 py-2 text-fs-sm text-text-primary placeholder:text-text-tertiary resize-y min-h-[76px] focus:outline-none focus:ring-1 focus:ring-accent-default"
+                                />
+                            </div>
+                        ))}
+                        </div>
+                        <div className="rounded-lg border border-stroke-divider bg-surface-base p-4 h-fit">
+                            <div className="text-fs-sm font-semibold text-text-primary">{t('settings.ai_action_preview_title')}</div>
+                            <p className="text-fs-xs text-text-tertiary mt-1">{t('settings.ai_action_menu_note')}</p>
+                            <div className="mt-4 rounded-lg border border-stroke-divider bg-surface-flyout p-1 shadow-lg">
+                                {enabledAiActions.map(action => (
+                                    <div key={action.id} className="flex items-center gap-2 px-2.5 py-2 rounded-md text-fs-xs text-text-secondary">
+                                        <Sparkles className="w-3.5 h-3.5 text-accent-default" />
+                                        <span className="truncate">{displayAiActionLabel(action)}</span>
+                                    </div>
+                                ))}
+                                <div className="h-px bg-stroke-divider my-1 mx-1" />
+                                <div className="flex items-center gap-2 px-2.5 py-2 rounded-md text-fs-xs text-text-secondary">
+                                    <Sparkles className="w-3.5 h-3.5 text-accent-default" />
+                                    <span>{t('editor.ai_custom')}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </SectionCard>
 
                 <SectionCard title={t('settings.editor_setting')}>
@@ -1537,6 +1777,9 @@ export const SettingsPage: React.FC = () => {
                                 { value: 'txt', label: t('settings.format_text') }
                             ]}
                         />
+                    </SettingRow>
+                    <SettingRow label={t('settings.export_subdir')}>
+                        <InputField value={settings.editor.exportSubdir} onChange={v => updateSettings(s => { s.editor.exportSubdir = v; })} className="w-52" />
                     </SettingRow>
                 </SectionCard>
 

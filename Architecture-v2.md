@@ -708,6 +708,9 @@ Settings 存於 SQLite `settings` 表，key/value 格式，各 key 對應一個 
 | `aiModels` | `whisperModel` | 本地 Whisper 模型選擇（Tiny / Base / Small / Medium）；Settings 可下載或刪除已下載模型檔 |
 | `aiModels` | `providerProfiles` | 多 Provider 設定檔（可快速切換的 API 端點清單）；同一 provider 可建立多個 profile，例如多台 Ollama 主機以不同 `baseUrl` 區分 |
 | `background_synthesis` | `enabled` / `frequencyMinutes` / `maxChunksPerBatch` / `forceContentProcessorLlm` | 深度合成引擎控制（預設 enabled=true, 30 分鐘, 30 chunks, 強制 content_processor_llm） |
+| `reminders` | `aiEnabled` | AI 提醒助理總開關；關閉時不在 RAG prompt 注入 active reminders，也不允許 AI 自動抽取 / 建立提醒。舊版 settings JSON 缺少此欄位時預設為 `true` |
+| `reminders` | `enabled` | 提醒通知開關；控制 `ReminderScheduler` 是否投遞桌面 / Telegram 通知，不代表整個 Reminder 功能總開關 |
+| `reminders` | `dailyReminderTime` / `quietHoursStart` / `quietHoursEnd` / `weekendQuiet` | 提醒通知時間與靜默時段設定 |
 | `telegram` | `botToken`（加密存儲）/ `allowedChatIds: Vec<i64>` / `enabled: bool` / `promptInstructionOverride` | Telegram Bot 配置；已移除舊版 live streaming edit 邏輯，簡化為純通知流。 |
 | `editor` | `promptInstructionOverride` | 編輯器專用 AI 偏好覆寫 |
 
@@ -1194,6 +1197,9 @@ CREATE INDEX idx_reminder_notif_reminder
   → 結果於下次 RAG 查詢時直接讀取（零額外延遲）
 
 智慧提醒（雙路徑）
+  功能總開關：
+    settings.reminders.aiEnabled = false 時，AI 不抽取 / 建立提醒，RAG 也不注入 active reminders
+    settings.reminders.enabled 只控制通知投遞，不阻止手動管理既有提醒資料
   路徑 A — 常規（ConversationScheduler 非同步 spawn）：
     對話摘要完成後 → ReminderEngine.extract_reminders()
     → deterministic intent gate（Create / NoAction / NeedsConfirmation）
@@ -1345,6 +1351,12 @@ pub trait Embedder: Send + Sync {
   memory_chunks（data）：Top-5，門檻 0.25
   memory_chunks（pattern）：Top-3，門檻 0.20
   外部 KB（商業版）：Top-5，門檻 0.25
+
+RAG toggle 行為：
+  前端 AI 對話輸入區的 RAG switch 預設為關閉
+  RAG 開啟：檢索 captures + memory_chunks（data / pattern）+ log trigger + active reminders
+  RAG 關閉：跳過 captures 檢索，但仍保留 memory_chunks（data / pattern）、log trigger
+  active reminders 僅在 settings.reminders.aiEnabled = true 時注入 prompt
 
 關鍵字觸發（獨立，不受數量限制）：
   memory_chunks（log）：trigger_context | 分隔後 substring match
@@ -1911,6 +1923,22 @@ mobile/
 - 預設空字串，留空時不插入 prompt
 - 附加在系統優先級聲明之後，不可覆蓋系統段行為
 - 由 SettingsPage 一般設定 tab 的 textarea 管理
+
+**settings.reminders 結構：**
+```json
+{
+  "aiEnabled": true,
+  "enabled": true,
+  "dailyReminderTime": "09:00",
+  "quietHoursStart": "22:00",
+  "quietHoursEnd": "08:00",
+  "weekendQuiet": false
+}
+```
+
+- `aiEnabled` 是 AI 提醒助理總開關：關閉時停止 AI 自動建立提醒，也不把 active reminders 注入 RAG 對話 prompt。
+- `enabled` 是提醒通知開關：關閉時 `ReminderScheduler` 不投遞通知；手動管理既有提醒資料不受影響。
+- `aiEnabled` 使用 serde default，相容舊版 settings JSON；舊資料缺少此欄位時視為 `true`。
 
 **Ollama JSON 輸出穩健性：**
 本地模型回傳 JSON 時可能附帶 Markdown 代碼區塊（` ```json...``` `），`complete_json` 會自動脱殼再對析。

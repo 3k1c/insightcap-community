@@ -248,6 +248,13 @@ impl ReminderEngine {
         project_id: Option<&str>,
     ) -> Result<Vec<String>, String> {
         let settings = get_settings(&self.pool).await.map_err(|e| e.to_string())?;
+        if !settings.reminders.ai_enabled {
+            println!(
+                "[ReminderEngine] AI reminder assistant disabled, skipping extraction: conversation_id={}",
+                conversation_id
+            );
+            return Ok(vec![]);
+        }
         let primary_cfg = settings.ai_models.content_processor_llm.clone();
         let fallback_cfg = settings.ai_models.chat_llm.clone();
         let extraction_dialogue = match build_reminder_intent_gate(dialogue) {
@@ -2132,6 +2139,42 @@ mod tests {
         (engine, pool, dir)
     }
 
+    #[tokio::test]
+    async fn test_extract_reminders_returns_empty_when_ai_reminders_disabled() {
+        let (engine, pool, _dir) = setup_test_engine().await;
+        sqlx::query(
+            "INSERT INTO settings (key, value, updated_at) VALUES ('reminders', ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+        .bind(
+            r#"{
+                "aiEnabled": false,
+                "enabled": true,
+                "dailyReminderTime": "09:00",
+                "quietHoursStart": "22:00",
+                "quietHoursEnd": "08:00",
+                "weekendQuiet": false
+            }"#,
+        )
+        .bind(Utc::now().to_rfc3339())
+        .execute(&pool)
+        .await
+        .expect("save disabled reminder settings");
+
+        let ids = engine
+            .extract_reminders(
+                "conversation-1",
+                "",
+                "User: remind me tomorrow at 9 to send the report",
+                &Utc::now().to_rfc3339(),
+                None,
+            )
+            .await
+            .expect("disabled extraction should succeed");
+
+        assert!(ids.is_empty());
+    }
+
     #[test]
     fn test_naive_local_to_utc_str_has_utc_format() {
         let date = NaiveDate::from_ymd_opt(2026, 4, 20).unwrap();
@@ -2265,8 +2308,8 @@ mod tests {
     }
 
     #[test]
-    fn test_build_user_confirmed_reminder_dialogue_keeps_no_attendance_but_explicit_reminder_cases(
-    ) {
+    fn test_build_user_confirmed_reminder_dialogue_keeps_no_attendance_but_explicit_reminder_cases()
+    {
         let cases = [
             "今天下午1點半技術部有系統維護會議，我不用進去，但請提醒我那時候暫停所有大檔案傳輸。",
             "明天中午12點主管要和外賓午餐，我不需要陪同，不過要提醒我先幫他們預訂好車輛。",
@@ -2348,7 +2391,10 @@ mod tests {
                 assert!(context.contains("Assistant proposal confirmed by user"));
                 assert!(context.contains("2027-10-01"));
             }
-            other => panic!("expected hard create for confirmed assistant proposal, got {:?}", other),
+            other => panic!(
+                "expected hard create for confirmed assistant proposal, got {:?}",
+                other
+            ),
         }
     }
 

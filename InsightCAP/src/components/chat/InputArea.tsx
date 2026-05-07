@@ -46,6 +46,7 @@ export interface InputAreaProps {
             mentionedSourceIds: string[];
             mentionedSources: { id: string; title: string }[];
             mentionedTagNames: string[];
+            mentionedTags: { id: string; name: string }[];
             attachedFiles: { name: string; filePath: string; fileType: string; previewUrl?: string; tempChunkIds?: string[] }[];
             tempChunkIds?: string[];
             thinkingMode?: 'normal' | 'think';
@@ -84,7 +85,7 @@ type FileMenuKey = typeof FILE_MENU_ITEMS[number]['key'];
 export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGenerating }) => {
 
     const [input, setInput] = useState('');
-    const [ragEnabled, setRagEnabled] = useState(true);
+    const [ragEnabled, setRagEnabled] = useState(false);
     const [webEnabled, setWebEnabled] = useState(false);
     const [thinkingMode, setThinkingMode] = useState<'normal' | 'think'>('normal');
     const [supportsThinking, setSupportsThinking] = useState(false);
@@ -306,6 +307,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isGeneratin
             mentionedSourceIds: mentionedSources.map(s => s.id),
             mentionedSources: mentionedSources.map(s => ({ id: s.id, title: s.title })),
             mentionedTagNames: mentionedTags.map(t => t.name),
+            mentionedTags: mentionedTags.map(t => ({ id: t.id, name: t.name })),
             attachedFiles: validFiles.map(f => ({ name: f.name, filePath: f.filePath, fileType: f.fileType, previewUrl: f.previewUrl, tempChunkIds: f.tempChunkIds })),
             tempChunkIds: allTempChunkIds.length > 0 ? allTempChunkIds : undefined,
             thinkingMode,
