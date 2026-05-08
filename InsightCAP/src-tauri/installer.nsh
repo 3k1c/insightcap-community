@@ -35,11 +35,4 @@
   Delete "$DESKTOP\InsightCAP.lnk"
   Delete "$SMPROGRAMS\InsightCAP.lnk"
   Delete "$SMPROGRAMS\InsightCAP\InsightCAP.lnk"
-
-  MessageBox MB_YESNO "同時刪除 InsightCAP 本機 app 資料？$\r$\n$\r$\n這會刪除設定、快取、下載模型，以及預設 app 資料夾內的知識庫。$\r$\n不會刪除自定義知識庫資料夾，也不會清除 Windows Credential Manager 內的解密金鑰。" IDNO keep_app_data
-    RMDir /r "$APPDATA\com.insightcap.app"
-    RMDir /r "$LOCALAPPDATA\com.insightcap.app"
-    DetailPrint "Deleted InsightCAP app-owned data."
-
-  keep_app_data:
 !macroend
