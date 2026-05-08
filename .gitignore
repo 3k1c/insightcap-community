@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+target/
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Local app data and caches
+.insightcap/
+vectors/
+.fastembed_cache/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite-*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Archives and installers should be attached to GitHub Releases instead.
+*.7z
+*.zip
+*.exe
+*.msi
+*.dmg
+
