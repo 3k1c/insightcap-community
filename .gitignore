@@ -27,4 +27,4 @@ vectors/
 InsightCAP_ref/**/target/
 InsightCAP_3/**/target/
 /*.7z
-InsightCAP/src-tauri/.fastembed_cache/
+.fastembed_cache/
