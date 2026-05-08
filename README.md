@@ -48,6 +48,7 @@ Selected community-facing source code may be added later after review.
 - [Installation](docs/installation.md)
 - [Privacy and Data](docs/privacy-and-data.md)
 - [Open Source Scope](docs/open-source-scope.md)
+- [Release Checklist](docs/release-checklist.md)
 
 ## Licensing
 
@@ -93,7 +94,10 @@ Before this repository is made public, and before each future release, contents
 should be reviewed for personal data, local development metadata, credentials,
 and internal-only information.
 
-See [Privacy and Data](docs/privacy-and-data.md).
+See:
+
+- [Privacy and Data](docs/privacy-and-data.md)
+- [Release Checklist](docs/release-checklist.md)
 
 ## Links
 
