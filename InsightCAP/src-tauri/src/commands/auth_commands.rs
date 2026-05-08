@@ -22,6 +22,7 @@ pub struct AuthStatus {
     pub is_setup: bool,
     pub auto_login: bool,
     pub is_migrated: bool,
+    pub is_empty_for_new_setup: bool,
 }
 
 #[derive(Serialize)]
@@ -90,6 +91,36 @@ fn target_has_existing_knowledge_base(kb_path: &Path) -> bool {
         || insightcap_dir.join("insightcap.db").exists()
 }
 
+fn is_ignorable_workspace_entry(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            matches!(
+                name.to_ascii_lowercase().as_str(),
+                "desktop.ini" | "thumbs.db"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn target_is_empty_or_missing(kb_path: &Path) -> Result<bool, String> {
+    if !kb_path.exists() {
+        return Ok(true);
+    }
+    if !kb_path.is_dir() {
+        return Ok(false);
+    }
+
+    for entry in std::fs::read_dir(kb_path).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !is_ignorable_workspace_entry(&entry.path()) {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 #[cfg(test)]
 mod existing_kb_tests {
     use super::*;
@@ -119,6 +150,14 @@ mod existing_kb_tests {
         let temp = tempfile::tempdir().expect("tempdir");
 
         assert!(!target_has_existing_knowledge_base(temp.path()));
+    }
+
+    #[test]
+    fn rejects_non_empty_directory_for_new_knowledge_base() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(temp.path().join("notes.txt"), "existing data").expect("write file");
+
+        assert!(!target_is_empty_or_missing(temp.path()).expect("check workspace"));
     }
 }
 
@@ -165,11 +204,13 @@ pub async fn get_auth_status(kb_path: String) -> Result<AuthStatus, String> {
         .is_ok();
 
     let is_migrated = is_setup && db_exists && !keychain_ok;
+    let is_empty_for_new_setup = target_is_empty_or_missing(Path::new(&kb_path))?;
 
     Ok(AuthStatus {
         is_setup,
         auto_login: keychain_ok,
         is_migrated,
+        is_empty_for_new_setup,
     })
 }
 
@@ -183,6 +224,9 @@ pub async fn setup_auth(
     let target_kb_path = PathBuf::from(&payload.kb_path);
     if target_has_existing_knowledge_base(&target_kb_path) {
         return Err("WORKSPACE_ALREADY_INITIALIZED".to_string());
+    }
+    if !target_is_empty_or_missing(&target_kb_path)? {
+        return Err("WORKSPACE_NOT_EMPTY".to_string());
     }
 
     let dir = auth_dir(&payload.kb_path);

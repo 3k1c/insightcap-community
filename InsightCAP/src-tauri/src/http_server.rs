@@ -178,7 +178,7 @@ async fn handle_rag(
     );
 
     let context = engine
-        .retrieve_context(req.query.trim(), None, None, None)
+        .retrieve_context(req.query.trim(), None, None, None, false)
         .await
         .map_err(|e| {
             eprintln!("[MobileRAG] error: {}", e);
@@ -229,7 +229,7 @@ async fn handle_chat(
             app_state.embedder.clone(),
         );
         engine
-            .retrieve_context(req.message.trim(), None, None, None)
+            .retrieve_context(req.message.trim(), None, None, None, false)
             .await
             .unwrap_or_else(|_| serde_json::json!({}))
     };

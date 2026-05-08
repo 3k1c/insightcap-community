@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use fastembed::{InitOptions, TextEmbedding};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -18,7 +19,7 @@ impl FastEmbedder {
             embedding_model
         );
 
-        let mut options = InitOptions::new(embedding_model);
+        let mut options = InitOptions::new(embedding_model).with_cache_dir(fastembed_cache_dir());
         options.show_download_progress = true;
 
         let model =
@@ -32,6 +33,26 @@ impl FastEmbedder {
             model: Arc::new(Mutex::new(model)),
         })
     }
+}
+
+fn fastembed_cache_dir_from_env(local: Option<&Path>, home: Option<&Path>) -> PathBuf {
+    if let Some(local) = local {
+        return local.join("com.insightcap.app").join(".fastembed_cache");
+    }
+    if let Some(home) = home {
+        return home.join(".insightcap").join(".fastembed_cache");
+    }
+    std::env::temp_dir()
+        .join("InsightCAP")
+        .join(".fastembed_cache")
+}
+
+fn fastembed_cache_dir() -> PathBuf {
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let dir = fastembed_cache_dir_from_env(local.as_deref(), home.as_deref());
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 #[async_trait]
@@ -79,5 +100,21 @@ fn canonical_embedding_model_name(name: &str) -> &str {
         "bge-small-en-v1.5" | "bge_small_en" => "bge-small-en-v1.5",
         "all-minilm-l6-v2" | "all_minilm_l6_v2" => "all-minilm-l6-v2",
         _ => "multilingual-e5-small",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn stores_fastembed_cache_under_tauri_app_data_dir_on_windows() {
+        let local = Path::new(r"C:\Users\dev\AppData\Local");
+
+        assert_eq!(
+            fastembed_cache_dir_from_env(Some(local), None),
+            local.join("com.insightcap.app").join(".fastembed_cache")
+        );
     }
 }

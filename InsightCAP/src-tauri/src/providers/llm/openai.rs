@@ -91,11 +91,16 @@ impl OpenAiProvider {
 
         match style {
             ReasoningStyle::OpenAiReasoning => {
+                let reasoning_effort = match options.think_mode {
+                    Some(true) => "high",
+                    Some(false) => "low",
+                    None => "high",
+                };
                 json!({
                     "model": self.model,
                     "messages": messages,
                     "max_completion_tokens": options.max_tokens,
-                    "reasoning_effort": "high",
+                    "reasoning_effort": reasoning_effort,
                     "stream": stream,
                 })
             }
@@ -289,6 +294,87 @@ impl Gemma4ChannelParser {
     }
 }
 
+fn pop_sse_event(buffer: &mut String) -> Option<String> {
+    let lf_pos = buffer.find("\n\n").map(|pos| (pos, 2));
+    let crlf_pos = buffer.find("\r\n\r\n").map(|pos| (pos, 4));
+
+    let (pos, delimiter_len) = match (lf_pos, crlf_pos) {
+        (Some(lf), Some(crlf)) => {
+            if lf.0 <= crlf.0 {
+                lf
+            } else {
+                crlf
+            }
+        }
+        (Some(lf), None) => lf,
+        (None, Some(crlf)) => crlf,
+        (None, None) => return None,
+    };
+
+    let event = buffer[..pos].to_string();
+    buffer.drain(..pos + delimiter_len);
+    Some(event)
+}
+
+fn sse_data_payload(line: &str) -> Option<&str> {
+    line.strip_prefix("data:").map(str::trim_start)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{pop_sse_event, sse_data_payload, OpenAiProvider};
+    use crate::providers::llm::LLMOptions;
+    use serde_json::json;
+
+    #[test]
+    fn pops_crlf_sse_events_without_waiting_for_stream_end() {
+        let mut buffer =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\r\n\r\nrest".to_string();
+
+        let event = pop_sse_event(&mut buffer).expect("event");
+
+        assert!(event.contains("\"Hel\""));
+        assert_eq!(buffer, "rest");
+    }
+
+    #[test]
+    fn accepts_data_lines_without_space_after_colon() {
+        assert_eq!(sse_data_payload("data:{\"x\":1}"), Some("{\"x\":1}"));
+        assert_eq!(sse_data_payload("data: {\"x\":1}"), Some("{\"x\":1}"));
+    }
+
+    #[test]
+    fn openai_reasoning_effort_follows_thinking_mode() {
+        let provider = OpenAiProvider::new(
+            "key".to_string(),
+            None,
+            "o3".to_string(),
+            "openai".to_string(),
+        );
+        let messages = vec![json!({ "role": "user", "content": "hi" })];
+
+        let normal = provider.build_request_body(
+            messages.clone(),
+            &LLMOptions {
+                think_mode: Some(false),
+                ..LLMOptions::default()
+            },
+            true,
+        );
+        let thinking = provider.build_request_body(
+            messages,
+            &LLMOptions {
+                think_mode: Some(true),
+                ..LLMOptions::default()
+            },
+            true,
+        );
+
+        assert_eq!(normal["reasoning_effort"], "low");
+        assert_eq!(thinking["reasoning_effort"], "high");
+    }
+}
+
 impl LLMProvider for OpenAiProvider {
     async fn complete(&self, prompt: &str, options: LLMOptions) -> Result<String, LLMError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
@@ -415,12 +501,9 @@ impl LLMProvider for OpenAiProvider {
             let bytes = chunk.map_err(|e| LLMError::Network(e.to_string()))?;
             buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-            while let Some(pos) = buffer.find("\n\n") {
-                let event = buffer[..pos].to_string();
-                buffer = buffer[pos + 2..].to_string();
-
+            while let Some(event) = pop_sse_event(&mut buffer) {
                 for line in event.lines() {
-                    let data = line.strip_prefix("data: ").unwrap_or_default();
+                    let data = sse_data_payload(line).unwrap_or_default();
                     if data == "[DONE]" {
                         break;
                     }

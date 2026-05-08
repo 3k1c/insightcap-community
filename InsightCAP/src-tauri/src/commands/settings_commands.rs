@@ -27,6 +27,7 @@ pub async fn save_settings(
         .map_err(|e| format!("Path error: {}", e))?;
 
     crate::db::connection::write_bootstrap(&app_data_dir, &settings.knowledge.kb_path)?;
+    crate::capture::keyboard::apply_global_hotkeys(&handle, &settings.hotkeys)?;
 
     Ok(())
 }
@@ -160,6 +161,6 @@ pub async fn get_chat_llm_supports_thinking(pool: State<'_, SqlitePool>) -> Resu
         .await
         .map_err(|e| format!("Database error: {}", e))?;
     let cfg = settings.ai_models.chat_llm;
-    let style = model_caps::detect(&cfg.model, &cfg.provider);
-    Ok(style != model_caps::ReasoningStyle::None)
+    let control = model_caps::thinking_control(&cfg.model, &cfg.provider);
+    Ok(control != model_caps::ThinkingControl::None)
 }

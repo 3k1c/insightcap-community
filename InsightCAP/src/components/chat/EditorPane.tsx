@@ -93,9 +93,11 @@ import {
     AlignLeft, AlignCenter, AlignRight, AlignJustify,
     Upload, Columns, Merge, Split, LayoutTemplate, ChevronDown, Link as LinkIcon, Image as ImageIcon,
     Sparkles, Wand2, Eraser, Check, RotateCcw, RefreshCw, FileText, Languages, Smile, ChevronRight,
-    FolderOpen, History as HistoryIcon, PanelLeftClose, PanelLeftOpen
+    FolderOpen, History as HistoryIcon, PanelLeftClose, PanelLeftOpen,
+    Briefcase, Shield, Coffee, Maximize, Minimize,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
+import { getEnabledEditorAiActions } from '../../lib/editor-ai-actions';
 import {
     loadSession, saveSession, loadContent, saveContent,
     loadFiles, upsertFile, renameFile as renameNoteFile,
@@ -694,6 +696,12 @@ let tabCounter = (() => {
 })();
 
 export const EditorPane: React.FC = () => {
+    const ICON_MAP: Record<string, any> = {
+        Wand2, Smile, FileText, Eraser, Languages, RefreshCw, Sparkles,
+        Briefcase, Shield, Coffee, Maximize, Minimize,
+    };
+    const [settings, setSettings] = useState<any>(null);
+    useEffect(() => { invoke('get_settings').then(setSettings); }, []);
     const { isChatHidden, toggleChatHidden } = useUiStore();
     const t = useT();
 
@@ -1003,7 +1011,7 @@ export const EditorPane: React.FC = () => {
     const [aiImproveResult, setAiImproveResult] = useState<string | null>(null);
     const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null);
     const [showAiDropdown, setShowAiDropdown] = useState(false);
-    const [aiDropdownType, setAiDropdownType] = useState<'main' | 'tone' | 'translate' | 'expand' | 'shorten' | 'custom'>('main');
+    const [aiDropdownType, setAiDropdownType] = useState<'main' | 'custom'>('main');
     const [customPrompt, setCustomPrompt] = useState('');
     const aiDropdownRef = useRef<HTMLDivElement>(null);
     const aiPanelRef = useRef<HTMLDivElement>(null);
@@ -1195,10 +1203,8 @@ export const EditorPane: React.FC = () => {
         setShowAiDropdown(false);
 
         const convId = `ai-improve-${Date.now()}`;
-        const fullPrompt = `${prompt}\n\nOriginal content:\n${text}`;
 
         try {
-            const settings = await invoke<any>('get_settings');
             const unlisteners: Array<() => void> = [];
 
             await new Promise<void>((resolve, reject) => {
@@ -1216,19 +1222,10 @@ export const EditorPane: React.FC = () => {
                     unlisteners.push(ut, ud);
                 });
 
-                invoke('rag_query_stream', {
-                    query: fullPrompt,
+                invoke('editor_ai_rewrite_stream', {
+                    actionPrompt: prompt,
+                    selectedText: text,
                     conversationId: convId,
-                    history: [],
-                    conversationSummary: null,
-                    projectId: null,
-                    sourceIds: null,
-                    tagFilter: null,
-                    ragEnabled: false,
-                    webEnabled: false,
-                    tempChunkIds: null,
-                    thinkingMode: 'normal',
-                    instructionOverride: settings?.editor?.promptInstructionOverride,
                 }).catch(reject);
             });
 
@@ -1419,7 +1416,7 @@ export const EditorPane: React.FC = () => {
 
                                 {showAiDropdown && (
                                     <div
-                                        className={`absolute left-0 top-full mt-1 whitespace-normal bg-surface-flyout border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200 ${aiDropdownType === 'custom' ? 'w-72' : 'w-52'} ${aiDropdownType === 'tone' ? 'max-h-72 overflow-y-auto' : ''}`}
+                                        className={`absolute left-0 top-full mt-1 whitespace-normal bg-surface-flyout border border-stroke-divider rounded-lg shadow-xl p-1 z-[110] animate-in fade-in slide-in-from-top-1 duration-200 ${aiDropdownType === 'custom' ? 'w-72 max-h-none' : 'w-56 max-h-72 overflow-y-auto'}`}
                                         onMouseDown={e => {
                                             e.stopPropagation();
                                             if (aiDropdownType !== 'custom') {
@@ -1429,86 +1426,23 @@ export const EditorPane: React.FC = () => {
                                     >
                                         {aiDropdownType === 'main' && (
                                             <>
-                                                <button onClick={() => setAiDropdownType('tone')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <Smile className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_adjust_tone')}
-                                                    </div>
-                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                </button>
-                                                <button onClick={() => setAiDropdownType('expand')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <FileText className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_extend')}
-                                                    </div>
-                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                </button>
-                                                <button onClick={() => setAiDropdownType('shorten')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <Eraser className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_shorten')}
-                                                    </div>
-                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                </button>
-                                                <button onClick={() => handleAiImprove('Please complete the following paragraph so it becomes more natural and complete. Output only the rewritten text without explanations:')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                    <RefreshCw className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_complete')}
-                                                </button>
-                                                <button onClick={() => handleAiImprove('Please fix the grammar errors in the following text and make it more fluent and natural. Output only the revised text without explanations:')} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                    <Wand2 className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_fix_grammar')}
-                                                </button>
-                                                <button onClick={() => setAiDropdownType('translate')} className="w-full flex items-center justify-between px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <Languages className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_translate')}
-                                                    </div>
-                                                    <ChevronRight className="w-3 h-3 shrink-0 text-text-tertiary" />
-                                                </button>
+                                                {getEnabledEditorAiActions(settings?.editor?.aiActions).map((action: any) => (
+                                                    <button
+                                                        key={action.id}
+                                                        onClick={() => handleAiImprove(action.prompt)}
+                                                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left"
+                                                    >
+                                                        {(() => {
+                                                            const Icon = ICON_MAP[action.icon] || Wand2;
+                                                            return <Icon className="w-3.5 h-3.5 shrink-0" />;
+                                                        })()}
+                                                        {action.labelKey.includes('.') ? t(action.labelKey) : action.labelKey}
+                                                    </button>
+                                                ))}
                                                 <div className="h-px bg-stroke-divider my-1 mx-1" />
                                                 <button onClick={() => { setAiDropdownType('custom'); setCustomPrompt(''); }} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">
                                                     <Sparkles className="w-3.5 h-3.5 shrink-0" /> {t('editor.ai_custom')}
                                                 </button>
-                                            </>
-                                        )}
-                                        {aiDropdownType === 'expand' && (
-                                            <>
-                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                </button>
-                                                <button onClick={() => handleAiImprove('Please slightly expand the following text by adding a small amount of detail while staying concise. Output only the expanded text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_slight')}</button>
-                                                <button onClick={() => handleAiImprove('Please expand the following text with more details and examples to enrich the content. Output only the expanded text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_moderate')}</button>
-                                                <button onClick={() => handleAiImprove('Please significantly expand the following text by adding rich details, concrete explanations, and multiple examples. Output only the expanded text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_extend_large')}</button>
-                                            </>
-                                        )}
-                                        {aiDropdownType === 'shorten' && (
-                                            <>
-                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                </button>
-                                                <button onClick={() => handleAiImprove('Please slightly shorten the following text by removing redundant wording while preserving the original meaning. Output only the shortened text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_slight')}</button>
-                                                <button onClick={() => handleAiImprove('Please shorten the following text by keeping key points and removing non-essential details. Output only the shortened text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_moderate')}</button>
-                                                <button onClick={() => handleAiImprove('Please heavily condense the following text into a few concise sentences. Output only the shortened text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_shorten_large')}</button>
-                                            </>
-                                        )}
-                                        {aiDropdownType === 'tone' && (
-                                            <>
-                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                </button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in a professional business tone. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_business')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in a formal and rigorous written style. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_formal')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in a confident and assertive tone. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_confident')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in a warm and friendly tone. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_friendly')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in an energetic and enthusiastic tone. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_excited')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in a more creative and imaginative style. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_creative')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text in a relaxed and casual tone. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_casual')}</button>
-                                                <button onClick={() => handleAiImprove('Please rewrite the following text with stronger emotional impact and resonance. Output only the rewritten text without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_tone_emotional')}</button>
-                                            </>
-                                        )}
-                                        {aiDropdownType === 'translate' && (
-                                            <>
-                                                <button onClick={() => setAiDropdownType('main')} className="w-full flex items-center gap-2 px-2 py-1 text-fs-xs text-text-tertiary hover:text-text-secondary rounded-md transition-colors mb-0.5">
-                                                    <RotateCcw className="w-3 h-3 shrink-0" /> {t('editor.ai_back')}
-                                                </button>
-                                                <button onClick={() => handleAiImprove('Translate the following text into Traditional Chinese. Output only the translation without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_zhtw')}</button>
-                                                <button onClick={() => handleAiImprove('Translate the following text into Simplified Chinese. Output only the translation without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_zhcn')}</button>
-                                                <button onClick={() => handleAiImprove('Translate the following text into English. Output only the translation, no explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_en')}</button>
-                                                <button onClick={() => handleAiImprove('Translate the following text into Japanese. Output only the translation without explanations:')} className="w-full px-2.5 py-1.5 text-fs-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left">{t('editor.ai_translate_ja')}</button>
                                             </>
                                         )}
                                         {aiDropdownType === 'custom' && (

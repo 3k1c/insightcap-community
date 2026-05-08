@@ -11,11 +11,6 @@ import { ReminderToast } from './components/memory/ReminderToast';
 
 const windowLabel = (window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } }).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? '';
 
-if (windowLabel === 'quick-capture') {
-    import('./design-system/index.css');
-}
-
-
 interface AuthStatus {
     isSetup: boolean;
     autoLogin: boolean;

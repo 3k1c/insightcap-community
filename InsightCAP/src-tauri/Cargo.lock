@@ -3461,7 +3461,7 @@ dependencies = [
 
 [[package]]
 name = "insightcap"
-version = "1.0.0"
+version = "0.9.0-beta.1"
 dependencies = [
  "active-win-pos-rs",
  "arboard",

@@ -1,23 +1,20 @@
 ; InsightCAP NSIS Installer/Uninstaller Hooks
 
 !macro NSIS_HOOK_POSTINSTALL
-  ; 先檢查系統是否已安裝 VC++ Runtime（檢查 System32 中的 msvcp140.dll）
-  ; 若已存在則完全跳過，避免不必要的等待
+  ; Install VC++ Runtime only when the system runtime is missing.
   IfFileExists "$SYSDIR\msvcp140.dll" done_vc 0
-    ; 系統尚未安裝 VC++ Runtime，嘗試靜默安裝
-    IfFileExists "$INSTDIR\resources\vc_redist.x64.exe" run_redist try_copy_dlls
+  IfFileExists "$INSTDIR\resources\vc_redist.x64.exe" run_redist try_copy_dlls
 
-    run_redist:
-      DetailPrint "Installing Microsoft Visual C++ Redistributable..."
-      ExecWait '"$INSTDIR\resources\vc_redist.x64.exe" /quiet /norestart' $0
-      DetailPrint "VC++ Redistributable installer exited with code: $0"
-      Goto done_vc
+  run_redist:
+    DetailPrint "Installing Microsoft Visual C++ Redistributable..."
+    ExecWait '"$INSTDIR\resources\vc_redist.x64.exe" /quiet /norestart' $0
+    DetailPrint "VC++ Redistributable installer exited with code: $0"
+    Goto done_vc
 
-    try_copy_dlls:
-      ; 備用方案：直接複製 DLL 到安裝目錄
-      IfFileExists "$INSTDIR\resources\vc-runtime\*.dll" 0 done_vc
-        DetailPrint "Copying Visual C++ runtime files..."
-        CopyFiles /SILENT "$INSTDIR\resources\vc-runtime\*.dll" "$INSTDIR"
+  try_copy_dlls:
+    IfFileExists "$INSTDIR\resources\vc-runtime\*.dll" 0 done_vc
+      DetailPrint "Copying Visual C++ runtime files..."
+      CopyFiles /SILENT "$INSTDIR\resources\vc-runtime\*.dll" "$INSTDIR"
 
   done_vc:
     ; Refresh Windows shortcuts so Desktop and Start Menu use the current exe icon.
@@ -39,9 +36,10 @@
   Delete "$SMPROGRAMS\InsightCAP.lnk"
   Delete "$SMPROGRAMS\InsightCAP\InsightCAP.lnk"
 
-  ; 問用戶是否刪除資料
-  MessageBox MB_YESNO "是否要刪除 InsightCAP 的所有使用者資料？(這將會刪除您所有的本地知識庫、設定、緩存及恢復碼，且無法復原！)" IDNO +3
+  MessageBox MB_YESNO "同時刪除 InsightCAP 本機 app 資料？$\r$\n$\r$\n這會刪除設定、快取、下載模型，以及預設 app 資料夾內的知識庫。$\r$\n不會刪除自定義知識庫資料夾，也不會清除 Windows Credential Manager 內的解密金鑰。" IDNO keep_app_data
     RMDir /r "$APPDATA\com.insightcap.app"
     RMDir /r "$LOCALAPPDATA\com.insightcap.app"
-    DetailPrint "已清理所有使用者資料"
+    DetailPrint "Deleted InsightCAP app-owned data."
+
+  keep_app_data:
 !macroend

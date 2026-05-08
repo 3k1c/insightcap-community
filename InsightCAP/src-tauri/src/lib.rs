@@ -28,7 +28,6 @@ fn set_zoom(window: WebviewWindow, factor: f64) -> Result<(), String> {
 }
 use serde_json::json;
 use std::sync::Arc;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -276,39 +275,8 @@ pub fn run() {
                 s.hotkeys
             });
 
-            let capture_shortcut_str = hotkey_settings.capture_clipboard;
-            match capture_shortcut_str.parse::<Shortcut>() {
-                Ok(shortcut) => {
-                    app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
-                        if event.state() == ShortcutState::Pressed {
-                            let handle = app.clone();
-                            tauri::async_runtime::spawn(async move {
-                                if let Err(e) = capture::trigger_capture(handle).await {
-                                    eprintln!("[HOTKEY] Capture failed: {}", e);
-                                }
-                            });
-                        }
-                    })?;
-                    println!("[HOTKEY] Registered capture shortcut: {}", capture_shortcut_str);
-                }
-                Err(e) => {
-                    eprintln!("[HOTKEY] Failed to parse capture shortcut '{}': {:?}", capture_shortcut_str, e);
-                }
-            }
-
-            let quick_input_str = hotkey_settings.quick_input;
-            match quick_input_str.parse::<Shortcut>() {
-                Ok(shortcut) => {
-                    app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
-                        if event.state() == ShortcutState::Pressed {
-                            capture::keyboard::show_quick_input_window(app);
-                        }
-                    })?;
-                    println!("[HOTKEY] Registered quick input shortcut: {}", quick_input_str);
-                }
-                Err(e) => {
-                    eprintln!("[HOTKEY] Failed to parse quick input shortcut '{}': {:?}", quick_input_str, e);
-                }
+            if let Err(e) = capture::keyboard::apply_global_hotkeys(app.handle(), &hotkey_settings) {
+                eprintln!("[HOTKEY] Failed to apply shortcuts: {}", e);
             }
 
             println!("\n{}", "=".repeat(50));
@@ -422,6 +390,7 @@ pub fn run() {
             knowledge_source::enterprise::remove_external_kb,
             commands::bilibili_auth::open_bilibili_login,
             commands::rag_commands::rag_query,
+            commands::rag_commands::editor_ai_rewrite_stream,
             commands::rag_commands::rag_query_stream,
             commands::reminder_commands::get_active_reminders,
             commands::reminder_commands::get_pending_reminders,

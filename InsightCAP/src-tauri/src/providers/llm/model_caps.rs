@@ -7,6 +7,13 @@ pub enum ReasoningStyle {
     Gemma4Think,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingControl {
+    None,
+    OllamaThinkOption,
+    OpenAiReasoningEffort,
+}
+
 pub fn detect(model: &str, provider: &str) -> ReasoningStyle {
     let m = model.to_lowercase();
     let p = provider.to_lowercase();
@@ -35,6 +42,25 @@ pub fn detect(model: &str, provider: &str) -> ReasoningStyle {
     }
 
     ReasoningStyle::None
+}
+
+pub fn thinking_control(model: &str, provider: &str) -> ThinkingControl {
+    let m = model.to_lowercase();
+    let p = provider.to_lowercase();
+
+    if is_openai_reasoning_model(&m) && matches!(p.as_str(), "openai" | "xai") {
+        return ThinkingControl::OpenAiReasoningEffort;
+    }
+
+    if p == "ollama"
+        && (m.contains("qwen3") || m.contains("qwq") || m.contains("thinking"))
+        && !m.contains("deepseek-r1")
+        && !m.contains("deepseek_r1")
+    {
+        return ThinkingControl::OllamaThinkOption;
+    }
+
+    ThinkingControl::None
 }
 
 fn is_gemini_reasoning_model(model: &str) -> bool {
@@ -147,5 +173,31 @@ mod tests {
     #[test]
     fn test_ollama_think_tag() {
         assert_eq!(detect("qwq:32b", "ollama"), ReasoningStyle::OllamaThinkTag);
+    }
+
+    #[test]
+    fn test_thinking_control_only_reports_models_with_real_switches() {
+        assert_eq!(
+            thinking_control("o3", "openai"),
+            ThinkingControl::OpenAiReasoningEffort
+        );
+        assert_eq!(
+            thinking_control("qwen3:8b", "ollama"),
+            ThinkingControl::OllamaThinkOption
+        );
+        assert_eq!(
+            thinking_control("qwq:32b", "ollama"),
+            ThinkingControl::OllamaThinkOption
+        );
+
+        assert_eq!(
+            thinking_control("deepseek-r1", "ollama"),
+            ThinkingControl::None
+        );
+        assert_eq!(
+            thinking_control("gemini-2.5-pro", "google"),
+            ThinkingControl::None
+        );
+        assert_eq!(thinking_control("gpt-4o", "openai"), ThinkingControl::None);
     }
 }

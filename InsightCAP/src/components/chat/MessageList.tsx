@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Link, AtSign, Copy, Check, Brain, ChevronDown, Loader2, CalendarClock } from 'lucide-react';
+import { FileText, Link, AtSign, Hash, Copy, Check, Brain, ChevronDown, CalendarClock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Message } from '../../stores/chatStore';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +9,30 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+/** 將常見 LaTeX 行內數學符號轉為 Unicode，避免顯示成 $\symbol$ 文字 */
+function preprocessMarkdown(text: string): string {
+    return text
+        .replace(/\$\\rightarrow\$/g, '→')
+        .replace(/\$\\leftarrow\$/g, '←')
+        .replace(/\$\\Rightarrow\$/g, '⇒')
+        .replace(/\$\\Leftarrow\$/g, '⇐')
+        .replace(/\$\\leftrightarrow\$/g, '↔')
+        .replace(/\$\\Leftrightarrow\$/g, '⇔')
+        .replace(/\$\\to\$/g, '→')
+        .replace(/\$\\gets\$/g, '←')
+        .replace(/\$\\uparrow\$/g, '↑')
+        .replace(/\$\\downarrow\$/g, '↓')
+        .replace(/\$\\neq\$/g, '≠')
+        .replace(/\$\\leq\$/g, '≤')
+        .replace(/\$\\geq\$/g, '≥')
+        .replace(/\$\\approx\$/g, '≈')
+        .replace(/\$\\times\$/g, '×')
+        .replace(/\$\\div\$/g, '÷')
+        .replace(/\$\\pm\$/g, '±')
+        .replace(/\$\\infty\$/g, '∞')
+        .replace(/\$\\cdot\$/g, '·')
+        .replace(/\$\\ldots\$/g, '…');
+}
 const CodeBlock = ({ language, value }: { language: string; value: string }) => {
     const [copied, setCopied] = useState(false);
     const { t } = useTranslation();
@@ -51,34 +75,64 @@ const ThinkingBlock = ({ content, isStreaming }: { content: string; isStreaming?
     const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
     const prevStreamingRef = useRef(isStreaming);
+    const contentRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // 開始串流時自動展開
         if (isStreaming && !prevStreamingRef.current) {
             setIsExpanded(true);
-        } else if (!isStreaming && prevStreamingRef.current) {
-            setIsExpanded(false);
         }
+        // 結束串流時保持展開，不自動收起
         prevStreamingRef.current = isStreaming;
     }, [isStreaming]);
 
+    // 串流中自動捲至底部，跟隨最新 reasoning 內容
+    useEffect(() => {
+        if (isStreaming && isExpanded && contentRef.current) {
+            contentRef.current.scrollTop = contentRef.current.scrollHeight;
+        }
+    }, [content, isStreaming, isExpanded]);
+
+    const charCount = content.length;
+
     return (
-        <div className="mb-3 rounded-xl border border-stroke-divider bg-surface-soft overflow-hidden">
+        <div className={`mb-3 rounded-xl overflow-hidden border transition-all duration-300 ${
+            isStreaming
+                ? 'border-violet-500/40 bg-violet-500/[0.04] shadow-[0_0_0_1px_rgba(139,92,246,0.15)]'
+                : 'border-stroke-divider bg-surface-soft'
+        }`}>
             <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-fs-sm text-text-secondary hover:bg-surface-base transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-fs-sm hover:bg-black/5 transition-colors"
             >
-                <Brain className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>{t('chat.thinking_process')}</span>
-                {isStreaming && <Loader2 className="w-3 h-3 animate-spin" />}
-                <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                <Brain className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
+                    isStreaming ? 'text-violet-400 animate-pulse' : 'text-text-tertiary'
+                }`} />
+                <span className={`transition-colors ${
+                    isStreaming ? 'text-violet-400 font-medium' : 'text-text-secondary'
+                }`}>{t('chat.thinking_process')}</span>
+                {isStreaming
+                    ? <span className="text-[10px] text-violet-400/70 ml-1 tabular-nums">{charCount} chars</span>
+                    : <span className="text-[10px] text-text-tertiary ml-1 tabular-nums">{charCount} chars</span>
+                }
+                <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${
+                    isExpanded ? 'rotate-180' : ''
+                } ${isStreaming ? 'text-violet-400' : 'text-text-tertiary'}`} />
             </button>
             {isExpanded && (
-                <div className="px-3 py-2 border-t border-stroke-divider text-fs-sm text-text-secondary leading-relaxed max-h-[300px] overflow-y-auto">
+                <div
+                    ref={contentRef}
+                    className={`px-3 py-2 border-t text-fs-sm leading-relaxed max-h-[320px] overflow-y-auto ${
+                        isStreaming
+                            ? 'border-violet-500/20 text-text-secondary'
+                            : 'border-stroke-divider text-text-secondary'
+                    }`}
+                >
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {content}
                     </ReactMarkdown>
                     {isStreaming && (
-                        <span className="inline-block w-1.5 h-3 bg-text-secondary ml-0.5 animate-pulse align-middle rounded-sm" />
+                        <span className="inline-block w-1.5 h-3.5 bg-violet-400 ml-0.5 animate-[pulse_0.8s_ease-in-out_infinite] align-middle rounded-sm" />
                     )}
                 </div>
             )}
@@ -394,6 +448,19 @@ export const MessageList: React.FC<MessageListProps> = ({
                                         ))}
                                     </div>
                                 )}
+                                {msg.role === 'user' && msg.mentionedTags && msg.mentionedTags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {msg.mentionedTags.map(tag => (
+                                            <span
+                                                key={tag.id || tag.name}
+                                                className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-emerald-500/20 border border-emerald-200/30 text-[11px]"
+                                            >
+                                                <Hash className="w-2.5 h-2.5 opacity-80" />
+                                                <span className="truncate max-w-[120px] opacity-90">{tag.name}</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                                 {msg.role === 'assistant' && msg.reasoningContent && (
                                     <ThinkingBlock
                                         content={msg.reasoningContent}
@@ -401,8 +468,6 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     />
                                 )}
                                 {(() => {
-                                    const isStreamingEmpty = isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && !msg.content;
-                                    if (isStreamingEmpty) return null;
                                     const isUser = msg.role === 'user';
                                     return (
                                         <div className="markdown-body text-fs-base leading-relaxed font-medium min-w-0 overflow-x-hidden">
@@ -439,7 +504,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                                                     blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-stroke-divider pl-4 italic opacity-80 my-3" />,
                                                 }}
                                             >
-                                                {msg.content}
+                                                {preprocessMarkdown(msg.content)}
                                             </ReactMarkdown>
                                         </div>
                                     );
@@ -456,13 +521,9 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     </div>
                                 )}
 
-                                {isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && (
-                                    <div className="text-[10px] mt-2 opacity-50 text-left">
-                                        <span className="inline-flex items-center gap-0.5">
-                                            <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
-                                            <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
-                                            <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
-                                        </span>
+                                {isGenerating && msg.role === 'assistant' && msg.id.startsWith('streaming-') && msg.content && (
+                                    <div className="mt-1.5">
+                                        <span className="inline-block w-1.5 h-3.5 bg-accent-default/60 ml-0.5 animate-[pulse_0.8s_ease-in-out_infinite] align-middle rounded-sm" />
                                     </div>
                                 )}
                             </div>

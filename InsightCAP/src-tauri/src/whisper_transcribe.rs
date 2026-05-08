@@ -65,14 +65,20 @@ impl WhisperModel {
     }
 }
 
-fn app_data_dir() -> PathBuf {
-    if let Ok(local) = std::env::var("LOCALAPPDATA") {
-        return PathBuf::from(local).join("InsightCAP");
+fn app_data_dir_from_env(local: Option<&Path>, home: Option<&Path>) -> PathBuf {
+    if let Some(local) = local {
+        return local.join("com.insightcap.app");
     }
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".insightcap");
+    if let Some(home) = home {
+        return home.join(".insightcap");
     }
     std::env::temp_dir().join("InsightCAP")
+}
+
+fn app_data_dir() -> PathBuf {
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    app_data_dir_from_env(local.as_deref(), home.as_deref())
 }
 
 pub fn model_dir() -> PathBuf {
@@ -831,6 +837,16 @@ mod tests {
         assert!(!whisper_cli_supports_audio_ext("ogg"));
         assert!(!whisper_cli_supports_audio_ext("m4a"));
         assert!(!whisper_cli_supports_audio_ext("webm"));
+    }
+
+    #[test]
+    fn stores_models_under_tauri_app_data_dir_on_windows() {
+        let local = Path::new(r"C:\Users\dev\AppData\Local");
+
+        assert_eq!(
+            app_data_dir_from_env(Some(local), None),
+            local.join("com.insightcap.app")
+        );
     }
 
     #[test]

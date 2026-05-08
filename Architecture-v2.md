@@ -30,11 +30,16 @@ InsightCAP 是**經驗調用系統**。
 
 ## 產品形態
 
-### InsightCAP Personal（個人版 v1.0.0）
+### InsightCAP Personal（個人版 0.9.0-beta.1）
+- 狀態：Beta 測試版，尚未作為正式 1.0 穩定版發佈
 - 單用戶，本地優先
+- 安裝模式：Windows NSIS 使用 `currentUser`，每個 Windows 使用者各自安裝、各自資料
 - 知識源：sources + captures + memory_chunks
+- 知識庫路徑：支援自定義；自定義路徑視為外部知識庫
+- 新建知識庫：只接受不存在或空資料夾；非空資料夾需使用者手動清理後再試
 - 向量索引：通用 MultilingualE5Small（384 維）
 - 登入：本地密碼 + Argon2id + 系統金鑰環 (Keyring)
+- Uninstall 預設只移除程式；選擇清除本機 app 資料時，只刪 app-owned data，不自動刪除自定義知識庫或 Credential Manager 解密金鑰
 
 ### InsightCAP Enterprise（商業版）
 - 單用戶，本地優先（每人各自安裝，知識庫完全私有）
@@ -56,7 +61,7 @@ InsightCAP 是**經驗調用系統**。
 | 層次 | 技術 | 用途 |
 |------|------|------|
 | 桌面框架 | Tauri 2.0 | 跨平台桌面容器 |
-| 前端 | React 18 + TypeScript | UI 層 |
+| 前端 | React 19 + TypeScript | UI 層 |
 | 狀態管理 | Zustand | 全域狀態 |
 | UI 元件 | shadcn/ui + Tailwind + IC Design Token | 統一設計語言 |
 | i18n | react-i18next | 繁中 / 簡中 / 英文 |
@@ -333,7 +338,8 @@ CaptureProcessor 背景每 5 秒輪詢，依 content_type 分流：
 - `file_parser::parse_file` 支援 `.wav / .mp3 / .m4a / .aac / .flac / .ogg / .opus / .webm`。
 - `.wav` 直接送入 `whisper-cli`；其他格式先由 bundled / PATH 中可執行的 `ffmpeg` 轉成 16kHz mono WAV。
 - `whisper-cli` 同時輸出 TXT 與 SRT；若 SRT 存在，系統會以 timestamp segment 建立 transcript chunks，metadata 保留 `transcript_start_ms` / `transcript_end_ms`。
-- `SettingsPage` 的本地 Whisper 模型區支援下載與刪除模型；模型位於 `%LOCALAPPDATA%\InsightCAP\models`。
+- `SettingsPage` 的本地 Whisper 模型區支援下載與刪除模型；模型位於 `%LOCALAPPDATA%\com.insightcap.app\models`。
+- FastEmbed cache 位於 `%LOCALAPPDATA%\com.insightcap.app\.fastembed_cache`。
 
 **Bilibili 登入驗證機制（原生彈出視窗）：**
 - 於設定頁（AI 設置分頁）點擊登入，呼叫 Rust command `open_bilibili_login`。
@@ -2084,9 +2090,17 @@ Embedding → usearch
 - RAG commands 新增 `thinking_mode` 參數（normal/think），已實作 Think Mode 系統 prompt 前綴注入
 - RAG commands 新增 `_web_enabled` 參數 stub（佔位，尚未實作 Web 搜尋功能）
 
+*版本：v2.17 | 日期：2026-05-08*
+本次更新（0.9.0-beta.1 Beta）：
+- **版本狀態調整**：從正式版標記改為 `0.9.0-beta.1` Beta，保留更多用戶回饋與破壞性調整空間
+- **首次設定安全規則**：新建知識庫只接受不存在或空資料夾；非空資料夾會停在 Workspace 步驟並提示使用者手動清理
+- **Runtime data 路徑收斂**：Whisper models 與 FastEmbed cache 統一移到 `%LOCALAPPDATA%\com.insightcap.app`
+- **Uninstall 語意修正**：清除選項改為刪除 app-owned data；不自動刪除自定義知識庫，也不清除 Windows Credential Manager 解密金鑰
+- **預設主題更新**：首次啟動預設使用 dark mode（`theme-void`）
+
 *版本：v2.16 | 日期：2026-05-05*
-本次更新（Release 1.0.0）：
-- **正式發行版本 1.0.0**：穩定性優化，加入完整單元測試與集成測試
+本次更新（1.0.0 候選功能集，已撤回正式版標記）：
+- **候選功能集 1.0.0**：穩定性優化，加入完整單元測試與集成測試
 - **安全架構升級 (Keyring)**：移除硬編碼 API 金鑰，全面接入系統金鑰環 (Keyring) 加密儲存
 - **初始設定嚮導 (Setup Wizard)**：新增 5 步引導流程，支援 AI Provider 初始配置與語系選擇
 - **影片轉錄增強 (Whisper)**：YouTube 擷取增加本地 Whisper 模型降級機制，支援多種模型規模（Tiny 到 Medium）

@@ -146,6 +146,17 @@ export interface WebSearchSettings {
     apiKey: string;
 }
 
+export type EditorAiActionCategory = 'tone' | 'expand' | 'shorten' | 'translate' | 'custom';
+
+export interface EditorAiAction {
+    id: string;
+    labelKey: string;
+    icon: string;
+    category: EditorAiActionCategory;
+    prompt: string;
+    enabled: boolean;
+}
+
 export interface SpaceSuggestion {
     chunkIds: string[];
     suggestedName: string;
@@ -158,6 +169,7 @@ export interface EditorSettings {
     defaultLineSpacing: string;
     defaultExportFormat: 'docx' | 'md' | 'txt';
     exportSubdir: string;
+    aiActions: EditorAiAction[];
     promptInstructionOverride?: string;
 }
 

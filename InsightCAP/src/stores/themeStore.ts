@@ -18,7 +18,7 @@ function readStoredTheme(): Theme {
         if (stored && THEME_CLASSES.includes(stored)) return stored;
     } catch {
     }
-    return 'frost'; // Default Frost Glass (as defined in architecture docs).
+    return 'void'; // Default dark mode.
 }
 
 const initialTheme = readStoredTheme();

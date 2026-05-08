@@ -86,6 +86,20 @@ describe('SetupPage onboarding flow', () => {
         expect(screen.queryByText(/^IC$/)).not.toBeInTheDocument();
     });
 
+    it('renders the first setup page with a dark onboarding theme', () => {
+        render(<SetupPage onComplete={vi.fn()} />);
+
+        const setupRoot = screen.getByRole('button', { name: /Start Setup/i }).closest('.min-h-screen');
+        const featurePanel = screen.getByText('Capture clipboard content').closest('.rounded-xl');
+        const hotkeyPanel = screen.getByText('Global Hotkeys').closest('.rounded-xl');
+
+        expect(setupRoot?.className).toContain('#070A12');
+        expect(featurePanel).not.toHaveClass('bg-slate-50');
+        expect(hotkeyPanel).not.toHaveClass('bg-slate-50');
+        expect(featurePanel).toHaveClass('bg-slate-950/60');
+        expect(hotkeyPanel).toHaveClass('bg-slate-950/60');
+    });
+
     it('renders onboarding copy in Traditional Chinese without English fallback text', async () => {
         const user = userEvent.setup();
         await i18n.changeLanguage('zh-TW');
@@ -150,6 +164,123 @@ describe('SetupPage onboarding flow', () => {
 
         expect(screen.getByRole('heading', { name: /Choose Knowledge Base Location/i })).toBeInTheDocument();
         expect(screen.getByText(/already contains an InsightCAP knowledge base/i)).toBeInTheDocument();
+        expect(mockInvoke.mock.calls.some(([command]) => command === 'setup_auth')).toBe(false);
+    });
+
+    it('allows using an existing encrypted knowledge base during first setup', async () => {
+        const user = userEvent.setup();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'get_auth_status') {
+                return {
+                    isSetup: true,
+                    autoLogin: false,
+                    isMigrated: true,
+                    isEmptyForNewSetup: false,
+                };
+            }
+            if (command === 'unlock_migrated_with_mnemonic') return 'new recovery phrase';
+            return undefined;
+        });
+
+        render(<SetupPage onComplete={vi.fn()} />);
+
+        await goToWorkspace(user);
+        await user.click(screen.getByRole('button', { name: /Use Existing Knowledge Base/i }));
+        await chooseWorkspace(user);
+
+        expect(screen.getByRole('heading', { name: /Restore Existing Knowledge Base/i })).toBeInTheDocument();
+
+        await user.type(screen.getByLabelText(/Recovery Phrase/i), 'apple bridge cloud dance echo forest');
+        await user.type(screen.getByLabelText(/^New Master Password/i), 'password123');
+        await user.type(screen.getByLabelText(/^Confirm New Password/i), 'password123');
+        await user.click(screen.getByRole('button', { name: /Restore Knowledge Base/i }));
+
+        await screen.findByText('new recovery phrase');
+
+        expect(mockInvoke).toHaveBeenCalledWith('unlock_migrated_with_mnemonic', {
+            kbPath: 'C:\\Data\\InsightCAP',
+            mnemonic: 'apple bridge cloud dance echo forest',
+            newPassword: 'password123',
+        });
+        expect(mockInvoke.mock.calls.some(([command]) => command === 'setup_auth')).toBe(false);
+    });
+
+    it('requires an existing knowledge base when using existing mode', async () => {
+        const user = userEvent.setup();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'get_auth_status') {
+                return {
+                    isSetup: false,
+                    autoLogin: false,
+                    isMigrated: false,
+                    isEmptyForNewSetup: true,
+                };
+            }
+            return undefined;
+        });
+
+        render(<SetupPage onComplete={vi.fn()} />);
+
+        await goToWorkspace(user);
+        await user.click(screen.getByRole('button', { name: /Use Existing Knowledge Base/i }));
+        await chooseWorkspace(user);
+
+        expect(screen.getByRole('heading', { name: /Choose Knowledge Base Location/i })).toBeInTheDocument();
+        expect(screen.getByText(/This folder does not contain an existing InsightCAP knowledge base/i)).toBeInTheDocument();
+        expect(mockInvoke.mock.calls.some(([command]) => command === 'unlock_migrated_with_mnemonic')).toBe(false);
+    });
+
+    it('shows an error when restoring an existing knowledge base with an invalid recovery phrase', async () => {
+        const user = userEvent.setup();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'get_auth_status') {
+                return {
+                    isSetup: true,
+                    autoLogin: false,
+                    isMigrated: true,
+                    isEmptyForNewSetup: false,
+                };
+            }
+            if (command === 'unlock_migrated_with_mnemonic') throw new Error('INVALID_MNEMONIC');
+            return undefined;
+        });
+
+        render(<SetupPage onComplete={vi.fn()} />);
+
+        await goToWorkspace(user);
+        await user.click(screen.getByRole('button', { name: /Use Existing Knowledge Base/i }));
+        await chooseWorkspace(user);
+        await user.type(screen.getByLabelText(/Recovery Phrase/i), 'wrong recovery phrase');
+        await user.type(screen.getByLabelText(/^New Master Password/i), 'password123');
+        await user.type(screen.getByLabelText(/^Confirm New Password/i), 'password123');
+        await user.click(screen.getByRole('button', { name: /Restore Knowledge Base/i }));
+
+        expect(await screen.findByText(/Incorrect recovery phrase/i)).toBeInTheDocument();
+        expect(screen.queryByText('new recovery phrase')).not.toBeInTheDocument();
+    });
+
+    it('blocks setup when the selected workspace is not empty', async () => {
+        const user = userEvent.setup();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'get_auth_status') {
+                return {
+                    isSetup: false,
+                    autoLogin: false,
+                    isMigrated: false,
+                    isEmptyForNewSetup: false,
+                };
+            }
+            if (command === 'setup_auth') return 'alpha beta gamma delta';
+            return undefined;
+        });
+
+        render(<SetupPage onComplete={vi.fn()} />);
+
+        await goToWorkspace(user);
+        await chooseWorkspace(user);
+
+        expect(screen.getByRole('heading', { name: /Choose Knowledge Base Location/i })).toBeInTheDocument();
+        expect(screen.getByText(/new knowledge bases can only be created in an empty folder/i)).toBeInTheDocument();
         expect(mockInvoke.mock.calls.some(([command]) => command === 'setup_auth')).toBe(false);
     });
 

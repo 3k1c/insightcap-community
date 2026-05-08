@@ -1,10 +1,13 @@
+use crate::settings::store::HotkeySettings;
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use std::str::FromStr;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
 
 const DEFAULT_CAPTURE_HOTKEY: &str = "ctrl+alt+f";
 const DEFAULT_QUICK_INPUT_HOTKEY: &str = "ctrl+alt+g";
+const QUICK_INPUT_WIDTH: f64 = 700.0;
+const QUICK_INPUT_HEIGHT: f64 = 80.0;
 
 pub fn handle_shortcut_event(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state() != ShortcutState::Pressed {
@@ -49,13 +52,159 @@ pub fn handle_shortcut_event(app: &tauri::AppHandle, shortcut: &Shortcut, event:
 }
 
 pub fn show_quick_input_window(app: &tauri::AppHandle) {
-    if let Some(qc_window) = app.get_webview_window("quick-capture") {
-        let _ = qc_window.show();
-        let _ = qc_window.unminimize();
-        let _ = qc_window.set_focus();
-        let _ = qc_window.emit("show-quick-capture", ());
-        println!("[HOTKEY] Quick Input window shown.");
+    let Some(qc_window) = app.get_webview_window("quick-capture") else {
+        eprintln!("[HOTKEY] Quick Input window not found.");
+        return;
+    };
+
+    match qc_window.is_visible() {
+        Ok(is_visible) if should_hide_quick_input(is_visible) => {
+            if log_window_result("hide", qc_window.hide()) {
+                println!("[HOTKEY] Quick Input window hidden.");
+            }
+            return;
+        }
+        Err(e) => eprintln!(
+            "[HOTKEY] Quick Input visibility check before toggle failed: {}",
+            e
+        ),
+        _ => {}
     }
+
+    let mut ok = true;
+    ok &= log_window_result("unminimize", qc_window.unminimize());
+    ok &= log_window_result(
+        "set size",
+        qc_window.set_size(LogicalSize::new(QUICK_INPUT_WIDTH, QUICK_INPUT_HEIGHT)),
+    );
+    ok &= log_window_result("center", center_quick_input_window(&qc_window));
+    ok &= log_window_result("always on top", qc_window.set_always_on_top(true));
+    ok &= log_window_result("show", qc_window.show());
+    ok &= log_window_result("focus", qc_window.set_focus());
+    ok &= log_window_result(
+        "emit show-quick-capture",
+        qc_window.emit("show-quick-capture", ()),
+    );
+
+    match qc_window.is_visible() {
+        Ok(true) if ok => println!("[HOTKEY] Quick Input window shown."),
+        Ok(true) => println!("[HOTKEY] Quick Input window visible with warnings."),
+        Ok(false) => eprintln!("[HOTKEY] Quick Input window show requested but still not visible."),
+        Err(e) => eprintln!("[HOTKEY] Quick Input visibility check failed: {}", e),
+    }
+}
+
+fn should_hide_quick_input(is_visible: bool) -> bool {
+    is_visible
+}
+
+fn log_window_result(action: &str, result: tauri::Result<()>) -> bool {
+    if let Err(e) = result {
+        eprintln!("[HOTKEY] Quick Input {} failed: {}", action, e);
+        false
+    } else {
+        true
+    }
+}
+
+pub fn apply_global_hotkeys(
+    app: &tauri::AppHandle,
+    hotkeys: &HotkeySettings,
+) -> Result<(), String> {
+    let capture_shortcut = parse_hotkey(&hotkeys.capture_clipboard).map_err(|e| {
+        format!(
+            "Invalid capture shortcut '{}': {}",
+            hotkeys.capture_clipboard, e
+        )
+    })?;
+    let quick_input_shortcut = parse_hotkey(&hotkeys.quick_input).map_err(|e| {
+        format!(
+            "Invalid quick input shortcut '{}': {}",
+            hotkeys.quick_input, e
+        )
+    })?;
+
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|e| format!("Failed to unregister existing shortcuts: {}", e))?;
+
+    app.global_shortcut()
+        .on_shortcut(capture_shortcut, move |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = crate::capture::trigger_capture(handle).await {
+                        eprintln!("[HOTKEY] Capture failed: {}", e);
+                    }
+                });
+            }
+        })
+        .map_err(|e| {
+            format!(
+                "Failed to register capture shortcut '{}': {}",
+                hotkeys.capture_clipboard, e
+            )
+        })?;
+
+    app.global_shortcut()
+        .on_shortcut(quick_input_shortcut, move |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                crate::capture::keyboard::show_quick_input_window(app);
+            }
+        })
+        .map_err(|e| {
+            format!(
+                "Failed to register quick input shortcut '{}': {}",
+                hotkeys.quick_input, e
+            )
+        })?;
+
+    println!(
+        "[HOTKEY] Applied shortcuts: capture={}, quick_input={}",
+        hotkeys.capture_clipboard, hotkeys.quick_input
+    );
+
+    Ok(())
+}
+
+fn parse_hotkey(hotkey: &str) -> Result<Shortcut, tauri_plugin_global_shortcut::Error> {
+    Shortcut::from_str(hotkey).map_err(tauri_plugin_global_shortcut::Error::from)
+}
+
+fn center_quick_input_window<R: tauri::Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let monitor = window.primary_monitor()?.or(window.current_monitor()?);
+
+    if let Some(monitor) = monitor {
+        let work_area = monitor.work_area();
+        let scale_factor = monitor.scale_factor();
+        let window_size = (
+            (QUICK_INPUT_WIDTH * scale_factor).round() as u32,
+            (QUICK_INPUT_HEIGHT * scale_factor).round() as u32,
+        );
+        let (x, y) = quick_input_center_position(
+            (work_area.position.x, work_area.position.y),
+            (work_area.size.width, work_area.size.height),
+            window_size,
+        );
+
+        window.set_position(PhysicalPosition::new(x, y))
+    } else {
+        window.center()
+    }
+}
+
+fn quick_input_center_position(
+    monitor_position: (i32, i32),
+    monitor_size: (u32, u32),
+    window_size: (u32, u32),
+) -> (i32, i32) {
+    let x_offset = monitor_size.0.saturating_sub(window_size.0) / 2;
+    let y_offset = monitor_size.1.saturating_sub(window_size.1) / 2;
+
+    (
+        monitor_position.0 + x_offset as i32,
+        monitor_position.1 + y_offset as i32,
+    )
 }
 
 pub fn register_global_hotkey(app: &tauri::App, pool: &sqlx::SqlitePool) {
@@ -141,4 +290,27 @@ pub fn simulate_copy() -> Result<(), String> {
         .map_err(|e| format!("Release Ctrl error: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quick_input_position_centers_on_monitor() {
+        assert_eq!(
+            quick_input_center_position((100, 200), (1600, 900), (700, 80)),
+            (550, 610)
+        );
+    }
+
+    #[test]
+    fn quick_input_toggle_hides_when_window_is_visible() {
+        assert!(should_hide_quick_input(true));
+    }
+
+    #[test]
+    fn hotkey_parser_accepts_settings_page_format() {
+        assert!(parse_hotkey("CommandOrControl+Alt+F").is_ok());
+    }
 }

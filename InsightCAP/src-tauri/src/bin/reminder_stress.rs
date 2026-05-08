@@ -2,7 +2,6 @@ use insightcap_lib::db::connection::init_db;
 use insightcap_lib::services::reminder_engine::ReminderEngine;
 use sqlx::Row;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,5 +1,4 @@
 use insightcap_lib::db::connection::init_db;
-use insightcap_lib::db::AppState;
 use insightcap_lib::providers::embedding::fastembed::FastEmbedder;
 use insightcap_lib::providers::embedding::Embedder;
 use insightcap_lib::services::memory_engine::MemoryEngine;
