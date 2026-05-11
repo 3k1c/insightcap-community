@@ -5,7 +5,7 @@ InsightCAP Community is the public community repository for InsightCAP.
 InsightCAP is a local-first desktop application for capturing, extracting,
 organizing, editing, searching, and revisiting personal knowledge. It helps users
 turn web pages, documents, videos, notes, conversations, and other content into a
-searchable personal memory system.
+searchable long-term personal memory system.
 
 The Community Edition provides a public entry point for users, reviewers, and
 future contributors while keeping proprietary implementation details outside this
@@ -17,7 +17,8 @@ InsightCAP Community focuses on local-first personal knowledge workflows:
 
 - Capture and extract content from multiple content types, including web pages,
   documents, and supported video URLs such as YouTube and Bilibili.
-- Organize captured content into a personal memory and knowledge system.
+- Organize captured content into a long-term personal memory and knowledge
+  system.
 - Search, revisit, and reuse knowledge across projects and conversations.
 - Create new projects and new conversations around captured knowledge.
 - Edit AI-generated or AI-assisted text in a structured editor.
@@ -63,7 +64,7 @@ flowchart TD
     C --> D2[Conversations]
     C --> D3[AI Text Editor Export]
     C --> D4[Reminders and Follow-up]
-    C --> E[Personal Memory System]
+    C --> E[Long-term Personal Memory System]
 ```
 
 ### Local Architecture
@@ -72,7 +73,7 @@ flowchart TD
 flowchart TD
     A[Desktop App] --> B[Local Application Services]
     B --> C[Capture and Knowledge Workflows]
-    C --> D[Personal Memory System]
+    C --> D[Long-term Personal Memory System]
 
     D --> D1[Knowledge Base]
     D --> D2[Search and Recall]
@@ -100,9 +101,14 @@ InsightCAP is designed to process different kinds of content, including:
 The goal is to reduce manual copying and reorganizing, so users can move from
 raw content to searchable knowledge faster.
 
-### Personal Memory System
+### Long-term Personal Memory System
 
-Captured content is organized into a personal memory system that supports:
+InsightCAP is designed as a long-term personal memory system. Captured and
+reviewed content is preserved in an encrypted local knowledge base so users can
+build memory over time and reuse it across search, projects, conversations,
+reminders, and writing workflows.
+
+The system supports:
 
 - Knowledge storage.
 - Recall and search.

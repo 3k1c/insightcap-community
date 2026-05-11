@@ -3,7 +3,7 @@
 This guide explains the main Community Edition setup and usage workflows.
 InsightCAP is a local-first desktop application for turning captured content
 into an encrypted personal knowledge base that can be searched, reused, edited,
-and exported.
+and exported over time as part of a long-term personal memory system.
 
 ## First-time Setup
 
@@ -80,10 +80,13 @@ Projects help keep related research, writing, planning, and follow-up material
 together. Conversations help users reuse saved knowledge in new discussion or
 drafting contexts without losing the connection to the original source material.
 
-## Personal Memory System
+## Long-term Personal Memory System
 
-The personal memory system stores captured and reviewed knowledge for later
-search, recall, and reuse.
+The long-term personal memory system stores captured and reviewed knowledge in
+an encrypted local knowledge base for later search, recall, and reuse.
+
+It is designed to help users build memory over time instead of treating captured
+content as one-off notes.
 
 It is intended for workflows such as:
 
