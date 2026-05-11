@@ -71,6 +71,7 @@
     ],
     "windows": {
       "nsis": {
+        "template": "windows/installer-template.nsi",
         "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
         "languages": [

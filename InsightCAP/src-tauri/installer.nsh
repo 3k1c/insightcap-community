@@ -35,4 +35,20 @@
   Delete "$DESKTOP\InsightCAP.lnk"
   Delete "$SMPROGRAMS\InsightCAP.lnk"
   Delete "$SMPROGRAMS\InsightCAP\InsightCAP.lnk"
+
+  ${If} $UpdateMode <> 1
+    ${If} $InsightCAPClearKeysState = ${BST_CHECKED}
+      nsExec::ExecToLog '"$SYSDIR\cmdkey.exe" /delete:auto_login_key.insightcap'
+      nsExec::ExecToLog '"$SYSDIR\cmdkey.exe" /delete:recovery_pending_v1.insightcap'
+      DetailPrint "Cleared InsightCAP Windows Credential Manager keys."
+    ${EndIf}
+
+    ${If} $InsightCAPDeleteCustomKbState = ${BST_CHECKED}
+    ${AndIf} $InsightCAPCustomKbPath != ""
+      IfFileExists "$InsightCAPCustomKbPath\.insightcap\insightcap.db" 0 insightcap_skip_custom_kb_delete
+        RMDir /r "$InsightCAPCustomKbPath"
+        DetailPrint "Deleted InsightCAP custom knowledge base: $InsightCAPCustomKbPath"
+      insightcap_skip_custom_kb_delete:
+    ${EndIf}
+  ${EndIf}
 !macroend

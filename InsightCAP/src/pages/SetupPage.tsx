@@ -441,7 +441,9 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                     </div>
 
                     <div className="mb-6">
-                        <h2 className="text-fs-xl font-semibold text-text-primary">{stepTitle}</h2>
+                        {step !== 'welcome' && (
+                            <h2 className="text-fs-xl font-semibold text-text-primary">{stepTitle}</h2>
+                        )}
                         <p className="mt-2 text-fs-sm leading-6 text-text-secondary">{stepDescription}</p>
                     </div>
 
