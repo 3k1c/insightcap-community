@@ -192,6 +192,8 @@ This repository should not include:
 - Proprietary modules.
 - Commercial Edition features.
 - Internal prompts or policies.
+- Private or unreleased integration features, synchronization logic, indexing
+  logic, retrieval logic, schemas, and related source code.
 - Private roadmap items.
 - Internal debugging notes.
 - User data.
