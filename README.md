@@ -141,10 +141,9 @@ when needed.
 
 ## Current Status
 
-This repository is currently prepared as a private staging repository before
-public release.
+This repository contains public Community Edition beta materials for InsightCAP.
 
-Public release readiness work is focused on:
+Public release quality is focused on:
 
 - Clear public documentation.
 - Explicit license scope.
@@ -154,7 +153,7 @@ Public release readiness work is focused on:
 
 ## Download
 
-Community Edition installers will be distributed through GitHub Releases:
+Community Edition installers are distributed through GitHub Releases:
 
 https://github.com/3k1c/insightcap-community/releases
 
@@ -229,9 +228,8 @@ Not included:
 
 ## Privacy and Public Readiness
 
-Before this repository is made public, and before each future release, contents
-should be reviewed for personal data, local development metadata, credentials,
-and internal-only information.
+Before each future release, contents should be reviewed for personal data, local
+development metadata, credentials, and internal-only information.
 
 See:
 
