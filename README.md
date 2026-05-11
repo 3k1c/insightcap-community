@@ -179,6 +179,7 @@ Selected community-facing source code may be added later after review.
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)
 - [Usage Guide](docs/usage-guide.md)
+- [Known Limitations](docs/known-limitations.md)
 - [Privacy and Data](docs/privacy-and-data.md)
 - [Open Source Scope](docs/open-source-scope.md)
 - [Release Checklist](docs/release-checklist.md)
