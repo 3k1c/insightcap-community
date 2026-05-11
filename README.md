@@ -2,10 +2,103 @@
 
 InsightCAP Community is the public community repository for InsightCAP.
 
-InsightCAP is a local-first desktop application for capturing, organizing,
-searching, and revisiting personal knowledge. The Community Edition provides a
-public entry point for users, reviewers, and future contributors while keeping
-proprietary implementation details outside this repository.
+InsightCAP is a local-first desktop application for capturing, extracting,
+organizing, editing, searching, and revisiting personal knowledge. It helps users
+turn web pages, documents, videos, notes, conversations, and other content into a
+searchable personal memory system.
+
+The Community Edition provides a public entry point for users, reviewers, and
+future contributors while keeping proprietary implementation details outside this
+repository.
+
+## What InsightCAP Does
+
+InsightCAP Community focuses on local-first personal knowledge workflows:
+
+- Capture and extract content from multiple content types, including web pages,
+  documents, and video content.
+- Organize captured content into a personal memory and knowledge system.
+- Search, revisit, and reuse knowledge across projects and conversations.
+- Create new projects and new conversations around captured knowledge.
+- Edit AI-generated or AI-assisted text in a structured editor.
+- Export multiple documents from organized knowledge workflows.
+- Use Telegram bot reminder and prompt workflows for follow-up actions.
+- Keep user data local by default, with explicit controls for knowledge base
+  location and local app data.
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    A[Input Sources] --> B[Capture and Extraction Layer]
+    A1[Web Pages] --> B
+    A2[Documents] --> B
+    A3[Video Content] --> B
+    A4[Clipboard and Notes] --> B
+    A5[Telegram Bot Prompts] --> B
+
+    B --> C[Review and Editing Workflows]
+    C --> C1[AI Text Editing]
+    C --> C2[Multi-document Export]
+    C --> C3[Project and Conversation Creation]
+
+    C --> D[Personal Memory System]
+    D --> D1[Knowledge Base]
+    D --> D2[Search and Recall]
+    D --> D3[Reminder and Follow-up Context]
+
+    D --> E[Local-first Storage]
+    E --> E1[User-selected Knowledge Folder]
+    E --> E2[Local App Data]
+    E --> E3[Local Decryption Key]
+```
+
+## Key Workflows
+
+### Multi-type Content Extraction
+
+InsightCAP is designed to process different kinds of content, including:
+
+- Web pages.
+- Local documents.
+- Video content.
+- Clipboard captures.
+- Notes and structured text.
+- Telegram bot prompt inputs.
+
+The goal is to reduce manual copying and reorganizing, so users can move from
+raw content to searchable knowledge faster.
+
+### Personal Memory System
+
+Captured content is organized into a personal memory system that supports:
+
+- Knowledge storage.
+- Recall and search.
+- Project-oriented organization.
+- Conversation-oriented reuse.
+- Reminder and follow-up workflows.
+
+### Projects and Conversations
+
+InsightCAP supports workflows for creating new projects and new conversations
+from collected knowledge. This helps users keep research, writing, planning, and
+follow-up work connected to the original source material.
+
+### AI Text Editing
+
+InsightCAP includes AI-assisted text editing workflows for turning captured
+content into more useful written output, summaries, notes, or structured drafts.
+
+### Telegram Bot Reminder and Prompt Workflows
+
+Telegram bot workflows can be used for reminder-style prompts, follow-up input,
+and lightweight capture or action flows outside the main desktop window.
+
+### Multi-document Export
+
+InsightCAP supports exporting multiple documents from organized knowledge and
+editing workflows, helping users move useful content out of the app when needed.
 
 ## Current Status
 
@@ -57,6 +150,11 @@ License unless otherwise stated.
 
 InsightCAP Community Edition binaries are free to use for personal and
 commercial purposes under the Community Edition License.
+
+The Community Edition License describes the usage terms for Community Edition
+binaries and public release materials. It is not a substitute for legal advice.
+If a formal installer EULA is required, the installer should present the license
+for explicit user acceptance during installation.
 
 Commercial Edition features, proprietary modules, hosted services, enterprise
 licensing, and private source code are not included in the Community Edition
