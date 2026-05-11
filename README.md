@@ -28,24 +28,39 @@ InsightCAP Community focuses on local-first personal knowledge workflows:
 
 ## Architecture Overview
 
+InsightCAP is easiest to understand in two layers: the product workflow users
+interact with, and the local architecture that keeps knowledge and app data under
+local control.
+
+### Product Workflow
+
 ```mermaid
 flowchart TD
-    A[Input Sources] --> B[Capture and Extraction Layer]
-    A1[Web Pages] --> B
+    A1[Web Pages] --> B[Capture and Extraction]
     A2[Documents] --> B
     A3[Video Content] --> B
     A4[Clipboard and Notes] --> B
     A5[Telegram Bot Prompts] --> B
 
-    B --> C[Review and Editing Workflows]
-    C --> C1[AI Text Editing]
-    C --> C2[Multi-document Export]
-    C --> C3[Project and Conversation Creation]
+    B --> C[Review and AI Editing]
+    C --> D1[Projects]
+    C --> D2[Conversations]
+    C --> D3[Multi-document Export]
+    C --> D4[Reminders and Follow-up]
+    C --> E[Personal Memory System]
+```
 
+### Local Architecture
+
+```mermaid
+flowchart TD
+    A[Desktop App] --> B[Local Application Services]
+    B --> C[Capture and Knowledge Workflows]
     C --> D[Personal Memory System]
+
     D --> D1[Knowledge Base]
     D --> D2[Search and Recall]
-    D --> D3[Reminder and Follow-up Context]
+    D --> D3[Reminder Context]
 
     D --> E[Local-first Storage]
     E --> E1[User-selected Knowledge Folder]
