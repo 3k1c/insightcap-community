@@ -471,7 +471,7 @@ Function un.InsightCAPUninstallOptionsPage
   ${EndIf}
 
   Call un.InsightCAPLoadCustomKbPath
-  !insertmacro MUI_HEADER_TEXT "InsightCAP 解除安裝資料選項" "預設只移除程式，不刪除使用者資料。"
+  !insertmacro MUI_HEADER_TEXT "InsightCAP uninstall data options" "By default, only the app is removed. Your data is kept."
 
   nsDialogs::Create 1018
   Pop $0
@@ -479,26 +479,26 @@ Function un.InsightCAPUninstallOptionsPage
     Abort
   ${EndIf}
 
-  ${NSD_CreateCheckbox} 0 2u 100% 12u "同時刪除本機 app 資料"
+  ${NSD_CreateCheckbox} 0 2u 100% 12u "Also delete local app data"
   Pop $DeleteAppDataCheckbox
   SendMessage $DeleteAppDataCheckbox ${BM_SETCHECK} $DeleteAppDataCheckboxState 0
 
-  ${NSD_CreateLabel} 14u 18u 94% 24u "包含設定、快取、下載模型、預設知識庫。不會刪除自定義知識庫資料夾。"
+  ${NSD_CreateLabel} 14u 18u 94% 24u "Includes settings, cache, downloaded models, and the default knowledge base. Custom knowledge base folders are not deleted."
   Pop $1
 
-  ${NSD_CreateCheckbox} 0 50u 100% 12u "清除此 Windows 帳號的解密金鑰"
+  ${NSD_CreateCheckbox} 0 50u 100% 12u "Clear this Windows account's decryption key"
   Pop $InsightCAPClearKeysCheckbox
   SendMessage $InsightCAPClearKeysCheckbox ${BM_SETCHECK} $InsightCAPClearKeysState 0
 
-  ${NSD_CreateLabel} 14u 66u 94% 30u "重新安裝後，必須使用首次設定時保存的 24 個英文單字才能解鎖既有知識庫。"
+  ${NSD_CreateLabel} 14u 66u 94% 30u "After reinstalling, you must use the 24 English words saved during first setup to unlock the existing knowledge base."
   Pop $1
 
-  ${NSD_CreateCheckbox} 0 104u 100% 12u "永久刪除自定義知識庫"
+  ${NSD_CreateCheckbox} 0 104u 100% 12u "Permanently delete the custom knowledge base"
   Pop $InsightCAPDeleteCustomKbCheckbox
   SendMessage $InsightCAPDeleteCustomKbCheckbox ${BM_SETCHECK} $InsightCAPDeleteCustomKbState 0
 
   ${If} $InsightCAPCustomKbPath == ""
-    ${NSD_CreateLabel} 14u 120u 94% 18u "未找到自定義知識庫資料夾。"
+    ${NSD_CreateLabel} 14u 120u 94% 18u "No custom knowledge base folder was found."
     Pop $1
     EnableWindow $InsightCAPDeleteCustomKbCheckbox 0
   ${Else}
@@ -506,7 +506,7 @@ Function un.InsightCAPUninstallOptionsPage
     Pop $1
   ${EndIf}
 
-  ${NSD_CreateLabel} 14u 148u 94% 18u "此操作無法復原。"
+  ${NSD_CreateLabel} 14u 148u 94% 18u "This action cannot be undone."
   Pop $1
 
   nsDialogs::Show
@@ -519,16 +519,41 @@ Function un.InsightCAPUninstallOptionsLeave
 
   ${If} $InsightCAPClearKeysState = ${BST_CHECKED}
   ${AndIf} $InsightCAPDeleteCustomKbState <> ${BST_CHECKED}
-    MessageBox MB_ICONEXCLAMATION|MB_YESNO "您正在保留加密知識庫，但刪除本機解密金鑰。$\r$\n重新安裝後，您必須使用 24 個英文單字才能解鎖。$\r$\n若沒有這組單字，知識庫將無法復原。$\r$\n$\r$\n是否繼續？" IDYES continue_without_key
+    MessageBox MB_ICONEXCLAMATION|MB_YESNO "You are keeping the encrypted knowledge base but deleting the local decryption key.$\r$\nAfter reinstalling, you must use the 24 English words to unlock it.$\r$\nWithout those words, the knowledge base cannot be recovered.$\r$\n$\r$\nContinue?" IDYES continue_without_key
       Abort
     continue_without_key:
   ${EndIf}
 
   ${If} $InsightCAPDeleteCustomKbState = ${BST_CHECKED}
-    MessageBox MB_ICONSTOP|MB_YESNO "即將永久刪除自定義知識庫：$\r$\n$\r$\n$InsightCAPCustomKbPath$\r$\n$\r$\n此操作無法復原。是否繼續？" IDYES continue_delete_custom_kb
+    MessageBox MB_ICONSTOP|MB_YESNO "This will permanently delete the custom knowledge base:$\r$\n$\r$\n$InsightCAPCustomKbPath$\r$\n$\r$\nThis action cannot be undone. Continue?" IDYES continue_delete_custom_kb
       Abort
     continue_delete_custom_kb:
   ${EndIf}
+FunctionEnd
+
+Function un.InsightCAPDeleteCustomKb
+  ${If} $InsightCAPCustomKbPath == ""
+    Return
+  ${EndIf}
+
+  InitPluginsDir
+  FileOpen $2 "$PLUGINSDIR\insightcap-delete-kb-path.txt" w
+  FileWrite $2 "$InsightCAPCustomKbPath"
+  FileClose $2
+
+  FileOpen $2 "$PLUGINSDIR\insightcap-delete-kb.ps1" w
+  FileWrite $2 "$$pathFile = Join-Path $$PSScriptRoot 'insightcap-delete-kb-path.txt'$\r$\n"
+  FileWrite $2 "$$kb = (Get-Content -LiteralPath $$pathFile -Raw).Trim()$\r$\n"
+  FileWrite $2 "if (-not $$kb) { exit 0 }$\r$\n"
+  FileWrite $2 "$$full = [IO.Path]::GetFullPath($$kb).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)$\r$\n"
+  FileWrite $2 "$$root = [IO.Path]::GetPathRoot($$full).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)$\r$\n"
+  FileWrite $2 "if ($$full.Equals($$root, [StringComparison]::OrdinalIgnoreCase)) { exit 2 }$\r$\n"
+  FileWrite $2 "$$db = Join-Path $$full '.insightcap\insightcap.db'$\r$\n"
+  FileWrite $2 "if (-not (Test-Path -LiteralPath $$db)) { exit 3 }$\r$\n"
+  FileWrite $2 "Remove-Item -LiteralPath $$full -Recurse -Force$\r$\n"
+  FileClose $2
+
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\insightcap-delete-kb.ps1"'
 FunctionEnd
 
 UninstPage custom un.InsightCAPUninstallOptionsPage un.InsightCAPUninstallOptionsLeave
@@ -956,6 +981,19 @@ Section Uninstall
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+  ${EndIf}
+
+  ; Clear the current Windows user's local database decryption key if selected.
+  ${If} $InsightCAPClearKeysState = 1
+  ${AndIf} $UpdateMode <> 1
+    nsExec::ExecToLog '"$SYSDIR\cmdkey.exe" /delete:auto_login_key.insightcap'
+  ${EndIf}
+
+  ; Delete the user-selected custom knowledge base folder only after explicit confirmation.
+  ${If} $InsightCAPDeleteCustomKbState = 1
+  ${AndIf} $UpdateMode <> 1
+  ${AndIf} $InsightCAPCustomKbPath != ""
+    Call un.InsightCAPDeleteCustomKb
   ${EndIf}
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
