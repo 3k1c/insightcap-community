@@ -49,6 +49,8 @@ This repository does not include:
 - Hosted services.
 - Enterprise licensing materials.
 - Internal prompts or policies.
+- Private or unreleased integration features, synchronization logic, indexing
+  logic, retrieval logic, schemas, and related source code.
 - Internal ranking, retrieval, processing, or product strategy details that are
   not intended for public release.
 - Private roadmap or planning documents.
