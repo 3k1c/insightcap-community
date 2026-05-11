@@ -16,13 +16,14 @@ repository.
 InsightCAP Community focuses on local-first personal knowledge workflows:
 
 - Capture and extract content from multiple content types, including web pages,
-  documents, and video content.
+  documents, and supported video URLs such as YouTube and Bilibili.
 - Organize captured content into a personal memory and knowledge system.
 - Search, revisit, and reuse knowledge across projects and conversations.
 - Create new projects and new conversations around captured knowledge.
 - Edit AI-generated or AI-assisted text in a structured editor.
-- Export multiple documents from organized knowledge workflows.
-- Use Telegram bot reminder and prompt workflows for follow-up actions.
+- Use the AI text editor to export edited content as TXT, Markdown, HTML, DOCX,
+  or PDF.
+- Use Telegram bot capture, reminder, and knowledge Q&A workflows.
 - Keep user data local by default, with explicit controls for knowledge base
   location and local app data.
 
@@ -53,14 +54,14 @@ local control.
 flowchart TD
     A1[Web Pages] --> B[Capture and Extraction]
     A2[Documents] --> B
-    A3[Video Content] --> B
+    A3[Supported Video URLs] --> B
     A4[Clipboard and Notes] --> B
-    A5[Telegram Bot Prompts] --> B
+    A5[Telegram Bot Capture] --> B
 
     B --> C[Review and AI Editing]
     C --> D1[Projects]
     C --> D2[Conversations]
-    C --> D3[Multi-document Export]
+    C --> D3[AI Text Editor Export]
     C --> D4[Reminders and Follow-up]
     C --> E[Personal Memory System]
 ```
@@ -91,7 +92,7 @@ InsightCAP is designed to process different kinds of content, including:
 
 - Web pages.
 - Local documents.
-- Video content.
+- Supported video URLs such as YouTube and Bilibili.
 - Clipboard captures.
 - Notes and structured text.
 - Telegram bot prompt inputs.
@@ -120,15 +121,17 @@ follow-up work connected to the original source material.
 InsightCAP includes AI-assisted text editing workflows for turning captured
 content into more useful written output, summaries, notes, or structured drafts.
 
-### Telegram Bot Reminder and Prompt Workflows
+### Telegram Bot Capture, Reminder, and Q&A Workflows
 
-Telegram bot workflows can be used for reminder-style prompts, follow-up input,
-and lightweight capture or action flows outside the main desktop window.
+Telegram bot workflows can be used for lightweight capture, reminder requests,
+knowledge-base questions, and project or conversation commands outside the main
+desktop window.
 
-### Multi-document Export
+### AI Text Editor Export
 
-InsightCAP supports exporting multiple documents from organized knowledge and
-editing workflows, helping users move useful content out of the app when needed.
+InsightCAP supports exporting the current AI text editor document as TXT,
+Markdown, HTML, DOCX, or PDF, helping users move edited content out of the app
+when needed.
 
 ## Current Status
 

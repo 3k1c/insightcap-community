@@ -14,8 +14,8 @@ and exported.
 5. Select or create the local knowledge folder.
 6. Save the 24-word recovery phrase in a secure place.
 7. Configure optional AI service settings if AI-assisted workflows are needed.
-8. Configure optional Telegram Bot prompt workflows if reminder or lightweight
-   capture flows are needed outside the desktop window.
+8. Configure optional Telegram Bot workflows if capture, reminder, or knowledge
+   Q&A flows are needed outside the desktop window.
 
 The 24-word recovery phrase is important. If the local decryption key is removed
 or unavailable, the recovery phrase is required to unlock the existing encrypted
@@ -49,10 +49,10 @@ Supported workflow categories include:
 
 - Web pages.
 - Local documents.
-- Video content.
+- Supported video URLs such as YouTube and Bilibili.
 - Clipboard captures.
 - Notes and structured text.
-- Telegram Bot prompt inputs.
+- Telegram Bot capture inputs.
 
 After capture, extracted content can be reviewed before it becomes reusable
 knowledge.
@@ -65,7 +65,7 @@ useful drafts through AI-assisted editing workflows.
 Typical uses include:
 
 - Turning raw extracted content into structured notes.
-- Creating summaries from long documents or video content.
+- Creating summaries from long documents or extracted video URL content.
 - Preparing reusable drafts from captured research.
 - Editing AI-generated text before saving or exporting it.
 
@@ -92,25 +92,26 @@ It is intended for workflows such as:
 - Keeping source material connected to follow-up work.
 - Building a long-term personal knowledge base.
 
-## Reminder and Telegram Bot Prompt Workflows
+## Telegram Bot Capture, Reminder, and Q&A Workflows
 
-Telegram Bot prompt workflows can support reminder-style prompts, follow-up
-input, and lightweight capture flows outside the main desktop window.
+Telegram Bot workflows can support lightweight capture, reminder requests,
+knowledge-base questions, and project or conversation commands outside the main
+desktop window.
 
-These workflows are useful when a user wants to send or receive prompts without
-opening the full desktop interface.
+These workflows are useful when a user wants to capture input, ask questions, or
+manage follow-up actions without opening the full desktop interface.
 
-## Multi-document Export
+## AI Text Editor Export
 
-InsightCAP can export multiple documents from organized knowledge and editing
-workflows.
+InsightCAP can export the current AI text editor document to TXT, Markdown,
+HTML, DOCX, or PDF.
 
 This is useful when preparing:
 
 - Research packages.
 - Writing drafts.
 - Project notes.
-- Knowledge exports for use outside InsightCAP.
+- Edited documents for use outside InsightCAP.
 
 ## Uninstall Data Choices
 
