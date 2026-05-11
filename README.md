@@ -26,6 +26,21 @@ InsightCAP Community focuses on local-first personal knowledge workflows:
 - Keep user data local by default, with explicit controls for knowledge base
   location and local app data.
 
+## Local-first and Encrypted Knowledge Base
+
+InsightCAP stores personal knowledge locally by default. The local knowledge
+base is encrypted, and the local decryption key is kept under the current
+Windows user account.
+
+During first-time setup, users should save the 24-word recovery phrase. If the
+local decryption key is removed, or if the app is reinstalled on another Windows
+account or device, the recovery phrase is required to unlock the existing
+encrypted knowledge base.
+
+Custom knowledge folders selected by the user are treated as user data and are
+not deleted by a normal uninstall unless the user explicitly chooses to
+permanently delete them.
+
 ## Architecture Overview
 
 InsightCAP is easiest to understand in two layers: the product workflow users
@@ -154,6 +169,7 @@ Selected community-facing source code may be added later after review.
 
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)
+- [Usage Guide](docs/usage-guide.md)
 - [Privacy and Data](docs/privacy-and-data.md)
 - [Open Source Scope](docs/open-source-scope.md)
 - [Release Checklist](docs/release-checklist.md)
