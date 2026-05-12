@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InsightCAP Community - Local-First Knowledge System</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Custom Tailwind Config for Dark Tech Theme -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            400: '#38bdf8', // Light sky blue
+                            500: '#0ea5e9', // Primary tech blue
+                            600: '#0284c7', 
+                            900: '#0c4a6e',
+                        },
+                        dark: {
+                            bg: '#020617', // Slate 950
+                            card: '#0f172a', // Slate 900
+                            border: '#1e293b', // Slate 800
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #020617; /* dark.bg */
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        /* Tech Grid Background */
+        .bg-grid-pattern {
+            background-size: 50px 50px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+            -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+        }
+
+        /* Glowing Blobs */
+        .blob {
+            position: absolute;
+            filter: blur(100px);
+            z-index: -1;
+            opacity: 0.4;
+            border-radius: 50%;
+            animation: float 10s infinite ease-in-out alternate;
+        }
+
+        /* Scroll Reveal Animation Classes */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Custom delay utilities for staggered animations */
+        .delay-100 { transition-delay: 100ms; }
+        .delay-200 { transition-delay: 200ms; }
+        .delay-300 { transition-delay: 300ms; }
+
+        /* Glowing Card Effect */
+        .glow-card {
+            position: relative;
+        }
+        .glow-card::before {
+            content: "";
+            position: absolute;
+            inset: -1px;
+            background: linear-gradient(to bottom right, rgba(14, 165, 233, 0.5), rgba(139, 92, 246, 0.2), transparent);
+            border-radius: inherit;
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .glow-card:hover::before {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-500/30 selection:text-cyan-200 flex flex-col min-h-screen relative">
+
+    <!-- Global Background Elements -->
+    <div class="fixed inset-0 bg-grid-pattern pointer-events-none z-[-2]"></div>
+    <div class="blob bg-brand-600 w-[500px] h-[500px] top-[-10%] left-[-10%]"></div>
+    <div class="blob bg-purple-900 w-[600px] h-[600px] bottom-[-20%] right-[-10%]" style="animation-delay: -5s;"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 z-50 w-full backdrop-blur-xl bg-dark-bg/60 border-b border-white/10 transition-all duration-300" id="navbar">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3 group cursor-pointer">
+                    <div class="w-9 h-9 bg-gradient-to-br from-brand-400 to-brand-600 rounded-xl flex items-center justify-center text-white shadow-[0_0_15px_rgba(14,165,233,0.5)] group-hover:shadow-[0_0_25px_rgba(14,165,233,0.8)] transition-all">
+                        <i data-lucide="brain-circuit" class="w-5 h-5"></i>
+                    </div>
+                    <span class="font-bold text-xl tracking-wide text-white group-hover:text-brand-400 transition-colors">InsightCAP</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="text-sm font-medium text-slate-300 hover:text-white transition flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10">
+                        <i data-lucide="github" class="w-5 h-5"></i>
+                        <span class="hidden sm:inline">Star on GitHub</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative pt-32 pb-24 lg:pt-48 lg:pb-32 overflow-hidden flex-grow flex items-center">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+            <div class="reveal inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-medium mb-8 backdrop-blur-md">
+                <span class="relative flex h-2.5 w-2.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-500"></span>
+                </span>
+                Community Edition Available Now
+            </div>
+            
+            <h1 class="reveal delay-100 text-5xl md:text-6xl lg:text-7xl font-extrabold text-white tracking-tight mb-8 leading-tight drop-shadow-lg">
+                Your Local-First <br/>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 via-cyan-400 to-purple-500 animate-pulse-slow">
+                    Personal Memory System
+                </span>
+            </h1>
+            
+            <p class="reveal delay-200 text-lg md:text-xl text-slate-400 mb-12 max-w-3xl mx-auto leading-relaxed">
+                A powerful desktop application for capturing, organizing, editing, and revisiting knowledge. Turn web pages, documents, videos, and conversations into a truly yours, local-first database.
+            </p>
+            
+            <div class="reveal delay-300 flex flex-col sm:flex-row justify-center gap-5">
+                <a href="https://github.com/3k1c/insightcap-community/releases/download/v0.9.0-beta.1/InsightCAP_0.9.0-beta.1_x64-setup.exe" target="_blank" class="group relative inline-flex justify-center items-center gap-2 bg-white text-slate-900 font-bold py-4 px-8 rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]">
+                    <i data-lucide="download" class="w-5 h-5 group-hover:-translate-y-0.5 transition-transform"></i>
+                    Download Release
+                </a>
+                <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="group inline-flex justify-center items-center gap-2 bg-dark-card/50 hover:bg-dark-card border border-white/10 text-white font-semibold py-4 px-8 rounded-xl shadow-sm backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-brand-500/50">
+                    <i data-lucide="terminal" class="w-5 h-5 text-brand-400"></i>
+                    View Repository
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Core Pillars (Interactive Cards) -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 pb-24">
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Card 1 -->
+            <div class="reveal glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-brand-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
+                <div class="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-brand-400 mb-6 group-hover:scale-110 group-hover:bg-blue-500/20 transition-all">
+                    <i data-lucide="magnet" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Multi-type Extraction</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">Process web pages, local docs, YouTube/Bilibili URLs, clipboard, and Telegram bot inputs. Move from raw content to searchable knowledge instantly.</p>
+            </div>
+            <!-- Card 2 -->
+            <div class="reveal delay-100 glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-purple-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
+                <div class="w-12 h-12 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-purple-400 mb-6 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all">
+                    <i data-lucide="database" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Long-term Memory</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">Captured content is preserved in an encrypted local knowledge base. Reuse it across search, projects, reminders, and writing workflows seamlessly.</p>
+            </div>
+            <!-- Card 3 -->
+            <div class="reveal delay-200 glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-emerald-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
+                <div class="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400 mb-6 group-hover:scale-110 group-hover:bg-emerald-500/20 transition-all">
+                    <i data-lucide="folder-tree" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Projects & Context</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">Create new projects and conversations from collected knowledge, keeping research and planning natively connected to original source materials.</p>
+            </div>
+            <!-- Card 4 -->
+            <div class="reveal delay-300 glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-orange-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
+                <div class="w-12 h-12 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center justify-center text-orange-400 mb-6 group-hover:scale-110 group-hover:bg-orange-500/20 transition-all">
+                    <i data-lucide="file-edit" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">AI Editing & Export</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">Turn captured content into useful drafts using AI-assisted editing. Export perfectly formatted documents as TXT, Markdown, HTML, DOCX, or PDF.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section (Completely Redesigned Interactive Diagrams) -->
+    <section class="py-24 relative z-10 bg-dark-bg/50 border-y border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-20 reveal">
+                <h2 class="text-3xl md:text-5xl font-bold text-white mb-6">System Architecture</h2>
+                <p class="text-slate-400 text-lg max-w-2xl mx-auto">See how data flows seamlessly inside your local environment, designed for complete privacy and maximum utility.</p>
+            </div>
+
+            <div class="space-y-24">
+                
+                <!-- Graph 1: Product Workflow (Horizontal Pipeline Design) -->
+                <div class="reveal glow-card bg-dark-card/40 border border-white/10 rounded-3xl p-8 md:p-12 backdrop-blur-sm">
+                    <div class="flex items-center gap-4 mb-10 border-b border-white/10 pb-6">
+                        <div class="bg-cyan-500/20 p-3 rounded-xl border border-cyan-500/30">
+                            <i data-lucide="git-merge" class="w-6 h-6 text-cyan-400"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white">Product Workflow</h3>
+                    </div>
+                    
+                    <!-- Pipeline Layout -->
+                    <div class="flex flex-col lg:flex-row items-stretch justify-between gap-6 lg:gap-4">
+                        
+                        <!-- Inputs Column -->
+                        <div class="flex-1 space-y-3 relative group">
+                            <h4 class="text-slate-400 text-sm font-semibold tracking-wider uppercase mb-4 pl-2">Input Sources</h4>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:bg-slate-800 transition-colors">
+                                <i data-lucide="globe" class="text-blue-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Web Pages</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:bg-slate-800 transition-colors">
+                                <i data-lucide="file-text" class="text-purple-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Local Documents</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:bg-slate-800 transition-colors">
+                                <i data-lucide="youtube" class="text-red-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Video URLs</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:bg-slate-800 transition-colors">
+                                <i data-lucide="bot" class="text-cyan-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Telegram Bot / Notes</span>
+                            </div>
+                        </div>
+
+                        <!-- Connector 1 -->
+                        <div class="hidden lg:flex flex-col justify-center items-center px-2">
+                            <div class="w-16 h-[2px] bg-gradient-to-r from-slate-700 to-cyan-500 relative">
+                                <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 rotate-45 border-t-2 border-r-2 border-cyan-400"></div>
+                            </div>
+                        </div>
+                        <div class="lg:hidden flex justify-center py-4">
+                            <i data-lucide="arrow-down" class="text-cyan-500 w-6 h-6 animate-bounce"></i>
+                        </div>
+
+                        <!-- Processing Hub (Center) -->
+                        <div class="flex-[1.2] flex flex-col justify-center relative">
+                            <div class="absolute inset-0 bg-cyan-500/5 blur-xl rounded-full"></div>
+                            <div class="bg-gradient-to-br from-slate-800 to-slate-900 border border-cyan-500/40 p-8 rounded-2xl shadow-[0_0_40px_rgba(6,182,212,0.15)] relative z-10 text-center hover:shadow-[0_0_50px_rgba(6,182,212,0.3)] transition-shadow duration-500">
+                                <div class="inline-flex justify-center items-center w-16 h-16 bg-cyan-500/20 rounded-full mb-4 ring-4 ring-cyan-500/10">
+                                    <i data-lucide="cpu" class="w-8 h-8 text-cyan-400"></i>
+                                </div>
+                                <h4 class="text-xl font-bold text-white mb-2">Capture & Extraction</h4>
+                                <div class="h-px w-full bg-gradient-to-r from-transparent via-slate-600 to-transparent my-4"></div>
+                                <div class="flex items-center justify-center gap-2 text-cyan-300">
+                                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                                    <span class="font-medium text-sm">Review & AI Editing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Connector 2 -->
+                        <div class="hidden lg:flex flex-col justify-center items-center px-2">
+                            <div class="w-16 h-[2px] bg-gradient-to-r from-cyan-500 to-purple-500 relative">
+                                <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 rotate-45 border-t-2 border-r-2 border-purple-400"></div>
+                            </div>
+                        </div>
+                        <div class="lg:hidden flex justify-center py-4">
+                            <i data-lucide="arrow-down" class="text-purple-500 w-6 h-6 animate-bounce"></i>
+                        </div>
+
+                        <!-- Outputs Column -->
+                        <div class="flex-1 space-y-3 relative">
+                            <h4 class="text-slate-400 text-sm font-semibold tracking-wider uppercase mb-4 pl-2">Knowledge Outputs</h4>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:border-purple-500/50 transition-colors">
+                                <i data-lucide="database" class="text-purple-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Long-term Memory</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:border-purple-500/50 transition-colors">
+                                <i data-lucide="layout-grid" class="text-purple-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Projects & Contexts</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:border-purple-500/50 transition-colors">
+                                <i data-lucide="message-square" class="text-purple-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">AI Conversations</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl flex items-center gap-3 hover:border-purple-500/50 transition-colors">
+                                <i data-lucide="file-down" class="text-purple-400 w-5 h-5"></i><span class="text-slate-200 text-sm font-medium">Editor Exports</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Graph 2: Local Architecture (Layered Stack Design) -->
+                <div class="reveal glow-card bg-dark-card/40 border border-white/10 rounded-3xl p-8 md:p-12 backdrop-blur-sm">
+                    <div class="flex items-center gap-4 mb-12 border-b border-white/10 pb-6">
+                        <div class="bg-purple-500/20 p-3 rounded-xl border border-purple-500/30">
+                            <i data-lucide="server" class="w-6 h-6 text-purple-400"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white">Local Architecture</h3>
+                    </div>
+
+                    <!-- Layered Stack -->
+                    <div class="max-w-3xl mx-auto space-y-6">
+                        
+                        <!-- Layer 1: App -->
+                        <div class="relative group">
+                            <div class="bg-gradient-to-r from-slate-800 to-slate-800/80 border border-slate-700 rounded-2xl p-6 flex items-center justify-between shadow-lg relative z-10 hover:border-brand-400/50 transition-colors">
+                                <div class="flex items-center gap-4">
+                                    <div class="p-3 bg-slate-900 rounded-lg border border-slate-700"><i data-lucide="monitor" class="text-white w-6 h-6"></i></div>
+                                    <div>
+                                        <h4 class="text-lg font-bold text-white">Desktop Application</h4>
+                                        <p class="text-slate-400 text-sm">UI Layer & User Interactions</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Connecting Line -->
+                            <div class="absolute left-1/2 bottom-[-24px] w-0.5 h-6 bg-brand-500/50 -translate-x-1/2"></div>
+                        </div>
+
+                        <!-- Layer 2: Services -->
+                        <div class="relative group">
+                            <div class="bg-gradient-to-r from-slate-800 to-slate-800/80 border border-slate-700 rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-6 shadow-lg relative z-10 hover:border-purple-400/50 transition-colors">
+                                <div class="flex items-center gap-4 min-w-[200px]">
+                                    <div class="p-3 bg-slate-900 rounded-lg border border-slate-700"><i data-lucide="cog" class="text-purple-400 w-6 h-6 animate-[spin_4s_linear_infinite]"></i></div>
+                                    <div>
+                                        <h4 class="text-lg font-bold text-white">Local Services</h4>
+                                        <p class="text-slate-400 text-sm">Core Logic Layer</p>
+                                    </div>
+                                </div>
+                                <div class="flex-1 grid grid-cols-2 gap-3 w-full border-t sm:border-t-0 sm:border-l border-slate-700 pt-4 sm:pt-0 sm:pl-6">
+                                    <div class="bg-slate-900/50 rounded p-2 text-center text-xs text-slate-300 font-medium">Capture Workflows</div>
+                                    <div class="bg-slate-900/50 rounded p-2 text-center text-xs text-slate-300 font-medium">Search & Recall</div>
+                                    <div class="bg-slate-900/50 rounded p-2 text-center text-xs text-slate-300 font-medium">Reminder Context</div>
+                                    <div class="bg-slate-900/50 rounded p-2 text-center text-xs text-slate-300 font-medium">Memory System</div>
+                                </div>
+                            </div>
+                            <!-- Connecting Line -->
+                            <div class="absolute left-1/2 bottom-[-24px] w-0.5 h-6 bg-purple-500/50 -translate-x-1/2"></div>
+                        </div>
+
+                        <!-- Layer 3: Storage -->
+                        <div class="relative group">
+                            <div class="bg-gradient-to-r from-emerald-900/40 to-slate-800/80 border border-emerald-500/30 rounded-2xl p-6 shadow-[0_0_30px_rgba(16,185,129,0.05)] relative z-10 hover:border-emerald-400/60 hover:shadow-[0_0_40px_rgba(16,185,129,0.15)] transition-all">
+                                <div class="flex flex-col sm:flex-row items-center justify-between mb-6">
+                                    <div class="flex items-center gap-4">
+                                        <div class="p-3 bg-emerald-950 rounded-lg border border-emerald-500/30"><i data-lucide="hard-drive" class="text-emerald-400 w-6 h-6"></i></div>
+                                        <div>
+                                            <h4 class="text-lg font-bold text-white">Local-First Storage</h4>
+                                            <p class="text-emerald-200/70 text-sm">Data Persistence Layer</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 sm:mt-0 px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-2">
+                                        <i data-lucide="lock" class="w-4 h-4 text-emerald-400"></i>
+                                        <span class="text-xs font-semibold text-emerald-300 tracking-wide uppercase">Encrypted</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center hover:bg-slate-800 transition-colors cursor-default">
+                                        <i data-lucide="folder-open" class="text-slate-400 mb-2 w-5 h-5"></i>
+                                        <span class="text-sm text-slate-300">User Folders</span>
+                                    </div>
+                                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center hover:bg-slate-800 transition-colors cursor-default">
+                                        <i data-lucide="app-window" class="text-slate-400 mb-2 w-5 h-5"></i>
+                                        <span class="text-sm text-slate-300">App Data</span>
+                                    </div>
+                                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center border-b-2 border-b-amber-500 hover:bg-slate-800 transition-colors cursor-default">
+                                        <i data-lucide="key" class="text-amber-400 mb-2 w-5 h-5"></i>
+                                        <span class="text-sm text-slate-300">Decryption Key</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Deep Dive Features -->
+    <section class="py-24 relative z-10 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col lg:flex-row gap-16 items-center">
+                <div class="lg:w-1/3 reveal">
+                    <h2 class="text-3xl md:text-4xl font-bold text-white mb-6 leading-tight">Everything you need to master knowledge.</h2>
+                    <p class="text-lg text-slate-400 mb-6 leading-relaxed">InsightCAP streamlines local-first personal knowledge workflows without compromising your data privacy or forcing you to the cloud.</p>
+                </div>
+                <div class="lg:w-2/3 grid sm:grid-cols-2 gap-x-8 gap-y-8">
+                    <!-- Feature Items -->
+                    <div class="reveal delay-100 flex gap-4 group">
+                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                        </div>
+                        <p class="text-slate-300 leading-relaxed">Capture and extract content from multiple sources (Web, Docs, YouTube, Bilibili).</p>
+                    </div>
+                    <div class="reveal delay-200 flex gap-4 group">
+                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                        </div>
+                        <p class="text-slate-300 leading-relaxed">Organize captured content into a structured, searchable long-term memory system.</p>
+                    </div>
+                    <div class="reveal delay-100 flex gap-4 group">
+                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                        </div>
+                        <p class="text-slate-300 leading-relaxed">Search, revisit, and reuse knowledge across various projects and connected conversations.</p>
+                    </div>
+                    <div class="reveal delay-200 flex gap-4 group">
+                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                        </div>
+                        <p class="text-slate-300 leading-relaxed">Edit AI-generated or AI-assisted text in a dedicated, structured distraction-free editor.</p>
+                    </div>
+                    <div class="reveal delay-100 flex gap-4 group">
+                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                        </div>
+                        <p class="text-slate-300 leading-relaxed">Export perfectly formatted edited content flexibly (TXT, Markdown, HTML, DOCX, or PDF).</p>
+                    </div>
+                    <div class="reveal delay-200 flex gap-4 group">
+                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                        </div>
+                        <p class="text-slate-300 leading-relaxed">Seamless integration with Telegram bot for quick on-the-go capture, reminders, and Q&A.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Security & Local First Section -->
+    <section class="py-24 relative z-10 overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent to-brand-900/20 pointer-events-none"></div>
+        
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center reveal">
+            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-dark-card border border-brand-500/30 shadow-[0_0_30px_rgba(14,165,233,0.3)] mb-8">
+                <i data-lucide="shield-check" class="w-10 h-10 text-brand-400"></i>
+            </div>
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white">Local-first & Encrypted by Default</h2>
+            <p class="text-slate-400 text-lg mb-12 leading-relaxed max-w-2xl mx-auto">
+                InsightCAP respects your privacy. Knowledge is stored locally by default. The local database is encrypted, and the decryption key is kept securely under your current Windows user account.
+            </p>
+            
+            <div class="bg-dark-card/60 border border-amber-500/30 rounded-2xl p-8 text-left max-w-3xl mx-auto backdrop-blur-md relative overflow-hidden group hover:border-amber-500/50 transition-colors">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl -mr-10 -mt-10 rounded-full"></div>
+                <div class="flex flex-col sm:flex-row items-start gap-6 relative z-10">
+                    <div class="bg-amber-500/20 p-3 rounded-xl border border-amber-500/30 flex-shrink-0">
+                        <i data-lucide="key" class="w-8 h-8 text-amber-400"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-amber-400 text-xl font-bold mb-3">24-Word Recovery Phrase</h4>
+                        <p class="text-slate-300 leading-relaxed mb-4">
+                            During first-time setup, you must save your recovery phrase. If the local key is removed, or if the app is reinstalled on another device/account, this phrase is strictly required to unlock your data.
+                        </p>
+                        <div class="flex items-start gap-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
+                            <i data-lucide="info" class="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5"></i>
+                            <p class="text-slate-400 text-sm">
+                                Custom knowledge folders are treated as user data and survive normal uninstalls unless explicitly chosen to be deleted.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-dark-bg border-t border-white/10 pt-16 pb-8 relative z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid md:grid-cols-2 gap-8 mb-12">
+                <div>
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-8 h-8 bg-gradient-to-br from-brand-400 to-brand-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md">
+                            <i data-lucide="brain-circuit" class="w-4 h-4"></i>
+                        </div>
+                        <span class="font-bold text-xl text-white tracking-wide">InsightCAP</span>
+                    </div>
+                    <p class="text-slate-500 text-sm leading-relaxed max-w-sm">
+                        Built for local-first knowledge. Turn your scattered digital footprint into an organized, actionable long-term memory system.
+                    </p>
+                </div>
+                <div class="md:text-right">
+                    <h4 class="font-semibold text-white mb-4">Licensing & Status</h4>
+                    <p class="text-slate-500 text-sm leading-relaxed max-w-md ml-auto">
+                        This repository contains public Community Edition beta materials. Source code and documentation are MIT Licensed unless otherwise stated. Binaries are free for personal and commercial use under the Community Edition License.
+                    </p>
+                </div>
+            </div>
+            
+            <div class="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-slate-500 text-sm font-medium">
+                    &copy; 2024 InsightCAP Community. All rights reserved.
+                </p>
+                <div class="flex gap-6 text-sm font-medium text-slate-400">
+                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="hover:text-white transition flex items-center gap-1.5">
+                        <i data-lucide="github" class="w-4 h-4"></i> Repository
+                    </a>
+                    <a href="https://github.com/3k1c/insightcap-community/releases" target="_blank" class="hover:text-white transition flex items-center gap-1.5">
+                        <i data-lucide="package" class="w-4 h-4"></i> Releases
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Navbar blur and border effect on scroll
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 20) {
+                navbar.classList.add('shadow-lg', 'bg-dark-bg/80');
+                navbar.classList.remove('bg-dark-bg/60');
+            } else {
+                navbar.classList.remove('shadow-lg', 'bg-dark-bg/80');
+                navbar.classList.add('bg-dark-bg/60');
+            }
+        });
+
+        // Intersection Observer for Scroll Reveal Animations
+        document.addEventListener('DOMContentLoaded', () => {
+            const reveals = document.querySelectorAll('.reveal');
+
+            const revealOptions = {
+                threshold: 0.15,
+                rootMargin: "0px 0px -50px 0px"
+            };
+
+            const revealOnScroll = new IntersectionObserver(function(
+                entries,
+                observer
+            ) {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) {
+                        return;
+                    } else {
+                        entry.target.classList.add('active');
+                        // Optional: Stop observing once revealed
+                        // observer.unobserve(entry.target);
+                    }
+                });
+            }, revealOptions);
+
+            reveals.forEach(reveal => {
+                revealOnScroll.observe(reveal);
+            });
+            
+            // Trigger once on load for elements already in viewport
+            setTimeout(() => {
+                reveals.forEach(reveal => {
+                    const windowHeight = window.innerHeight;
+                    const elementTop = reveal.getBoundingClientRect().top;
+                    if (elementTop < windowHeight - 50) {
+                        reveal.classList.add('active');
+                    }
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html>
