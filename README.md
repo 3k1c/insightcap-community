@@ -11,6 +11,8 @@ The Community Edition provides a public entry point for users, reviewers, and
 future contributors while keeping proprietary implementation details outside this
 repository.
 
+Webpage：https://3k1c.github.io/insightcap-community/
+
 ## What InsightCAP Does
 
 InsightCAP Community focuses on local-first personal knowledge workflows:
