@@ -205,7 +205,7 @@
     </section>
 
     <!-- TARGET AUDIENCE -->
-    <section id="features" class="py-12 border-b border-slate-200/50 bg-white/40">
+    <section class="py-12 border-b border-slate-200/50 bg-white/40">
         <div class="max-w-6xl mx-auto px-6 text-center reveal">
             <p class="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6" data-i18n="audience_title">Designed specifically for</p>
             <div class="flex flex-wrap justify-center gap-x-12 gap-y-6 text-slate-500 font-semibold text-[15px]">
@@ -216,6 +216,86 @@
             </div>
         </div>
     </section>
+
+    <!-- FEATURES SECTION -->
+    <section id="features" class="py-24 px-6 md:px-12 relative z-10 bg-white/50 border-b border-slate-200/50 backdrop-blur-md">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center max-w-3xl mx-auto mb-20">
+                <div class="reveal inline-flex items-center justify-center px-3 py-1 mb-4 rounded-full bg-brand-100 text-brand-700 font-bold text-xs uppercase tracking-wider" data-i18n="feat_badge">
+                    Core Features
+                </div>
+                <h2 class="reveal delay-100 font-extrabold text-4xl md:text-5xl leading-tight mb-6 text-slate-900" data-i18n="feat_title">
+                    Everything you need.<br><span class="text-slate-400">Nothing you don't.</span>
+                </h2>
+                <p class="reveal delay-200 text-lg text-slate-600 leading-relaxed" data-i18n="feat_desc">
+                    Built for the way knowledge workers actually work — not how productivity gurus say they should.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Feature 1 -->
+                <div class="reveal soft-card rounded-3xl p-8 group">
+                    <div class="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-brand-100 transition-all">
+                        <i data-lucide="magnet" class="w-7 h-7 text-brand-600"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-slate-900 mb-3" data-i18n="feat_1_title">Multi-source Capture</h3>
+                    <p class="text-slate-600 text-[15px] leading-relaxed mb-6" data-i18n="feat_1_desc">Capture web pages, local documents, YouTube videos, clipboard content, and Telegram messages seamlessly into one base.</p>
+                    <div class="font-bold text-[10px] tracking-widest uppercase text-brand-500" data-i18n="feat_1_tag">Web · Docs · YouTube · Telegram</div>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="reveal delay-100 soft-card rounded-3xl p-8 group">
+                    <div class="w-14 h-14 rounded-2xl bg-sky-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-sky-100 transition-all">
+                        <i data-lucide="database" class="w-7 h-7 text-sky-600"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-slate-900 mb-3" data-i18n="feat_2_title">Long-term Memory</h3>
+                    <p class="text-slate-600 text-[15px] leading-relaxed mb-6" data-i18n="feat_2_desc">Your knowledge base is encrypted and permanent. Search anything you've ever captured in milliseconds.</p>
+                    <div class="font-bold text-[10px] tracking-widest uppercase text-sky-500" data-i18n="feat_2_tag">Instant Search · Persistent</div>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="reveal delay-200 soft-card rounded-3xl p-8 group">
+                    <div class="w-14 h-14 rounded-2xl bg-purple-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-purple-100 transition-all">
+                        <i data-lucide="folder-tree" class="w-7 h-7 text-purple-600"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-slate-900 mb-3" data-i18n="feat_3_title">Projects & Context</h3>
+                    <p class="text-slate-600 text-[15px] leading-relaxed mb-6" data-i18n="feat_3_desc">Create projects that link related knowledge. Research, planning, and writing stay natively connected to original material.</p>
+                    <div class="font-bold text-[10px] tracking-widest uppercase text-purple-500" data-i18n="feat_3_tag">Research · Planning · Writing</div>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="reveal soft-card rounded-3xl p-8 group">
+                    <div class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-emerald-100 transition-all">
+                        <i data-lucide="pen-tool" class="w-7 h-7 text-emerald-600"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-slate-900 mb-3" data-i18n="feat_4_title">AI Editing & Export</h3>
+                    <p class="text-slate-600 text-[15px] leading-relaxed mb-6" data-i18n="feat_4_desc">Turn captured content into polished drafts using AI-assisted editing. Export perfectly formatted documents in multiple formats.</p>
+                    <div class="font-bold text-[10px] tracking-widest uppercase text-emerald-500" data-i18n="feat_4_tag">TXT · MD · HTML · DOCX · PDF</div>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="reveal delay-100 soft-card rounded-3xl p-8 group">
+                    <div class="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-blue-100 transition-all">
+                        <i data-lucide="bot" class="w-7 h-7 text-blue-600"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-slate-900 mb-3" data-i18n="feat_5_title">Telegram Bot Capture</h3>
+                    <p class="text-slate-600 text-[15px] leading-relaxed mb-6" data-i18n="feat_5_desc">Send links or notes to your personal bot from anywhere. They automatically appear in your base when you're back at your desk.</p>
+                    <div class="font-bold text-[10px] tracking-widest uppercase text-blue-500" data-i18n="feat_5_tag">Mobile · On-the-go Sync</div>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="reveal delay-200 soft-card rounded-3xl p-8 group">
+                    <div class="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-amber-100 transition-all">
+                        <i data-lucide="bell-ring" class="w-7 h-7 text-amber-600"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-slate-900 mb-3" data-i18n="feat_6_title">Reminders & Follow-up</h3>
+                    <p class="text-slate-600 text-[15px] leading-relaxed mb-6" data-i18n="feat_6_desc">Set reminders on captured knowledge so important articles, ideas, and tasks resurface at the exact right time.</p>
+                    <div class="font-bold text-[10px] tracking-widest uppercase text-amber-500" data-i18n="feat_6_tag">Reminders · Q&A</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
 
     <!-- TESTIMONIALS SECTION -->
     <section id="testimonials" class="py-24 px-6 md:px-12 relative z-10">
@@ -526,6 +606,28 @@
                 audience_2: "Developers",
                 audience_3: "Content Creators",
                 audience_4: "Officers",
+
+                feat_badge: "Core Features",
+                feat_title: "Everything you need.<br><span class=\"text-slate-400\">Nothing you don't.</span>",
+                feat_desc: "Built for the way knowledge workers actually work — not how productivity gurus say they should.",
+                feat_1_title: "Multi-source Capture",
+                feat_1_desc: "Capture web pages, local documents, YouTube videos, clipboard content, and Telegram messages seamlessly into one base.",
+                feat_1_tag: "Web · Docs · YouTube · Telegram",
+                feat_2_title: "Long-term Memory",
+                feat_2_desc: "Your knowledge base is encrypted and permanent. Search anything you've ever captured in milliseconds.",
+                feat_2_tag: "Instant Search · Persistent",
+                feat_3_title: "Projects & Context",
+                feat_3_desc: "Create projects that link related knowledge. Research, planning, and writing stay natively connected to original material.",
+                feat_3_tag: "Research · Planning · Writing",
+                feat_4_title: "AI Editing & Export",
+                feat_4_desc: "Turn captured content into polished drafts using AI-assisted editing. Export perfectly formatted documents in multiple formats.",
+                feat_4_tag: "TXT · MD · HTML · DOCX · PDF",
+                feat_5_title: "Telegram Bot Capture",
+                feat_5_desc: "Send links or notes to your personal bot from anywhere. They automatically appear in your base when you're back at your desk.",
+                feat_5_tag: "Mobile · On-the-go Sync",
+                feat_6_title: "Reminders & Follow-up",
+                feat_6_desc: "Set reminders on captured knowledge so important articles, ideas, and tasks resurface at the exact right time.",
+                feat_6_tag: "Reminders · Q&A",
                 
                 wf_badge: "How It Works",
                 wf_title: "A seamless workflow <br><span class=\"text-brand-400\">for modern thinkers</span>",
@@ -595,6 +697,28 @@
                 audience_2: "開發人員",
                 audience_3: "內容創作者",
                 audience_4: "辦公人員",
+
+                feat_badge: "核心功能",
+                feat_title: "需要的功能一次到位。<br><span class=\"text-slate-400\">不需要的負擔全部省去。</span>",
+                feat_desc: "依照知識工作者真實的工作方式打造，而不是照著效率口號堆功能。",
+                feat_1_title: "多來源擷取",
+                feat_1_desc: "將網頁、本地文件、YouTube 影片、剪貼簿內容與 Telegram 訊息順暢收進同一個知識庫。",
+                feat_1_tag: "Web · 文件 · YouTube · Telegram",
+                feat_2_title: "長期記憶庫",
+                feat_2_desc: "你的知識庫會被加密並長期保存。曾經擷取過的內容，都能在毫秒內搜尋出來。",
+                feat_2_tag: "即時搜尋 · 持久保存",
+                feat_3_title: "專案與脈絡",
+                feat_3_desc: "建立專案來連結相關知識，讓研究、規劃與寫作始終保留原始資料脈絡。",
+                feat_3_tag: "研究 · 規劃 · 寫作",
+                feat_4_title: "AI 編輯與匯出",
+                feat_4_desc: "使用 AI 輔助編輯，將擷取內容整理成完整草稿，並匯出為多種格式的文件。",
+                feat_4_tag: "TXT · MD · HTML · DOCX · PDF",
+                feat_5_title: "Telegram Bot 擷取",
+                feat_5_desc: "在任何地方把連結或筆記傳給個人 bot，回到桌面後它們就會自動出現在知識庫中。",
+                feat_5_tag: "Mobile · 隨手同步",
+                feat_6_title: "提醒與追蹤",
+                feat_6_desc: "為擷取的知識設定提醒，讓重要文章、想法與任務在正確時間重新浮現。",
+                feat_6_tag: "提醒 · 問答",
                 
                 wf_badge: "運作方式",
                 wf_title: "專為現代思考者打造的<br><span class=\"text-brand-400\">無縫工作流</span>",
@@ -664,6 +788,28 @@
                 audience_2: "开发人员",
                 audience_3: "内容创作者",
                 audience_4: "办公人员",
+
+                feat_badge: "核心功能",
+                feat_title: "需要的功能一次到位。<br><span class=\"text-slate-400\">不需要的负担全部省去。</span>",
+                feat_desc: "按照知识工作者真实的工作方式打造，而不是照着效率口号堆功能。",
+                feat_1_title: "多来源抓取",
+                feat_1_desc: "将网页、本地文件、YouTube 视频、剪贴板内容与 Telegram 消息顺畅收进同一个知识库。",
+                feat_1_tag: "Web · 文档 · YouTube · Telegram",
+                feat_2_title: "长期记忆库",
+                feat_2_desc: "你的知识库会被加密并长期保存。曾经抓取过的内容，都能在毫秒内搜索出来。",
+                feat_2_tag: "即时搜索 · 持久保存",
+                feat_3_title: "项目与脉络",
+                feat_3_desc: "建立项目来链接相关知识，让研究、规划与写作始终保留原始资料脉络。",
+                feat_3_tag: "研究 · 规划 · 写作",
+                feat_4_title: "AI 编辑与导出",
+                feat_4_desc: "使用 AI 辅助编辑，将抓取内容整理成完整草稿，并导出为多种格式的文档。",
+                feat_4_tag: "TXT · MD · HTML · DOCX · PDF",
+                feat_5_title: "Telegram Bot 抓取",
+                feat_5_desc: "在任何地方把链接或笔记发给个人 bot，回到桌面后它们就会自动出现在知识库中。",
+                feat_5_tag: "Mobile · 随手同步",
+                feat_6_title: "提醒与跟进",
+                feat_6_desc: "为抓取的知识设置提醒，让重要文章、想法与任务在正确时间重新浮现。",
+                feat_6_tag: "提醒 · 问答",
                 
                 wf_badge: "运作方式",
                 wf_title: "专为现代思考者打造的<br><span class=\"text-brand-400\">无缝工作流</span>",
