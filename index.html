@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InsightCAP Community - Local-First Knowledge System</title>
+    <title id="page-title">InsightCAP Community</title>
+    
+    <!-- Modern, Friendly Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,36 +16,29 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <!-- Custom Tailwind Config for Dark Tech Theme -->
+    <!-- Tailwind Config -->
     <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
                     },
                     colors: {
-                        brand: {
-                            400: '#38bdf8', // Light sky blue
-                            500: '#0ea5e9', // Primary tech blue
-                            600: '#0284c7', 
-                            900: '#0c4a6e',
-                        },
-                        dark: {
-                            bg: '#020617', // Slate 950
-                            card: '#0f172a', // Slate 900
-                            border: '#1e293b', // Slate 800
-                        }
+                        brand: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 900: '#312e81' },
+                        accent: { 500: '#0ea5e9' }
                     },
                     animation: {
-                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'float': 'float 6s ease-in-out infinite',
+                        'blob': 'blob 10s infinite alternate',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                     },
                     keyframes: {
-                        float: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' },
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
                         }
                     }
                 }
@@ -49,580 +47,733 @@
     </script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #020617; /* dark.bg */
-            color: #f8fafc;
-            overflow-x: hidden;
-        }
-
-        /* Tech Grid Background */
-        .bg-grid-pattern {
-            background-size: 50px 50px;
-            background-image: 
-                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        body { background-color: #f8fafc; color: #0f172a; overflow-x: hidden; }
+        .blob-bg { position: fixed; filter: blur(90px); z-index: -2; opacity: 0.6; mix-blend-mode: multiply; border-radius: 50%; pointer-events: none; }
+        .texture-grid {
+            position: fixed; inset: 0; background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
             mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
             -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+            z-index: -3;
+            pointer-events: none;
         }
-
-        /* Glowing Blobs */
-        .blob {
-            position: absolute;
-            filter: blur(100px);
-            z-index: -1;
-            opacity: 0.4;
-            border-radius: 50%;
-            animation: float 10s infinite ease-in-out alternate;
-        }
-
-        /* Scroll Reveal Animation Classes */
-        .reveal {
-            opacity: 0;
-            transform: translateY(40px);
-            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .reveal.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        
-        /* Custom delay utilities for staggered animations */
+        .reveal { opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
         .delay-100 { transition-delay: 100ms; }
         .delay-200 { transition-delay: 200ms; }
         .delay-300 { transition-delay: 300ms; }
-
-        /* Glowing Card Effect */
-        .glow-card {
-            position: relative;
+        .soft-card {
+            background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 1);
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03); transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .glow-card::before {
-            content: "";
-            position: absolute;
-            inset: -1px;
-            background: linear-gradient(to bottom right, rgba(14, 165, 233, 0.5), rgba(139, 92, 246, 0.2), transparent);
-            border-radius: inherit;
-            z-index: -1;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .glow-card:hover::before {
-            opacity: 1;
-        }
-
-        /* Hide scrollbar completely but keep functionality */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;  /* IE and Edge */
-            scrollbar-width: none;  /* Firefox */
-        }
-
-        /* Diagram Connection Lines Utilities */
-        .line-v { width: 2px; background: rgba(14, 165, 233, 0.3); margin: 0 auto; }
-        .line-h { height: 2px; background: rgba(14, 165, 233, 0.3); width: 100%; position: absolute; }
-        .diagram-node { 
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(8px);
-            padding: 1rem;
-            border-radius: 0.75rem;
-            text-align: center;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #e2e8f0;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            z-index: 10;
-            position: relative;
-        }
-        .diagram-node:hover {
-            border-color: rgba(14, 165, 233, 0.5);
-            box-shadow: 0 0 20px rgba(14, 165, 233, 0.2);
-            transform: translateY(-2px);
-        }
-        .diagram-node.core {
-            border-color: rgba(14, 165, 233, 0.4);
-            background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(12, 74, 110, 0.4) 100%);
-            font-weight: 600;
+        .soft-card:hover { transform: translateY(-5px); box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.08); border-color: #e0e7ff; }
+        .text-gradient {
+            background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-image: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%);
         }
     </style>
 </head>
-<body class="antialiased selection:bg-brand-500/30 selection:text-cyan-200 flex flex-col min-h-screen relative">
+<body class="font-sans antialiased selection:bg-brand-100 selection:text-brand-900 flex flex-col min-h-screen relative">
 
-    <!-- Global Background Elements -->
-    <div class="fixed inset-0 bg-grid-pattern pointer-events-none z-[-2]"></div>
-    <div class="blob bg-brand-600 w-[500px] h-[500px] top-[-10%] left-[-10%]"></div>
-    <div class="blob bg-purple-900 w-[600px] h-[600px] bottom-[-20%] right-[-10%]" style="animation-delay: -5s;"></div>
+    <!-- 動態背景 -->
+    <div class="texture-grid"></div>
+    <div class="blob-bg w-[500px] h-[500px] bg-indigo-200 top-[-10%] left-[-10%] animate-blob"></div>
+    <div class="blob-bg w-[600px] h-[600px] bg-sky-200 top-[20%] right-[-10%] animate-blob" style="animation-delay: 2s;"></div>
+    <div class="blob-bg w-[400px] h-[400px] bg-purple-200 bottom-[-10%] left-[20%] animate-blob" style="animation-delay: 4s;"></div>
 
-    <!-- Navigation -->
-    <nav class="fixed top-0 z-50 w-full backdrop-blur-xl bg-dark-bg/60 border-b border-white/10 transition-all duration-300" id="navbar">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <div class="flex items-center gap-3 group cursor-pointer">
-                    <div class="w-9 h-9 bg-gradient-to-br from-brand-400 to-brand-600 rounded-xl flex items-center justify-center text-white shadow-[0_0_15px_rgba(14,165,233,0.5)] group-hover:shadow-[0_0_25px_rgba(14,165,233,0.8)] transition-all">
-                        <i data-lucide="brain-circuit" class="w-5 h-5"></i>
-                    </div>
-                    <span class="font-bold text-xl tracking-wide text-white group-hover:text-brand-400 transition-colors">InsightCAP</span>
+    <!-- 導覽列 -->
+    <nav id="navbar" class="fixed top-0 w-full z-50 transition-all duration-300 border-b border-transparent bg-transparent py-4 px-6 md:px-12">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <a href="#" class="flex items-center gap-3 group">
+                <div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm group-hover:border-brand-300 transition-all overflow-hidden">
+                    <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP Logo" class="w-full h-full object-cover">
                 </div>
-                <div class="flex items-center gap-4">
-                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="text-sm font-medium text-slate-300 hover:text-white transition flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10">
-                        <i data-lucide="github" class="w-5 h-5"></i>
-                        <span class="hidden sm:inline">Star on GitHub</span>
-                    </a>
+                <span class="font-bold text-xl tracking-tight text-slate-900">InsightCAP</span>
+            </a>
+            
+            <ul class="hidden md:flex items-center gap-8">
+                <li><a href="#features" class="text-[13px] font-semibold text-slate-500 hover:text-brand-600 transition-colors" data-i18n="nav_features">Features</a></li>
+                <li><a href="#workflow" class="text-[13px] font-semibold text-slate-500 hover:text-brand-600 transition-colors" data-i18n="nav_workflow">Workflow</a></li>
+                <li><a href="#testimonials" class="text-[13px] font-semibold text-slate-500 hover:text-brand-600 transition-colors" data-i18n="nav_testimonials">Testimonials</a></li>
+                <li><a href="#faq" class="text-[13px] font-semibold text-slate-500 hover:text-brand-600 transition-colors" data-i18n="nav_faq">FAQ</a></li>
+            </ul>
+
+            <div class="flex items-center gap-3">
+                <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="hidden lg:flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors px-2">
+                    <i data-lucide="github" class="w-4 h-4"></i>
+                    <span class="flex items-center gap-1"><i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400 text-amber-400"></i> Star GitHub</span>
+                </a>
+
+                <!-- 客製化多語言下拉選單 -->
+                <div class="relative" id="lang-dropdown-container">
+                    <button onclick="toggleLangMenu(event)" class="flex items-center gap-2 text-[13px] font-bold text-slate-600 hover:text-brand-600 transition-colors px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm hover:bg-slate-50">
+                        <i data-lucide="globe" class="w-4 h-4"></i>
+                        <span id="current-lang-label">English</span>
+                        <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+                    </button>
+                    <!-- 下拉選單內容 -->
+                    <div id="lang-menu" class="hidden absolute right-0 mt-2 w-36 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 py-1">
+                        <button onclick="selectLang('en', 'English')" class="w-full text-left px-4 py-2.5 text-[13px] text-slate-600 hover:bg-brand-50 hover:text-brand-600 font-bold transition-colors">English</button>
+                        <button onclick="selectLang('zh-TW', '繁體中文')" class="w-full text-left px-4 py-2.5 text-[13px] text-slate-600 hover:bg-brand-50 hover:text-brand-600 font-bold transition-colors">繁體中文</button>
+                        <button onclick="selectLang('zh-CN', '简体中文')" class="w-full text-left px-4 py-2.5 text-[13px] text-slate-600 hover:bg-brand-50 hover:text-brand-600 font-bold transition-colors">简体中文</button>
+                    </div>
                 </div>
             </div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="relative pt-32 pb-24 lg:pt-48 lg:pb-32 overflow-hidden flex-grow flex items-center">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-            <div class="reveal inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/30 text-brand-400 text-sm font-medium mb-8 backdrop-blur-md">
+    <!-- HERO SECTION -->
+    <section class="relative pt-32 pb-16 px-6 md:px-12 overflow-hidden">
+        <div class="max-w-6xl mx-auto w-full relative z-10 text-center">
+            
+            <div class="reveal inline-flex items-center gap-2.5 px-4 py-1.5 mb-8 rounded-full bg-white border border-slate-200 shadow-sm">
                 <span class="relative flex h-2.5 w-2.5">
                   <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
                   <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-500"></span>
                 </span>
-                Community Edition Available Now
+                <span class="font-semibold text-xs text-slate-600" data-i18n="hero_badge">Community Edition — Free Download</span>
             </div>
-            
-            <h1 class="reveal delay-100 text-5xl md:text-6xl lg:text-7xl font-extrabold text-white tracking-tight mb-8 leading-tight drop-shadow-lg">
-                Your Local-First <br/>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 via-cyan-400 to-purple-500 animate-pulse-slow">
-                    Personal Memory System
-                </span>
+
+            <h1 class="reveal delay-100 font-extrabold text-[clamp(2.5rem,7vw,5rem)] leading-[1.1] tracking-tight mb-6 text-slate-900 mx-auto max-w-4xl" data-i18n="hero_title">
+                Capture once.<br>
+                Remember <span class="text-gradient">forever.</span>
             </h1>
-            
-            <p class="reveal delay-200 text-lg md:text-xl text-slate-400 mb-12 max-w-3xl mx-auto leading-relaxed">
-                A powerful desktop application for capturing, organizing, editing, and revisiting knowledge. Turn web pages, documents, videos, and conversations into a truly yours, local-first database.
+
+            <p class="reveal delay-200 text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed mb-10 font-medium" data-i18n="hero_subtitle">
+                A local-first knowledge system for researchers, writers, and developers. Turn scattered web pages and notes into a connected, permanent memory.
             </p>
-            
-            <div class="reveal delay-300 flex flex-col sm:flex-row justify-center gap-5">
-                <a href="https://github.com/3k1c/insightcap-community/releases" target="_blank" class="group relative inline-flex justify-center items-center gap-2 bg-white text-slate-900 font-bold py-4 px-8 rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]">
-                    <i data-lucide="download" class="w-5 h-5 group-hover:-translate-y-0.5 transition-transform"></i>
-                    Download Release
-                </a>
-                <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="group inline-flex justify-center items-center gap-2 bg-dark-card/50 hover:bg-dark-card border border-white/10 text-white font-semibold py-4 px-8 rounded-xl shadow-sm backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-brand-500/50">
-                    <i data-lucide="terminal" class="w-5 h-5 text-brand-400"></i>
-                    View Repository
-                </a>
-            </div>
-        </div>
-    </section>
 
-    <!-- Core Pillars (Interactive Cards) -->
-    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 pb-24">
-        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Card 1 -->
-            <div class="reveal glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-brand-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
-                <div class="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-brand-400 mb-6 group-hover:scale-110 group-hover:bg-blue-500/20 transition-all">
-                    <i data-lucide="magnet" class="w-6 h-6"></i>
+            <div class="reveal delay-300 flex flex-col items-center justify-center mb-20">
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
+                    <a href="https://github.com/3k1c/insightcap-community/releases" class="group w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-brand-600 text-white px-8 py-4 rounded-full font-bold text-[15px] transition-all hover:bg-brand-500 hover:-translate-y-0.5 shadow-lg shadow-brand-500/30">
+                        <i data-lucide="download" class="w-5 h-5 group-hover:animate-bounce"></i>
+                        <span data-i18n="btn_download">Download for Windows</span>
+                    </a>
+                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="group w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 px-8 py-4 rounded-full font-bold text-[15px] transition-all hover:bg-slate-50 hover:-translate-y-0.5 shadow-sm">
+                        <i data-lucide="github" class="w-5 h-5"></i>
+                        <span data-i18n="btn_github">View on GitHub</span>
+                    </a>
                 </div>
-                <h3 class="text-xl font-bold text-white mb-3">Multi-type Extraction</h3>
-                <p class="text-slate-400 text-sm leading-relaxed">Process web pages, local docs, YouTube/Bilibili URLs, clipboard, and Telegram bot inputs. Move from raw content to searchable knowledge instantly.</p>
-            </div>
-            <!-- Card 2 -->
-            <div class="reveal delay-100 glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-purple-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
-                <div class="w-12 h-12 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-purple-400 mb-6 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all">
-                    <i data-lucide="database" class="w-6 h-6"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white mb-3">Long-term Memory</h3>
-                <p class="text-slate-400 text-sm leading-relaxed">Captured content is preserved in an encrypted local knowledge base. Reuse it across search, projects, reminders, and writing workflows seamlessly.</p>
-            </div>
-            <!-- Card 3 -->
-            <div class="reveal delay-200 glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-emerald-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
-                <div class="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400 mb-6 group-hover:scale-110 group-hover:bg-emerald-500/20 transition-all">
-                    <i data-lucide="folder-tree" class="w-6 h-6"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white mb-3">Projects & Context</h3>
-                <p class="text-slate-400 text-sm leading-relaxed">Create new projects and conversations from collected knowledge, keeping research and planning natively connected to original source materials.</p>
-            </div>
-            <!-- Card 4 -->
-            <div class="reveal delay-300 glow-card bg-dark-card/80 backdrop-blur-lg rounded-2xl p-6 border border-white/5 hover:border-orange-500/30 transition-all duration-300 hover:-translate-y-2 group cursor-default shadow-lg">
-                <div class="w-12 h-12 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center justify-center text-orange-400 mb-6 group-hover:scale-110 group-hover:bg-orange-500/20 transition-all">
-                    <i data-lucide="file-edit" class="w-6 h-6"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white mb-3">AI Editing & Export</h3>
-                <p class="text-slate-400 text-sm leading-relaxed">Turn captured content into useful drafts using AI-assisted editing. Export perfectly formatted documents as TXT, Markdown, HTML, DOCX, or PDF.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Architecture Section (1:1 Accurate Diagrams based on Images) -->
-    <section class="py-24 relative z-10 bg-dark-bg/50 border-y border-white/5">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-20 reveal">
-                <h2 class="text-3xl md:text-5xl font-bold text-white mb-6">System Architecture</h2>
-                <p class="text-slate-400 text-lg max-w-2xl mx-auto">Detailed workflow and structural diagrams of the local environment.</p>
+                <p class="mt-4 font-mono text-[11px] uppercase tracking-widest text-slate-400 flex items-center gap-2" data-i18n="hero_microcopy">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> 100% Local · No Sign-up
+                </p>
             </div>
 
-            <div class="space-y-24">
-                
-                <!-- Graph 1: Product Workflow (Accurate to Image 1) -->
-                <div class="reveal glow-card bg-dark-card/40 border border-white/10 rounded-3xl p-6 md:p-12 backdrop-blur-sm overflow-x-auto no-scrollbar">
-                    <div class="flex items-center gap-4 mb-10 border-b border-white/10 pb-6 min-w-[800px]">
-                        <div class="bg-cyan-500/20 p-3 rounded-xl border border-cyan-500/30">
-                            <i data-lucide="git-branch" class="w-6 h-6 text-cyan-400"></i>
-                        </div>
-                        <h3 class="text-2xl font-bold text-white">Product Workflow</h3>
-                    </div>
-                    
-                    <!-- Top-Down Tree Flow -->
-                    <div class="min-w-[900px] flex flex-col items-center pb-8">
-                        
-                        <!-- Level 1: Inputs -->
-                        <div class="grid grid-cols-5 gap-4 w-full px-4 mb-8">
-                            <div class="diagram-node">Web Pages</div>
-                            <div class="diagram-node">Documents</div>
-                            <div class="diagram-node">Supported Video URLs</div>
-                            <div class="diagram-node">Clipboard and Notes</div>
-                            <div class="diagram-node">Telegram Bot Capture</div>
-                        </div>
-
-                        <!-- Converging Lines to Core -->
-                        <div class="relative w-full h-12 flex justify-center mt-[-2rem] mb-4 z-0">
-                            <!-- Connecting arrows simulation using SVG for exact matching curve -->
-                            <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 50">
-                                <path d="M 100 0 C 100 25, 500 25, 500 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 300 0 C 300 25, 500 25, 500 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 L 500 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 700 0 C 700 25, 500 25, 500 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 900 0 C 900 25, 500 25, 500 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <!-- Arrow head at bottom -->
-                                <polygon points="496,45 504,45 500,50" fill="rgba(14, 165, 233, 0.6)"/>
-                            </svg>
-                        </div>
-
-                        <!-- Level 2: Core Processing 1 -->
-                        <div class="diagram-node core w-64 mb-8 flex flex-col items-center justify-center py-4">
-                            <i data-lucide="cpu" class="w-5 h-5 text-cyan-400 mb-2"></i>
-                            Capture and Extraction
-                        </div>
-
-                        <!-- Line Down -->
-                        <div class="relative w-full h-8 flex justify-center mt-[-2rem] mb-2 z-0">
-                            <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 30">
-                                <path d="M 500 0 L 500 30" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <polygon points="496,25 504,25 500,30" fill="rgba(14, 165, 233, 0.6)"/>
-                            </svg>
-                        </div>
-
-                        <!-- Level 3: Core Processing 2 -->
-                        <div class="diagram-node core w-64 mb-8 flex flex-col items-center justify-center py-4">
-                            <i data-lucide="sparkles" class="w-5 h-5 text-purple-400 mb-2"></i>
-                            Review and AI Editing
-                        </div>
-
-                        <!-- Diverging Lines from Core -->
-                        <div class="relative w-full h-12 flex justify-center mt-[-2rem] mb-4 z-0">
-                            <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 50">
-                                <path d="M 500 0 C 500 25, 100 25, 100 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 C 500 25, 300 25, 300 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 L 500 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 C 500 25, 700 25, 700 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 C 500 25, 900 25, 900 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <!-- Arrow heads -->
-                                <polygon points="96,45 104,45 100,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="296,45 304,45 300,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="496,45 504,45 500,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="696,45 704,45 700,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="896,45 904,45 900,50" fill="rgba(14, 165, 233, 0.6)"/>
-                            </svg>
-                        </div>
-
-                        <!-- Level 4: Outputs -->
-                        <div class="grid grid-cols-5 gap-4 w-full px-4">
-                            <div class="diagram-node">Projects</div>
-                            <div class="diagram-node">Conversations</div>
-                            <div class="diagram-node">AI Text Editor Export</div>
-                            <div class="diagram-node">Reminders and Follow-up</div>
-                            <div class="diagram-node border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]">Long-term Personal Memory System</div>
+            <!-- PRODUCT MOCKUP PLACEHOLDER (CSS UI) -->
+            <div class="reveal delay-300 relative mx-auto max-w-5xl">
+                <div class="absolute -inset-1 bg-gradient-to-r from-brand-500 to-sky-400 rounded-3xl blur opacity-20"></div>
+                <div class="relative rounded-3xl border border-slate-200/80 bg-white shadow-2xl overflow-hidden aspect-[16/10] md:aspect-[21/9] flex flex-col">
+                    <div class="h-12 bg-slate-50 border-b border-slate-100 flex items-center px-4 gap-2">
+                        <div class="w-3 h-3 rounded-full bg-rose-400"></div>
+                        <div class="w-3 h-3 rounded-full bg-amber-400"></div>
+                        <div class="w-3 h-3 rounded-full bg-emerald-400"></div>
+                        <div class="mx-auto font-mono text-[11px] font-bold text-slate-400 flex items-center gap-2" data-i18n="mockup_header">
+                            <i data-lucide="lock" class="w-3 h-3"></i> Knowledge Base
                         </div>
                     </div>
-                </div>
-
-                <!-- Graph 2: Local Architecture (Accurate to Image 2) -->
-                <div class="reveal glow-card bg-dark-card/40 border border-white/10 rounded-3xl p-6 md:p-12 backdrop-blur-sm overflow-x-auto no-scrollbar">
-                    <div class="flex items-center gap-4 mb-10 border-b border-white/10 pb-6 min-w-[800px]">
-                        <div class="bg-purple-500/20 p-3 rounded-xl border border-purple-500/30">
-                            <i data-lucide="network" class="w-6 h-6 text-purple-400"></i>
+                    <!-- 高質感擬真 UI 視覺 -->
+                    <div class="flex-grow flex bg-slate-950 relative overflow-hidden">
+                        <img src="./assets/screenshots/knowledge.png" alt="InsightCAP knowledge repository screen" class="absolute inset-0 w-full h-full object-cover object-top" loading="eager" decoding="async">
+                        <!-- Sidebar mockup -->
+                        <div class="hidden w-64 border-r border-slate-800 p-6 flex-col gap-4 relative z-10">
+                            <div class="h-4 w-24 bg-slate-800 rounded-md"></div>
+                            <div class="h-4 w-full bg-brand-500/20 rounded-md mt-4"></div>
+                            <div class="h-4 w-3/4 bg-slate-800 rounded-md"></div>
+                            <div class="h-4 w-5/6 bg-slate-800 rounded-md"></div>
                         </div>
-                        <h3 class="text-2xl font-bold text-white">Local Architecture</h3>
-                    </div>
-
-                    <!-- Vertical Tree Flow -->
-                    <div class="min-w-[900px] flex flex-col items-center pb-8">
-                        
-                        <!-- Main Trunk -->
-                        <div class="diagram-node w-64 mb-6">Desktop App</div>
-                        <div class="line-v h-8 mb-[-1rem] z-0"></div>
-                        <div class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-cyan-500/50 mb-4 z-0 relative"></div>
-
-                        <div class="diagram-node w-64 mb-6">Local Application Services</div>
-                        <div class="line-v h-8 mb-[-1rem] z-0"></div>
-                        <div class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-cyan-500/50 mb-4 z-0 relative"></div>
-
-                        <div class="diagram-node w-64 mb-6">Capture and Knowledge Workflows</div>
-                        <div class="line-v h-8 mb-[-1rem] z-0"></div>
-                        <div class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-cyan-500/50 mb-4 z-0 relative"></div>
-
-                        <div class="diagram-node core border-purple-500/40 w-72 mb-8 py-4">Long-term Personal Memory System</div>
-
-                        <!-- SVG Branching for Memory System -->
-                        <div class="relative w-full h-12 flex justify-center mt-[-2rem] mb-4 z-0">
-                            <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 50">
-                                <path d="M 500 0 C 500 25, 150 25, 150 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 C 500 25, 380 25, 380 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 C 500 25, 620 25, 620 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <path d="M 500 0 C 500 25, 850 25, 850 50" fill="none" stroke="rgba(14, 165, 233, 0.4)" stroke-width="2"/>
-                                <!-- Arrow heads -->
-                                <polygon points="146,45 154,45 150,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="376,45 384,45 380,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="616,45 624,45 620,50" fill="rgba(14, 165, 233, 0.6)"/>
-                                <polygon points="846,45 854,45 850,50" fill="rgba(14, 165, 233, 0.6)"/>
-                            </svg>
-                        </div>
-
-                        <!-- Memory System Branches Row -->
-                        <div class="relative w-full px-4 mb-8">
-                            <!-- Positioning nodes exactly to match SVG lines -->
-                            <div class="absolute left-[15%] top-0 -translate-x-1/2 w-[220px]">
-                                <div class="diagram-node w-full">Knowledge Base</div>
-                            </div>
-                            <div class="absolute left-[38%] top-0 -translate-x-1/2 w-[220px]">
-                                <div class="diagram-node w-full">Search and Recall</div>
-                            </div>
-                            <div class="absolute left-[62%] top-0 -translate-x-1/2 w-[220px]">
-                                <div class="diagram-node w-full">Reminder Context</div>
-                            </div>
-                            <div class="absolute left-[85%] top-0 -translate-x-1/2 w-[220px]">
-                                <div class="diagram-node w-full border-emerald-500/40">Local-first Storage</div>
-                                
-                                <!-- Sub-branch SVG from Local-first Storage -->
-                                <div class="relative w-full h-12 flex justify-center mt-0 mb-4 z-0">
-                                    <!-- Use absolute positioning for SVG to draw relative to this node context, breaking out to left -->
-                                    <svg class="absolute top-0 right-1/2 w-[600px] h-[50px] overflow-visible" style="transform: translateX(50%);" preserveAspectRatio="none" viewBox="0 0 600 50">
-                                        <!-- Lines going to the left and center -->
-                                        <path d="M 300 0 C 300 25, 0 25, 0 50" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2"/>
-                                        <path d="M 300 0 C 300 25, 250 25, 250 50" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2"/>
-                                        <path d="M 300 0 C 300 25, 500 25, 500 50" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2"/>
-                                        <!-- Arrow heads -->
-                                        <polygon points="-4,45 4,45 0,50" fill="rgba(16, 185, 129, 0.6)"/>
-                                        <polygon points="246,45 254,45 250,50" fill="rgba(16, 185, 129, 0.6)"/>
-                                        <polygon points="496,45 504,45 500,50" fill="rgba(16, 185, 129, 0.6)"/>
-                                    </svg>
+                        <!-- Main content mockup -->
+                        <div class="hidden flex-1 p-8 flex-col relative z-10">
+                            <div class="flex items-center gap-4 mb-8">
+                                <div class="w-12 h-12 bg-brand-500/20 border border-brand-500/30 rounded-xl flex items-center justify-center">
+                                    <i data-lucide="sparkles" class="w-6 h-6 text-brand-400"></i>
+                                </div>
+                                <div>
+                                    <div class="h-5 w-48 bg-slate-700 rounded-md mb-2"></div>
+                                    <div class="h-3 w-32 bg-slate-800 rounded-md"></div>
                                 </div>
                             </div>
-                            <!-- Spacer for the absolutely positioned elements above -->
-                            <div class="h-[100px]"></div> 
-                        </div>
-
-                        <!-- Sub-branches Row (Offset to match visual of image 2) -->
-                        <div class="relative w-full h-[100px]">
-                            <!-- Positioned relative to the whole container to catch the svg lines drawn above -->
-                            <!-- X coordinate formulas based on 85% parent left + local SVG offset -->
-                            <div class="absolute left-[54.5%] top-0 -translate-x-1/2 w-[260px]">
-                                <div class="diagram-node w-full">User-selected Knowledge Folder</div>
-                            </div>
-                            <div class="absolute left-[76%] top-0 -translate-x-1/2 w-[200px]">
-                                <div class="diagram-node w-full">Local App Data</div>
-                            </div>
-                            <div class="absolute left-[97.5%] top-0 -translate-x-1/2 w-[200px]">
-                                <div class="diagram-node w-full border-amber-500/40">Local Decryption Key</div>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div class="h-32 bg-slate-800/50 border border-slate-700/50 rounded-2xl"></div>
+                                <div class="h-32 bg-slate-800/50 border border-slate-700/50 rounded-2xl"></div>
+                                <div class="h-32 bg-slate-800/50 border border-slate-700/50 rounded-2xl"></div>
                             </div>
                         </div>
-
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <!-- Deep Dive Features -->
-    <section class="py-24 relative z-10 border-t border-white/5">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col lg:flex-row gap-16 items-center">
-                <div class="lg:w-1/3 reveal">
-                    <h2 class="text-3xl md:text-4xl font-bold text-white mb-6 leading-tight">Everything you need to master knowledge.</h2>
-                    <p class="text-lg text-slate-400 mb-6 leading-relaxed">InsightCAP streamlines local-first personal knowledge workflows without compromising your data privacy or forcing you to the cloud.</p>
-                </div>
-                <div class="lg:w-2/3 grid sm:grid-cols-2 gap-x-8 gap-y-8">
-                    <!-- Feature Items -->
-                    <div class="reveal delay-100 flex gap-4 group">
-                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </div>
-                        <p class="text-slate-300 leading-relaxed">Capture and extract content from multiple sources (Web, Docs, YouTube, Bilibili).</p>
-                    </div>
-                    <div class="reveal delay-200 flex gap-4 group">
-                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </div>
-                        <p class="text-slate-300 leading-relaxed">Organize captured content into a structured, searchable long-term memory system.</p>
-                    </div>
-                    <div class="reveal delay-100 flex gap-4 group">
-                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </div>
-                        <p class="text-slate-300 leading-relaxed">Search, revisit, and reuse knowledge across various projects and connected conversations.</p>
-                    </div>
-                    <div class="reveal delay-200 flex gap-4 group">
-                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </div>
-                        <p class="text-slate-300 leading-relaxed">Edit AI-generated or AI-assisted text in a dedicated, structured distraction-free editor.</p>
-                    </div>
-                    <div class="reveal delay-100 flex gap-4 group">
-                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </div>
-                        <p class="text-slate-300 leading-relaxed">Export perfectly formatted edited content flexibly (TXT, Markdown, HTML, DOCX, or PDF).</p>
-                    </div>
-                    <div class="reveal delay-200 flex gap-4 group">
-                        <div class="mt-1 bg-brand-500/20 text-brand-400 rounded-lg p-1.5 h-8 w-8 flex-shrink-0 flex items-center justify-center border border-brand-500/30 group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </div>
-                        <p class="text-slate-300 leading-relaxed">Seamless integration with Telegram bot for quick on-the-go capture, reminders, and Q&A.</p>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Security & Local First Section -->
-    <section class="py-24 relative z-10 overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-b from-transparent to-brand-900/20 pointer-events-none"></div>
+    <!-- TARGET AUDIENCE -->
+    <section class="py-12 border-b border-slate-200/50 bg-white/40">
+        <div class="max-w-6xl mx-auto px-6 text-center reveal">
+            <p class="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6" data-i18n="audience_title">Designed specifically for</p>
+            <div class="flex flex-wrap justify-center gap-x-12 gap-y-6 text-slate-500 font-semibold text-[15px]">
+                <div class="flex items-center gap-2"><i data-lucide="book-open" class="w-4 h-4 text-brand-500"></i> <span data-i18n="audience_1">Researchers</span></div>
+                <div class="flex items-center gap-2"><i data-lucide="code" class="w-4 h-4 text-brand-500"></i> <span data-i18n="audience_2">Developers</span></div>
+                <div class="flex items-center gap-2"><i data-lucide="pen-tool" class="w-4 h-4 text-brand-500"></i> <span data-i18n="audience_3">Content Creators</span></div>
+                <div class="flex items-center gap-2"><i data-lucide="briefcase" class="w-4 h-4 text-brand-500"></i> <span data-i18n="audience_4">Officers</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- TESTIMONIALS SECTION -->
+    <section id="testimonials" class="py-24 px-6 md:px-12 relative z-10">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <div class="reveal inline-flex items-center justify-center px-3 py-1 mb-4 rounded-full bg-amber-100 text-amber-600 font-bold text-xs uppercase tracking-wider" data-i18n="testi_badge">
+                    Wall of Love
+                </div>
+                <h2 class="reveal delay-100 font-extrabold text-3xl md:text-5xl leading-tight text-slate-900 mb-6" data-i18n="testi_title">
+                    Loved by knowledge workers
+                </h2>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="reveal soft-card rounded-3xl p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="flex gap-1 text-amber-400 mb-6">
+                            <i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i>
+                        </div>
+                        <p class="text-slate-700 leading-relaxed mb-8 font-medium" data-i18n="testi_1_desc">
+                            "InsightCAP completely changed how I organize my research. I no longer lose track of important articles, and the fact that it's 100% local gives me peace of mind."
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full overflow-hidden bg-slate-200 flex-shrink-0 border-2 border-white shadow-sm">
+                            <img src="./assets/testimonials/john.png" alt="John Doe" class="w-full h-full object-cover" loading="lazy" decoding="async">
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-900 text-sm" data-i18n="testi_1_name">John Doe</div>
+                            <div class="text-xs text-slate-500" data-i18n="testi_1_role">Software Engineer</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="reveal delay-100 soft-card rounded-3xl p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="flex gap-1 text-amber-400 mb-6">
+                            <i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i>
+                        </div>
+                        <p class="text-slate-700 leading-relaxed mb-8 font-medium" data-i18n="testi_2_desc">
+                            "The Telegram bot integration is a game-changer. I just forward links to the bot while commuting, and they are indexed and searchable when I open my laptop."
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full overflow-hidden bg-slate-200 flex-shrink-0 border-2 border-white shadow-sm">
+                            <img src="./assets/testimonials/alice.png" alt="Alice Smith" class="w-full h-full object-cover" loading="lazy" decoding="async">
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-900 text-sm" data-i18n="testi_2_name">Alice Smith</div>
+                            <div class="text-xs text-slate-500" data-i18n="testi_2_role">Content Writer</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="reveal delay-200 soft-card rounded-3xl p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="flex gap-1 text-amber-400 mb-6">
+                            <i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i>
+                        </div>
+                        <p class="text-slate-700 leading-relaxed mb-8 font-medium" data-i18n="testi_3_desc">
+                            "I was tired of subscription-based cloud tools locking my data. InsightCAP's local-first architecture and instant search is exactly what I was looking for."
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full overflow-hidden bg-slate-200 flex-shrink-0 border-2 border-white shadow-sm">
+                            <img src="./assets/testimonials/michael.png" alt="Michael R." class="w-full h-full object-cover" loading="lazy" decoding="async">
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-900 text-sm" data-i18n="testi_3_name">Michael R.</div>
+                            <div class="text-xs text-slate-500" data-i18n="testi_3_role">PhD Researcher</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- WORKFLOW SECTION (Bento Box) -->
+    <section id="workflow" class="py-24 px-6 md:px-12 relative z-10 bg-slate-900 rounded-[3rem] mx-4 md:mx-12 shadow-2xl my-12 overflow-hidden">
+        <div class="absolute top-0 right-0 w-[800px] h-[800px] bg-brand-600/20 rounded-full blur-[120px] pointer-events-none -translate-y-1/2 translate-x-1/3"></div>
+
+        <div class="max-w-6xl mx-auto relative z-10">
+            <div class="text-center mb-16">
+                <div class="reveal inline-flex items-center justify-center px-3 py-1 mb-4 rounded-full bg-slate-800 text-slate-300 font-bold text-xs uppercase tracking-wider border border-slate-700" data-i18n="wf_badge">
+                    How It Works
+                </div>
+                <h2 class="reveal delay-100 font-extrabold text-3xl md:text-5xl leading-tight text-white mb-6" data-i18n="wf_title">
+                    A seamless workflow <br><span class="text-brand-400">for modern thinkers</span>
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[minmax(250px,auto)]">
+                <!-- Capture -->
+                <div class="reveal md:col-span-2 bg-slate-800/60 border border-slate-700 rounded-3xl p-8 flex flex-col md:flex-row gap-8 items-center backdrop-blur-md overflow-hidden relative group">
+                    <div class="flex-1 z-10">
+                        <div class="w-12 h-12 bg-brand-500/20 rounded-2xl flex items-center justify-center mb-6">
+                            <i data-lucide="magnet" class="w-6 h-6 text-brand-400"></i>
+                        </div>
+                        <h3 class="font-bold text-2xl text-white mb-3" data-i18n="wf_step1_title">1. Universal Capture</h3>
+                        <p class="text-slate-400 leading-relaxed mb-6" data-i18n="wf_step1_desc">Grab anything from the web, local documents, videos, or Telegram. One click is all it takes.</p>
+                        <div class="flex gap-2">
+                            <span class="px-2.5 py-1 bg-slate-900 rounded-md text-xs font-bold text-slate-300 border border-slate-700" data-i18n="tag_web">Web</span>
+                            <span class="px-2.5 py-1 bg-slate-900 rounded-md text-xs font-bold text-slate-300 border border-slate-700" data-i18n="tag_docs">Docs</span>
+                            <span class="px-2.5 py-1 bg-slate-900 rounded-md text-xs font-bold text-slate-300 border border-slate-700" data-i18n="tag_telegram">Telegram</span>
+                        </div>
+                    </div>
+                    <!-- CSS Fake UI -->
+                    <div class="flex-1 w-full bg-slate-900 border border-slate-700 rounded-xl h-48 shadow-inner relative overflow-hidden group-hover:border-brand-500/50 transition-colors p-4 flex flex-col gap-3">
+                        <div class="h-8 bg-slate-800 rounded-md w-full flex items-center px-3 gap-2">
+                            <i data-lucide="link" class="w-3 h-3 text-slate-500"></i> <div class="h-2 bg-slate-700 rounded w-1/2"></div>
+                        </div>
+                        <div class="flex-1 bg-brand-500/10 border border-brand-500/20 rounded-md flex items-center justify-center">
+                            <span class="text-brand-400 text-sm font-bold flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4"></i> Saved to Inbox</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Organize -->
+                <div class="reveal delay-100 bg-slate-800/60 border border-slate-700 rounded-3xl p-8 flex flex-col backdrop-blur-md">
+                    <div class="w-12 h-12 bg-sky-500/20 rounded-2xl flex items-center justify-center mb-6">
+                        <i data-lucide="layers" class="w-6 h-6 text-sky-400"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-white mb-3" data-i18n="wf_step2_title">2. Organize</h3>
+                    <p class="text-slate-400 text-sm leading-relaxed mb-6" data-i18n="wf_step2_desc">Content is automatically extracted, indexed locally, and prepared for instant search.</p>
+                </div>
+
+                <!-- Connect -->
+                <div class="reveal delay-200 bg-slate-800/60 border border-slate-700 rounded-3xl p-8 flex flex-col backdrop-blur-md">
+                    <div class="w-12 h-12 bg-purple-500/20 rounded-2xl flex items-center justify-center mb-6">
+                        <i data-lucide="git-merge" class="w-6 h-6 text-purple-400"></i>
+                    </div>
+                    <h3 class="font-bold text-xl text-white mb-3" data-i18n="wf_step3_title">3. Connect</h3>
+                    <p class="text-slate-400 text-sm leading-relaxed mb-6" data-i18n="wf_step3_desc">Create projects that link relevant knowledge with AI discussions to preserve important research context.</p>
+                </div>
+
+                <!-- Create -->
+                <div class="reveal delay-300 md:col-span-2 bg-slate-800/60 border border-slate-700 rounded-3xl p-8 flex flex-col md:flex-row gap-8 items-center backdrop-blur-md">
+                    <div class="flex-1">
+                        <div class="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-6">
+                            <i data-lucide="pen-tool" class="w-6 h-6 text-emerald-400"></i>
+                        </div>
+                        <h3 class="font-bold text-2xl text-white mb-3" data-i18n="wf_step4_title">4. Create & Export</h3>
+                        <p class="text-slate-400 leading-relaxed mb-6" data-i18n="wf_step4_desc">Use the AI editor to draft reports or notes based on your captured knowledge. Export perfectly to Markdown, PDF, or Word.</p>
+                    </div>
+                    <!-- CSS Fake UI -->
+                    <div class="flex-1 w-full bg-slate-900 border border-slate-700 rounded-xl h-48 shadow-inner p-4 flex flex-col gap-3">
+                        <div class="flex gap-2 mb-2">
+                            <div class="h-6 px-3 bg-slate-800 rounded-md text-[10px] text-slate-400 font-bold flex items-center">Export as...</div>
+                            <div class="h-6 px-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-md text-[10px] font-bold flex items-center">Markdown</div>
+                        </div>
+                        <div class="flex-1 bg-slate-800 rounded-md p-3 font-mono text-[10px] text-slate-500">
+                            # Knowledge Summary<br><br>
+                            Based on your captures...<br>
+                            <span class="animate-pulse">|</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PRIVACY SECTION -->
+    <section id="privacy" class="py-32 px-6 md:px-12 relative overflow-hidden z-10">
+        <div class="max-w-6xl mx-auto">
+            <div class="grid lg:grid-cols-2 gap-16 items-center bg-slate-900 rounded-[3rem] p-8 md:p-16 shadow-2xl relative overflow-hidden">
+                <div class="absolute -right-40 -bottom-40 w-96 h-96 bg-brand-600 rounded-full blur-[100px] opacity-40 pointer-events-none"></div>
+
+                <div class="reveal relative z-10">
+                    <div class="inline-flex items-center justify-center px-3 py-1 mb-6 rounded-full bg-slate-800 text-slate-300 font-bold text-xs uppercase tracking-wider border border-slate-700" data-i18n="priv_badge">
+                        Privacy First
+                    </div>
+                    <h2 class="font-extrabold text-4xl md:text-5xl leading-tight mb-8 text-white" data-i18n="priv_title">
+                        Your knowledge.<br>Your <span class="text-brand-400">device.</span>
+                    </h2>
+                    <p class="text-lg text-slate-300 leading-relaxed mb-8" data-i18n="priv_desc1">
+                        InsightCAP is built local-first by design. Your data never touches our servers because we don't have any.
+                    </p>
+                    <div class="p-6 bg-slate-800/50 border-l-4 border-brand-500 rounded-r-2xl max-w-md backdrop-blur-md">
+                        <div class="font-bold text-[11px] tracking-widest uppercase text-brand-400 mb-2" data-i18n="priv_box_title">Fully Encrypted</div>
+                        <p class="text-sm text-slate-300 leading-relaxed" data-i18n="priv_box_desc">
+                            AES-256 encryption secures your database under your Windows account, protected by a 24-word recovery phrase.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Abstract Privacy Visual -->
+                <div class="reveal delay-200 relative z-10 rounded-3xl overflow-hidden aspect-square flex items-center justify-center bg-slate-800/50 border border-slate-700 backdrop-blur-sm">
+                    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.2)_0%,transparent_60%)]"></div>
+                    <div class="relative w-48 h-48 bg-slate-900 rounded-full border-4 border-brand-500/30 flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.2)]">
+                        <i data-lucide="shield-check" class="w-20 h-20 text-brand-400"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ SECTION -->
+    <section id="faq" class="py-32 px-6 md:px-12 relative z-10">
+        <div class="max-w-3xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="reveal font-extrabold text-3xl md:text-5xl leading-tight text-slate-900 mb-6" data-i18n="faq_title">
+                    Frequently Asked Questions
+                </h2>
+            </div>
+
+            <div class="space-y-4">
+                <div class="reveal delay-100 soft-card rounded-2xl p-6 md:p-8">
+                    <h4 class="font-bold text-lg text-slate-900 mb-2 flex items-center gap-2">
+                        <i data-lucide="help-circle" class="w-5 h-5 text-brand-500"></i> <span data-i18n="faq_q1">Is it really completely free?</span>
+                    </h4>
+                    <p class="text-slate-600 text-[15px] leading-relaxed pl-7" data-i18n="faq_a1">Yes. The Community Edition is completely free for both personal and commercial use. No hidden fees or usage limits.</p>
+                </div>
+                
+                <div class="reveal delay-200 soft-card rounded-2xl p-6 md:p-8">
+                    <h4 class="font-bold text-lg text-slate-900 mb-2 flex items-center gap-2">
+                        <i data-lucide="help-circle" class="w-5 h-5 text-brand-500"></i> <span data-i18n="faq_q2">Does it support Mac or Linux?</span>
+                    </h4>
+                    <p class="text-slate-600 text-[15px] leading-relaxed pl-7" data-i18n="faq_a2">Currently, InsightCAP is optimized for Windows to utilize its local encryption protocols. Support for other platforms is being explored.</p>
+                </div>
+
+                <div class="reveal delay-[300ms] soft-card rounded-2xl p-6 md:p-8">
+                    <h4 class="font-bold text-lg text-slate-900 mb-2 flex items-center gap-2">
+                        <i data-lucide="help-circle" class="w-5 h-5 text-brand-500"></i> <span data-i18n="faq_q3">How is this different from Notion or Obsidian?</span>
+                    </h4>
+                    <p class="text-slate-600 text-[15px] leading-relaxed pl-7" data-i18n="faq_a3">Unlike Notion, your data is 100% local and encrypted. Unlike Obsidian, InsightCAP focuses heavily on automated extraction from external sources (Web, YouTube, Telegram).</p>
+                </div>
+
+                <div class="reveal delay-[400ms] soft-card rounded-2xl p-6 md:p-8">
+                    <h4 class="font-bold text-lg text-slate-900 mb-2 flex items-center gap-2">
+                        <i data-lucide="help-circle" class="w-5 h-5 text-brand-500"></i> <span data-i18n="faq_q4">What happens if I change my computer?</span>
+                    </h4>
+                    <div class="text-slate-600 text-[15px] leading-relaxed pl-7 space-y-3">
+                        <p data-i18n="faq_a4_1">InsightCAP provides a built-in Export/Import utility to safely migrate your knowledge base. Simply copy your local database folder to your new computer and use your 24-word recovery phrase to unlock it.</p>
+                        <p class="text-xs italic text-slate-400" data-i18n="faq_a4_2">This ensures your data remains completely offline and under your direct control at all times.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA SECTION -->
+    <section class="pt-24 pb-20 px-6 md:px-12 bg-white border-t border-slate-200/50 text-center relative overflow-hidden z-10">
+        <div class="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none"></div>
         
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center reveal">
-            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-dark-card border border-brand-500/30 shadow-[0_0_30px_rgba(14,165,233,0.3)] mb-8">
-                <i data-lucide="shield-check" class="w-10 h-10 text-brand-400"></i>
-            </div>
-            <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white">Local-first & Encrypted by Default</h2>
-            <p class="text-slate-400 text-lg mb-12 leading-relaxed max-w-2xl mx-auto">
-                InsightCAP respects your privacy. Knowledge is stored locally by default. The local database is encrypted, and the decryption key is kept securely under your current Windows user account.
+        <div class="max-w-4xl mx-auto relative z-10 reveal">
+            <h2 class="font-extrabold text-4xl md:text-6xl leading-tight mb-8 text-slate-900" data-i18n="cta_title">
+                Stop losing<br>what you <span class="text-brand-600">already know.</span>
+            </h2>
+            <p class="text-lg text-slate-500 mb-10 max-w-lg mx-auto font-medium" data-i18n="cta_desc">
+                InsightCAP Community Edition is free to download. Get started building your personal memory today.
             </p>
             
-            <div class="bg-dark-card/60 border border-amber-500/30 rounded-2xl p-8 text-left max-w-3xl mx-auto backdrop-blur-md relative overflow-hidden group hover:border-amber-500/50 transition-colors">
-                <div class="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl -mr-10 -mt-10 rounded-full"></div>
-                <div class="flex flex-col sm:flex-row items-start gap-6 relative z-10">
-                    <div class="bg-amber-500/20 p-3 rounded-xl border border-amber-500/30 flex-shrink-0">
-                        <i data-lucide="key" class="w-8 h-8 text-amber-400"></i>
-                    </div>
-                    <div>
-                        <h4 class="text-amber-400 text-xl font-bold mb-3">24-Word Recovery Phrase</h4>
-                        <p class="text-slate-300 leading-relaxed mb-4">
-                            During first-time setup, you must save your recovery phrase. If the local key is removed, or if the app is reinstalled on another device/account, this phrase is strictly required to unlock your data.
-                        </p>
-                        <div class="flex items-start gap-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                            <i data-lucide="info" class="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5"></i>
-                            <p class="text-slate-400 text-sm">
-                                Custom knowledge folders are treated as user data and survive normal uninstalls unless explicitly chosen to be deleted.
-                            </p>
-                        </div>
-                    </div>
-                </div>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+                <a href="https://github.com/3k1c/insightcap-community/releases" class="inline-flex items-center justify-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-full font-bold text-[16px] transition-all hover:bg-slate-800 hover:-translate-y-1 shadow-xl shadow-slate-900/20 group w-full sm:w-auto">
+                    <i data-lucide="download" class="w-5 h-5 group-hover:animate-bounce"></i>
+                    <span data-i18n="btn_download_large">Download Free — Windows</span>
+                </a>
+                <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="inline-flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 px-10 py-5 rounded-full font-bold text-[16px] transition-all hover:bg-slate-50 hover:-translate-y-1 shadow-sm w-full sm:w-auto">
+                    <i data-lucide="github" class="w-5 h-5"></i>
+                    <span data-i18n="btn_github">View on GitHub</span>
+                </a>
             </div>
+            
+            <p class="font-mono text-[11px] tracking-widest uppercase text-slate-400 mb-6" data-i18n="cta_microcopy">
+                100% Local · No Sign-up Required
+            </p>
         </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="bg-dark-bg border-t border-white/10 pt-16 pb-8 relative z-10">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid md:grid-cols-2 gap-8 mb-12">
-                <div>
-                    <div class="flex items-center gap-2 mb-4">
-                        <div class="w-8 h-8 bg-gradient-to-br from-brand-400 to-brand-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md">
-                            <i data-lucide="brain-circuit" class="w-4 h-4"></i>
-                        </div>
-                        <span class="font-bold text-xl text-white tracking-wide">InsightCAP</span>
-                    </div>
-                    <p class="text-slate-500 text-sm leading-relaxed max-w-sm">
-                        Built for local-first knowledge. Turn your scattered digital footprint into an organized, actionable long-term memory system.
-                    </p>
-                </div>
-                <div class="md:text-right">
-                    <h4 class="font-semibold text-white mb-4">Licensing & Status</h4>
-                    <p class="text-slate-500 text-sm leading-relaxed max-w-md ml-auto">
-                        This repository contains public Community Edition beta materials. Source code and documentation are MIT Licensed unless otherwise stated. Binaries are free for personal and commercial use under the Community Edition License.
-                    </p>
-                </div>
+    <!-- FOOTER -->
+    <footer class="py-8 px-6 md:px-12 bg-slate-50 border-t border-slate-200/50 z-10 relative">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-2">
+                <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP Logo" class="w-6 h-6 rounded-md shadow-sm">
+                <span class="font-bold text-xl tracking-tight text-slate-500">InsightCAP</span>
             </div>
-            
-            <div class="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                <p class="text-slate-500 text-sm font-medium">
-                    &copy; 2026 InsightCAP Community. All rights reserved.
-                </p>
-                <div class="flex gap-6 text-sm font-medium text-slate-400">
-                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="hover:text-white transition flex items-center gap-1.5">
-                        <i data-lucide="github" class="w-4 h-4"></i> Repository
-                    </a>
-                    <a href="https://github.com/3k1c/insightcap-community/releases" target="_blank" class="hover:text-white transition flex items-center gap-1.5">
-                        <i data-lucide="package" class="w-4 h-4"></i> Releases
-                    </a>
-                </div>
+            <ul class="flex items-center gap-8">
+                <li><a href="https://github.com/3k1c/insightcap-community" class="font-bold text-[11px] tracking-widest uppercase text-slate-400 hover:text-slate-800 transition-colors" data-i18n="footer_repo">Repository</a></li>
+                <li><a href="https://github.com/3k1c/insightcap-community/releases" class="font-bold text-[11px] tracking-widest uppercase text-slate-400 hover:text-slate-800 transition-colors" data-i18n="footer_releases">Releases</a></li>
+            </ul>
+            <div class="font-bold text-[11px] tracking-widest uppercase text-slate-400">
+                © 2026 InsightCAP Community
             </div>
         </div>
     </footer>
 
-    <!-- Scripts -->
+    <!-- Translations & Scripts -->
     <script>
-        // Initialize Lucide Icons
-        lucide.createIcons();
+        // Multi-language Dictionary
+        const translations = {
+            en: {
+                nav_features: "Features",
+                nav_workflow: "Workflow",
+                nav_testimonials: "Testimonials",
+                nav_faq: "FAQ",
+                btn_download: "Download for Windows",
+                btn_download_large: "Download Free — Windows",
+                btn_github: "View on GitHub",
+                
+                hero_badge: "Community Edition — Free Download",
+                hero_title: "Capture once.<br>Remember <span class=\"text-gradient\">forever.</span>",
+                hero_subtitle: "A local-first knowledge system for researchers, writers, and developers. Turn scattered web pages and notes into a connected, permanent memory.",
+                hero_microcopy: "<i data-lucide=\"shield-check\" class=\"w-3.5 h-3.5\"></i> 100% Local · No Sign-up",
+                mockup_header: "<i data-lucide=\"lock\" class=\"w-3 h-3\"></i> Knowledge Base",
+                
+                audience_title: "Designed specifically for",
+                audience_1: "Researchers",
+                audience_2: "Developers",
+                audience_3: "Content Creators",
+                audience_4: "Officers",
+                
+                wf_badge: "How It Works",
+                wf_title: "A seamless workflow <br><span class=\"text-brand-400\">for modern thinkers</span>",
+                wf_step1_title: "1. Universal Capture",
+                wf_step1_desc: "Grab anything from the web, local documents, videos, or Telegram. One click is all it takes.",
+                wf_step2_title: "2. Organize",
+                wf_step2_desc: "Content is automatically extracted, indexed locally, and prepared for instant search.",
+                wf_step3_title: "3. Connect",
+                wf_step3_desc: "Create projects that link relevant knowledge with AI discussions to preserve important research context.",
+                wf_step4_title: "4. Create & Export",
+                wf_step4_desc: "Use the AI editor to draft reports or notes based on your captured knowledge. Export perfectly to Markdown, PDF, or Word.",
+                tag_web: "Web", tag_docs: "Docs", tag_telegram: "Telegram",
+                
+                priv_badge: "Privacy First",
+                priv_title: "Your knowledge.<br>Your <span class=\"text-brand-400\">device.</span>",
+                priv_desc1: "InsightCAP is built local-first by design. Your data never touches our servers because we don't have any.",
+                priv_box_title: "Fully Encrypted",
+                priv_box_desc: "AES-256 encryption secures your database under your Windows account, protected by a 24-word recovery phrase.",
+                
+                testi_badge: "Wall of Love",
+                testi_title: "Loved by knowledge workers",
+                testi_1_desc: "\"InsightCAP completely changed how I organize my research. I no longer lose track of important articles, and the fact that it's 100% local gives me peace of mind.\"",
+                testi_1_name: "John Doe",
+                testi_1_role: "Software Engineer",
+                testi_2_desc: "\"The Telegram bot integration is a game-changer. I just forward links to the bot while commuting, and they are indexed and searchable when I open my laptop.\"",
+                testi_2_name: "Alice Smith",
+                testi_2_role: "Content Writer",
+                testi_3_desc: "\"I was tired of subscription-based cloud tools locking my data. InsightCAP's local-first architecture and instant search is exactly what I was looking for.\"",
+                testi_3_name: "Michael R.",
+                testi_3_role: "PhD Researcher",
 
-        // Navbar blur and border effect on scroll
-        const navbar = document.getElementById('navbar');
-        window.addEventListener('scroll', () => {
-            if (window.scrollY > 20) {
-                navbar.classList.add('shadow-lg', 'bg-dark-bg/80');
-                navbar.classList.remove('bg-dark-bg/60');
-            } else {
-                navbar.classList.remove('shadow-lg', 'bg-dark-bg/80');
-                navbar.classList.add('bg-dark-bg/60');
+                faq_title: "Frequently Asked Questions",
+                faq_q1: "Is it really completely free?",
+                faq_a1: "Yes. The Community Edition is completely free for both personal and commercial use. No hidden fees or usage limits.",
+                faq_q2: "Does it support Mac or Linux?",
+                faq_a2: "Currently, InsightCAP is optimized for Windows to utilize its local encryption protocols. Support for other platforms is being explored.",
+                faq_q3: "How is this different from Notion or Obsidian?",
+                faq_a3: "Unlike Notion, your data is 100% local and encrypted. Unlike Obsidian, InsightCAP focuses heavily on automated extraction from external sources (Web, YouTube, Telegram).",
+                faq_q4: "What happens if I change my computer?",
+                faq_a4_1: "InsightCAP provides a built-in Export/Import utility to safely migrate your knowledge base. Simply copy your local database folder to your new computer and use your 24-word recovery phrase to unlock it.",
+                faq_a4_2: "This ensures your data remains completely offline and under your direct control at all times.",
+                
+                cta_title: "Stop losing<br>what you <span class=\"text-brand-600\">already know.</span>",
+                cta_desc: "InsightCAP Community Edition is free to download. Get started building your personal memory today.",
+                cta_microcopy: "100% Local · No Sign-up Required",
+                
+                footer_repo: "Repository",
+                footer_releases: "Releases"
+            },
+            "zh-TW": {
+                nav_features: "特色",
+                nav_workflow: "工作流",
+                nav_testimonials: "用戶見證",
+                nav_faq: "常見問題",
+                btn_download: "下載 Windows 版",
+                btn_download_large: "免費下載 — Windows",
+                btn_github: "在 GitHub 查看",
+                
+                hero_badge: "Community Edition — 免費下載",
+                hero_title: "一次擷取，<span class=\"text-gradient\">永久銘記。</span>",
+                hero_subtitle: "專為研究人員、作家與開發者設計的本地優先知識系統。將零散的網頁與筆記，轉化為彼此連結的永久記憶。",
+                hero_microcopy: "<i data-lucide=\"shield-check\" class=\"w-3.5 h-3.5\"></i> 100% 本地儲存 · 無需註冊",
+                mockup_header: "<i data-lucide=\"lock\" class=\"w-3 h-3\"></i> 知識庫",
+                
+                audience_title: "專為這些群體設計",
+                audience_1: "研究人員",
+                audience_2: "開發人員",
+                audience_3: "內容創作者",
+                audience_4: "辦公人員",
+                
+                wf_badge: "運作方式",
+                wf_title: "專為現代思考者打造的<br><span class=\"text-brand-400\">無縫工作流</span>",
+                wf_step1_title: "1. 全方位擷取",
+                wf_step1_desc: "從網頁、本地文件、影片或 Telegram 輕鬆獲取資訊。一切盡在掌握。",
+                wf_step2_title: "2. 智能組織",
+                wf_step2_desc: "內容自動提取並建立索引，為瞬間搜尋做好準備。",
+                wf_step3_title: "3. 深度連結",
+                wf_step3_desc: "建立專案，將相關知識與 AI 討論連結起來，保留重要的研究脈絡。",
+                wf_step4_title: "4. 創作與匯出",
+                wf_step4_desc: "使用 AI 編輯器草擬報告或筆記。完美匯出為 Markdown、PDF 或 Word。",
+                tag_web: "網頁", tag_docs: "文件", tag_telegram: "Telegram",
+                
+                priv_badge: "隱私至上",
+                priv_title: "你的知識，<br>存在你的 <span class=\"text-brand-400\">設備。</span>",
+                priv_desc1: "InsightCAP 採用本地優先設計。你的資料永遠不會離開你的電腦，因為我們根本沒有伺服器。",
+                priv_box_title: "完全加密",
+                priv_box_desc: "採用 AES-256 加密，金鑰安全儲存於 Windows 帳戶下，配合 24 位元復原助記詞提供極致保護。",
+                
+                testi_badge: "用戶見證",
+                testi_title: "深受知識工作者喜愛",
+                testi_1_desc: "「InsightCAP 徹底改變了我組織研究資料的方式。我再也不會弄丟重要的文章，而且 100% 本地儲存讓我非常安心。」",
+                testi_1_name: "John Doe",
+                testi_1_role: "軟體工程師",
+                testi_2_desc: "「Telegram 機器人的整合太棒了。我只需在通勤時將連結轉發給機器人，打開筆電時它們就已經建立好索引並可以搜尋了。」",
+                testi_2_name: "Alice Smith",
+                testi_2_role: "內容創作者",
+                testi_3_desc: "「我受夠了訂閱制的雲端工具綁架我的資料。InsightCAP 的本地優先架構和即時搜尋，正是我一直在尋找的工具。」",
+                testi_3_name: "Michael R.",
+                testi_3_role: "博士研究員",
+
+                faq_title: "常見問題",
+                faq_q1: "這真的是完全免費的嗎？",
+                faq_a1: "是的。社群版（Community Edition）對於個人和商業用途均為免費，沒有隱藏費用或使用限制。",
+                faq_q2: "有支援 Mac 或 Linux 嗎？",
+                faq_a2: "目前 InsightCAP 專為 Windows 優化，以充分利用其本地加密協議。我們正在評估支援其他平台的可能性。",
+                faq_q3: "這跟 Notion 或 Obsidian 有什麼不同？",
+                faq_a3: "與 Notion 不同，您的資料是 100% 本地且加密的（無雲端依賴）。與 Obsidian 不同，InsightCAP 更專注於從外部來源（網頁、YouTube、Telegram）進行自動化擷取與解析。",
+                faq_q4: "如果我換電腦了怎麼辦？",
+                faq_a4_1: "InsightCAP 內建匯出/匯入工具，讓您安全遷移知識庫。您只需將本地資料夾複製到新電腦，並使用您的 24 位元復原助記詞解鎖即可。",
+                faq_a4_2: "這確保您的資料始終保持離線，且隨時在您的完全掌控之中。",
+                
+                cta_title: "停止遺忘<br>你 <span class=\"text-brand-600\">早已擁有的知識。</span>",
+                cta_desc: "InsightCAP 社群版現可免費下載。今天就開始建立你的個人記憶庫。",
+                cta_microcopy: "100% 本地儲存 · 無需註冊",
+                
+                footer_repo: "原始碼專案",
+                footer_releases: "下載頁面"
+            },
+            "zh-CN": {
+                nav_features: "特色",
+                nav_workflow: "工作流",
+                nav_testimonials: "用户评价",
+                nav_faq: "常见问题",
+                btn_download: "下载 Windows 版",
+                btn_download_large: "免费下载 — Windows",
+                btn_github: "在 GitHub 查看",
+                
+                hero_badge: "Community Edition — 免费下载",
+                hero_title: "一次抓取，<span class=\"text-gradient\">永久铭记。</span>",
+                hero_subtitle: "专为研究人员、作家与开发者设计的本地优先知识系统。将零散的网页与笔记，转化为彼此链接的永久记忆。",
+                hero_microcopy: "<i data-lucide=\"shield-check\" class=\"w-3.5 h-3.5\"></i> 100% 本地存储 · 无需注册",
+                mockup_header: "<i data-lucide=\"lock\" class=\"w-3 h-3\"></i> 知识库",
+                
+                audience_title: "专为这些群体设计",
+                audience_1: "研究人员",
+                audience_2: "开发人员",
+                audience_3: "内容创作者",
+                audience_4: "办公人员",
+                
+                wf_badge: "运作方式",
+                wf_title: "专为现代思考者打造的<br><span class=\"text-brand-400\">无缝工作流</span>",
+                wf_step1_title: "1. 全方位抓取",
+                wf_step1_desc: "从网页、本地文件、视频或 Telegram 轻松获取信息。一切尽在掌握。",
+                wf_step2_title: "2. 智能组织",
+                wf_step2_desc: "内容自动提取并建立索引，为瞬间搜索做好准备。",
+                wf_step3_title: "3. 深度链接",
+                wf_step3_desc: "建立项目，将相关知识与 AI 讨论链接起来，保留重要的研究脉络。",
+                wf_step4_title: "4. 创作与导出",
+                wf_step4_desc: "使用 AI 编辑器草拟报告或笔记。完美导出为 Markdown、PDF 或 Word。",
+                tag_web: "网页", tag_docs: "文档", tag_telegram: "Telegram",
+                
+                priv_badge: "隐私至上",
+                priv_title: "你的知识，<br>存在你的 <span class=\"text-brand-400\">设备。</span>",
+                priv_desc1: "InsightCAP 采用本地优先设计。你的数据永远不会离开你的电脑，因为我们根本没有服务器。",
+                priv_box_title: "完全加密",
+                priv_box_desc: "采用 AES-256 加密，密钥安全存储于 Windows 账户下，配合 24 位恢复助记词提供极致保护。",
+                
+                testi_badge: "用户评价",
+                testi_title: "深受知识工作者喜爱",
+                testi_1_desc: "“InsightCAP 彻底改变了我组织研究资料的方式。我再也不会弄丢重要的文章，而且 100% 本地存储让我非常安心。”",
+                testi_1_name: "John Doe",
+                testi_1_role: "软件工程师",
+                testi_2_desc: "“Telegram 机器人的整合太棒了。我只需在通勤时将链接转发给机器人，打开电脑时它们就已经建好索引并可以搜索了。”",
+                testi_2_name: "Alice Smith",
+                testi_2_role: "内容创作者",
+                testi_3_desc: "“我受够了订阅制的云端工具绑架我的数据。InsightCAP 的本地优先架构和即时搜索，正是我一直在寻找的工具。”",
+                testi_3_name: "Michael R.",
+                testi_3_role: "博士研究员",
+
+                faq_title: "常见问题",
+                faq_q1: "这真的是完全免费的吗？",
+                faq_a1: "是的。社区版（Community Edition）对于个人和商业用途均为免费，没有隐藏费用或使用限制。",
+                faq_q2: "有支持 Mac 或 Linux 吗？",
+                faq_a2: "目前 InsightCAP 专为 Windows 优化，以充分利用其本地加密协议。我们正在评估支持其他平台的可能性。",
+                faq_q3: "这跟 Notion 或 Obsidian 有什么不同？",
+                faq_a3: "与 Notion 不同，您的数据是 100% 本地且加密的（无云端依赖）。与 Obsidian 不同，InsightCAP 更专注于从外部来源（网页、YouTube、Telegram）进行自动化抓取与解析。",
+                faq_q4: "如果我换电脑了怎么办？",
+                faq_a4_1: "InsightCAP 内置导出/导入工具，让您安全迁移知识库。您只需将本地文件夹复制到新电脑，并使用您的 24 位恢复助记词解锁即可。",
+                faq_a4_2: "这确保您的数据始终保持离线，且随时在您的完全掌控之中。",
+                
+                cta_title: "停止遗忘<br>你 <span class=\"text-brand-600\">早已拥有的知识。</span>",
+                cta_desc: "InsightCAP 社区版现可免费下载。今天就开始建立你的个人记忆库。",
+                cta_microcopy: "100% 本地存储 · 无需注册",
+                
+                footer_repo: "源码项目",
+                footer_releases: "下载页面"
+            }
+        };
+
+        // Custom Dropdown Logic
+        function toggleLangMenu(event) {
+            event.stopPropagation();
+            document.getElementById('lang-menu').classList.toggle('hidden');
+        }
+
+        document.addEventListener('click', (e) => {
+            const container = document.getElementById('lang-dropdown-container');
+            const menu = document.getElementById('lang-menu');
+            if (container && !container.contains(e.target)) {
+                menu.classList.add('hidden');
             }
         });
 
-        // Intersection Observer for Scroll Reveal Animations
-        document.addEventListener('DOMContentLoaded', () => {
-            const reveals = document.querySelectorAll('.reveal');
+        // i18n Language Setup
+        function changeLanguage(lang) {
+            document.documentElement.lang = lang;
+            localStorage.setItem('preferredLang', lang);
+            
+            // Update Title
+            const titles = { 'en': 'InsightCAP - Local-First Knowledge System', 'zh-TW': 'InsightCAP - 本地優先知識系統', 'zh-CN': 'InsightCAP - 本地优先知识系统' };
+            document.getElementById('page-title').innerText = titles[lang] || titles['en'];
 
-            const revealOptions = {
-                threshold: 0.15,
-                rootMargin: "0px 0px -50px 0px"
-            };
-
-            const revealOnScroll = new IntersectionObserver(function(
-                entries,
-                observer
-            ) {
-                entries.forEach(entry => {
-                    if (!entry.isIntersecting) {
-                        return;
-                    } else {
-                        entry.target.classList.add('active');
-                        // Optional: Stop observing once revealed
-                        // observer.unobserve(entry.target);
-                    }
-                });
-            }, revealOptions);
-
-            reveals.forEach(reveal => {
-                revealOnScroll.observe(reveal);
+            // Update all elements with data-i18n
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang] && translations[lang][key]) {
+                    el.innerHTML = translations[lang][key];
+                }
             });
             
-            // Trigger once on load for elements already in viewport
-            setTimeout(() => {
-                reveals.forEach(reveal => {
-                    const windowHeight = window.innerHeight;
-                    const elementTop = reveal.getBoundingClientRect().top;
-                    if (elementTop < windowHeight - 50) {
-                        reveal.classList.add('active');
-                    }
-                });
-            }, 100);
+            lucide.createIcons();
+        }
+
+        function selectLang(lang, label) {
+            document.getElementById('current-lang-label').innerText = label;
+            changeLanguage(lang);
+            document.getElementById('lang-menu').classList.add('hidden');
+        }
+
+        // Initialize language
+        const savedLang = localStorage.getItem('preferredLang') || 'en';
+        const langLabels = { 'en': 'English', 'zh-TW': '繁體中文', 'zh-CN': '简体中文' };
+        document.getElementById('current-lang-label').innerText = langLabels[savedLang];
+        changeLanguage(savedLang);
+
+        // UI Initialization
+        window.onload = () => {
+            const reveals = document.querySelectorAll('.reveal');
+            const observer = new IntersectionObserver(entries => {
+                entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('active'); });
+            }, { threshold: 0.15 });
+            reveals.forEach(r => observer.observe(r));
+        };
+
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 20) navbar.classList.add('bg-white/80', 'backdrop-blur-xl', 'border-slate-200/50', 'shadow-sm');
+            else navbar.classList.remove('bg-white/80', 'backdrop-blur-xl', 'border-slate-200/50', 'shadow-sm');
         });
     </script>
 </body>
