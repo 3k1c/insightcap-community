@@ -3,13 +3,11 @@ export function nextStreamingText(current: string, target: string): string {
 
     const remaining = target.length - current.length;
 
-    // 尾端直通：最後 3 字直接顯示，避免懸空
+    // Flush the tail directly so the last few characters do not hang.
     if (remaining <= 3) return target;
 
-    // 固定節奏輸出（每 24ms）
-    // buffer > 300 → 2字/幀 ≈ 83字/秒（積壓追趕）
-    // 其餘        → 1字/幀 ≈ 42字/秒（舒適閱讀速度）
+    // Called every 24ms. Large backlogs catch up at 2 chars/frame;
+    // normal responses advance at 1 char/frame for a steadier reading pace.
     const step = remaining > 300 ? 2 : 1;
     return target.slice(0, current.length + step);
 }
-

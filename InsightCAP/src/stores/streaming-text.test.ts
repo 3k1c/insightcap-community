@@ -14,14 +14,21 @@ describe('nextStreamingText', () => {
         const target = 'A'.repeat(500);
         const next = nextStreamingText('', target);
 
-        expect(next.length).toBeLessThanOrEqual(18);
+        expect(next.length).toBeLessThanOrEqual(2);
+    });
+
+    it('flushes the final tail without hanging on the last characters', () => {
+        const target = 'Streaming response text';
+        const current = 'Streaming response te';
+
+        expect(nextStreamingText(current, target)).toBe(target);
     });
 
     it('eventually reaches the target text', () => {
         const target = 'Streaming response text';
         let current = '';
 
-        for (let i = 0; i < 20; i += 1) {
+        for (let i = 0; i < 40; i += 1) {
             current = nextStreamingText(current, target);
         }
 

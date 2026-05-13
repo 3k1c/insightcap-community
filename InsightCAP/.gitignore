@@ -13,6 +13,7 @@ dist-ssr
 target/
 .tauri/
 .fastembed_cache/
+src-tauri/notes/draft_*.md
 *.local
 
 # Editor directories and files

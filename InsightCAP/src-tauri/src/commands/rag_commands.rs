@@ -429,8 +429,8 @@ mod tests {
     }
 
     #[test]
-    fn fast_chat_path_is_only_for_plain_non_rag_chat() {
-        assert!(should_use_fast_chat_path(false, false, None, None, None));
+    fn fast_chat_path_is_disabled_so_memory_context_always_applies() {
+        assert!(!should_use_fast_chat_path(false, false, None, None, None));
         assert!(!should_use_fast_chat_path(true, false, None, None, None));
         assert!(!should_use_fast_chat_path(false, true, None, None, None));
         assert!(!should_use_fast_chat_path(
