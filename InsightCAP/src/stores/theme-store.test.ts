@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 describe('themeStore', () => {
     beforeEach(() => {
@@ -12,5 +14,12 @@ describe('themeStore', () => {
 
         expect(useThemeStore.getState().theme).toBe('void');
         expect(document.documentElement.classList.contains('theme-void')).toBe(true);
+    });
+
+    it('uses the same dark theme fallback in the startup HTML', () => {
+        const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+
+        expect(html).toContain("? stored : 'void'");
+        expect(html).toContain("classList.add('theme-void')");
     });
 });

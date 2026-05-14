@@ -86,6 +86,9 @@ const providerLabels: Record<string, string> = {
     ollama: 'Ollama (Local)',
 };
 
+const DEFAULT_CLOUD_MODEL = 'gpt-4o-mini';
+const DEFAULT_OLLAMA_MODEL = 'gemma4:e4b';
+
 function providerBaseUrl(provider: string) {
     return provider === 'ollama' ? 'http://localhost:11434' : '';
 }
@@ -107,12 +110,12 @@ function buildInitialSettings(provider: string, model: string, apiKey: string): 
             },
             contentProcessorLlm: {
                 provider: 'ollama',
-                model: 'qwen2.5:3b',
+                model: DEFAULT_OLLAMA_MODEL,
                 baseUrl: 'http://localhost:11434',
             },
             visionModel: {
                 provider: 'ollama',
-                model: 'deepseek-ocr',
+                model: DEFAULT_OLLAMA_MODEL,
                 baseUrl: 'http://localhost:11434',
             },
             embeddingModel: {
@@ -150,7 +153,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
     const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
     const [copied, setCopied] = useState(false);
     const [setupProvider, setSetupProvider] = useState('openai');
-    const [setupModel, setSetupModel] = useState('gpt-4o-mini');
+    const [setupModel, setSetupModel] = useState(DEFAULT_CLOUD_MODEL);
     const [setupApiKey, setSetupApiKey] = useState('');
     const [showApiKey, setShowApiKey] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -743,7 +746,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                                     onChange={e => {
                                         const provider = e.target.value;
                                         setSetupProvider(provider);
-                                        setSetupModel(provider === 'ollama' ? 'qwen2.5:7b' : 'gpt-4o-mini');
+                                        setSetupModel(provider === 'ollama' ? DEFAULT_OLLAMA_MODEL : DEFAULT_CLOUD_MODEL);
                                     }}
                                     className="h-10 w-full rounded-lg border border-stroke-divider bg-surface-base px-3 text-fs-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-stroke-focus"
                                 >
@@ -757,7 +760,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
                                 label={tr('settings.model_name', 'Model Name')}
                                 value={setupModel}
                                 onChange={e => setSetupModel(e.target.value)}
-                                placeholder={setupProvider === 'ollama' ? 'qwen2.5:7b' : 'gpt-4o-mini'}
+                                placeholder={setupProvider === 'ollama' ? DEFAULT_OLLAMA_MODEL : DEFAULT_CLOUD_MODEL}
                             />
                             {setupProvider !== 'ollama' && (
                                 <Input

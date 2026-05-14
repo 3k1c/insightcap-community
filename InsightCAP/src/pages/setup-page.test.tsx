@@ -363,7 +363,17 @@ describe('SetupPage onboarding flow', () => {
         const payload = setupCalls[0][1] as { payload: any };
         expect(payload.payload.initialSettings.aiModels.chatLlm).toMatchObject({
             provider: 'ollama',
-            model: 'qwen2.5:7b',
+            model: 'gemma4:e4b',
+            baseUrl: 'http://localhost:11434',
+        });
+        expect(payload.payload.initialSettings.aiModels.contentProcessorLlm).toMatchObject({
+            provider: 'ollama',
+            model: 'gemma4:e4b',
+            baseUrl: 'http://localhost:11434',
+        });
+        expect(payload.payload.initialSettings.aiModels.visionModel).toMatchObject({
+            provider: 'ollama',
+            model: 'gemma4:e4b',
             baseUrl: 'http://localhost:11434',
         });
         expect(payload.payload.initialSettings.aiModels.providerProfiles[0]).toMatchObject({

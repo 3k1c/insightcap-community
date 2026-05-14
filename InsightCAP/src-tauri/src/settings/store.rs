@@ -60,19 +60,19 @@ impl Default for AIModelSettings {
         Self {
             chat_llm: ModelSettings {
                 provider: "ollama".to_string(),
-                model: "qwen2.5:7b".to_string(),
+                model: "gemma4:e4b".to_string(),
                 api_key: None,
                 base_url: default_url.clone(),
             },
             content_processor_llm: ModelSettings {
                 provider: "ollama".to_string(),
-                model: "qwen2.5:3b".to_string(),
+                model: "gemma4:e4b".to_string(),
                 api_key: None,
                 base_url: default_url.clone(),
             },
             vision_model: ModelSettings {
                 provider: "ollama".to_string(),
-                model: "deepseek-ocr".to_string(),
+                model: "gemma4:e4b".to_string(),
                 api_key: None,
                 base_url: default_url.clone(),
             },
@@ -671,7 +671,7 @@ pub async fn save_settings(
 
 #[cfg(test)]
 mod tests {
-    use super::ReminderSettings;
+    use super::{AIModelSettings, ReminderSettings};
 
     #[test]
     fn reminder_settings_legacy_json_defaults_ai_enabled() {
@@ -688,5 +688,17 @@ mod tests {
 
         assert!(settings.ai_enabled);
         assert!(!settings.enabled);
+    }
+
+    #[test]
+    fn ollama_defaults_use_gemma4_for_chat_processor_and_vision_models() {
+        let settings = AIModelSettings::default();
+
+        assert_eq!(settings.chat_llm.provider, "ollama");
+        assert_eq!(settings.chat_llm.model, "gemma4:e4b");
+        assert_eq!(settings.content_processor_llm.provider, "ollama");
+        assert_eq!(settings.content_processor_llm.model, "gemma4:e4b");
+        assert_eq!(settings.vision_model.provider, "ollama");
+        assert_eq!(settings.vision_model.model, "gemma4:e4b");
     }
 }

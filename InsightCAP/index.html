@@ -14,10 +14,10 @@
         try {
           var stored = localStorage.getItem('ic-theme');
           var validThemes = ['frost', 'void', 'warm', 'sage'];
-          var theme = (stored && validThemes.includes(stored)) ? stored : 'frost';
+          var theme = (stored && validThemes.includes(stored)) ? stored : 'void';
           document.documentElement.classList.add('theme-' + theme);
         } catch (e) {
-          document.documentElement.classList.add('theme-frost');
+          document.documentElement.classList.add('theme-void');
         }
         try {
           // quick-capture 視窗背景透明

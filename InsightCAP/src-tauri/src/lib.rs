@@ -304,6 +304,8 @@ pub fn run() {
             commands::auth_commands::restart_app,
             commands::settings_commands::get_settings,
             commands::settings_commands::save_settings,
+            commands::settings_commands::pause_global_hotkeys,
+            commands::settings_commands::resume_global_hotkeys,
             commands::settings_commands::initialize_workspace,
             commands::settings_commands::switch_kb_path,
             commands::settings_commands::test_ollama,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useThemeStore, type Theme } from '../stores/themeStore';
@@ -31,6 +32,7 @@ import {
     updateEditorAiAction,
     type EditorAiAction,
 } from '../lib/editor-ai-actions';
+import packageJson from '../../package.json';
 
 interface ModelSettings {
     provider: string;
@@ -124,6 +126,8 @@ const THEMES: { value: Theme }[] = [
     { value: 'warm' },
     { value: 'sage' },
 ];
+
+const APP_VERSION_FALLBACK = packageJson.version;
 
 
 
@@ -320,14 +324,46 @@ const TimeField: React.FC<{ value: string; onChange: (v: string) => void; classN
 const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; className?: string }> = ({ value, onChange, className }) => {
     const t = useT();
     const [recording, setRecording] = React.useState(false);
+    const recordingRef = React.useRef(false);
+
+    const resumeGlobalHotkeys = React.useCallback(() => {
+        void invoke('resume_global_hotkeys').catch(e => {
+            console.error('Failed to resume global hotkeys', e);
+        });
+    }, []);
+
+    const stopRecording = React.useCallback(() => {
+        if (!recordingRef.current) return;
+        recordingRef.current = false;
+        setRecording(false);
+        resumeGlobalHotkeys();
+    }, [resumeGlobalHotkeys]);
+
+    const startRecording = React.useCallback(() => {
+        if (recordingRef.current) return;
+        recordingRef.current = true;
+        setRecording(true);
+        void invoke('pause_global_hotkeys').catch(e => {
+            console.error('Failed to pause global hotkeys', e);
+        });
+    }, []);
+
+    React.useEffect(() => {
+        return () => {
+            if (recordingRef.current) {
+                recordingRef.current = false;
+                resumeGlobalHotkeys();
+            }
+        };
+    }, [resumeGlobalHotkeys]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (!recording) return;
+        if (!recordingRef.current) return;
         e.preventDefault();
         e.stopPropagation();
 
         if (e.key === 'Escape') {
-            setRecording(false);
+            stopRecording();
             return;
         }
 
@@ -347,16 +383,16 @@ const HotkeyInput: React.FC<{ value: string; onChange: (v: string) => void; clas
 
         const hotkey = [...mods, key].join('+');
         onChange(hotkey);
-        setRecording(false);
+        stopRecording();
     };
 
     return (
         <button
             type="button"
             className={`text-left px-3 py-1.5 rounded-lg text-fs-sm border transition-colors focus:outline-none w-full ${recording ? 'bg-accent-default/10 border-accent-default text-accent-default' : 'bg-surface-base border-stroke-divider text-text-primary hover:border-accent-default/50'} ${className ?? ''}`}
-            onClick={() => setRecording(true)}
+            onClick={startRecording}
             onKeyDown={handleKeyDown}
-            onBlur={() => setRecording(false)}
+            onBlur={stopRecording}
         >
             {recording ? t('settings.hotkey_recording') : (value || t('settings.hotkey_none'))}
         </button>
@@ -409,9 +445,9 @@ const POPULAR_MODELS: Record<string, ModelOption[]> = {
         { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (via OpenRouter)' },
     ],
     ollama: [
+        { value: 'gemma4:e4b', label: 'Gemma 4 (e4b)' },
         { value: 'gpt-oss:20b', label: 'GPT-OSS 20B' },
         { value: 'gpt-oss:120b', label: 'GPT-OSS 120B' },
-        { value: 'gemma4:e4b', label: 'Gemma 4 (e4b)' },
         { value: 'gemma4:26b', label: 'Gemma 4 26B' },
         { value: 'gemma3', label: 'Gemma 3' },
         { value: 'qwen3', label: 'Qwen3' },
@@ -584,6 +620,7 @@ export const SettingsPage: React.FC = () => {
     const [settings, setSettings] = useState<AllSettings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<AllSettings | null>(null);
     const [saving, setSaving] = useState(false);
+    const [appVersion, setAppVersion] = useState(APP_VERSION_FALLBACK);
 
     const [rebuildTagsProgress, setRebuildTagsProgress] = useState<{ current: number; total: number } | null>(null);
     const rebuildTagsUnlistenRef = useRef<(() => void) | null>(null);
@@ -679,6 +716,9 @@ export const SettingsPage: React.FC = () => {
     useEffect(() => {
         loadSettings();
         loadWhisperStatus();
+        getVersion()
+            .then(setAppVersion)
+            .catch(() => {});
     }, []);
 
 
@@ -1986,7 +2026,7 @@ export const SettingsPage: React.FC = () => {
                 <div className="mt-auto pt-6 px-3 border-t border-stroke-divider/30">
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-bold text-accent-default tracking-widest uppercase opacity-70">
-                            InsightCAP v0.1.0
+                            InsightCAP v{appVersion}
                         </span>
 
                         <span className="text-[9px] text-text-tertiary/40 leading-tight mt-1 whitespace-pre-line">

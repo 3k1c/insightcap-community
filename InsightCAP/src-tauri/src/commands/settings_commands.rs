@@ -3,6 +3,7 @@ use crate::settings::store::{self, AllSettings};
 use reqwest::Client;
 use sqlx::SqlitePool;
 use tauri::{Manager, State};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[tauri::command]
 pub async fn get_settings(pool: State<'_, SqlitePool>) -> Result<AllSettings, String> {
@@ -30,6 +31,26 @@ pub async fn save_settings(
     crate::capture::keyboard::apply_global_hotkeys(&handle, &settings.hotkeys)?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn pause_global_hotkeys(handle: tauri::AppHandle) -> Result<(), String> {
+    handle
+        .global_shortcut()
+        .unregister_all()
+        .map_err(|e| format!("Failed to pause global hotkeys: {}", e))
+}
+
+#[tauri::command]
+pub async fn resume_global_hotkeys(
+    handle: tauri::AppHandle,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let settings = store::get_settings(pool.inner())
+        .await
+        .map_err(|e| format!("Database error: {}", e))?;
+
+    crate::capture::keyboard::apply_global_hotkeys(&handle, &settings.hotkeys)
 }
 
 #[tauri::command]
