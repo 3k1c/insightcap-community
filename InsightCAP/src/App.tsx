@@ -11,7 +11,8 @@ import { ReminderToast } from './components/memory/ReminderToast';
 
 const windowLabel = (window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } }).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? '';
 
-interface AuthStatus {
+interface StartupStatus {
+    kbPath: string;
     isSetup: boolean;
     autoLogin: boolean;
     isMigrated: boolean;
@@ -33,22 +34,15 @@ export default function App() {
 
     async function initApp() {
         try {
-            const path = await getKbPath();
-            setKbPath(path);
-
-            const status = await invoke<AuthStatus>('get_auth_status', { kbPath: path });
+            const status = await invoke<StartupStatus>('get_startup_status');
+            setKbPath(status.kbPath);
 
             if (!status.isSetup) {
                 setAppState('setup');
             } else if (status.isMigrated) {
                 setAppState('migrate');
             } else if (status.autoLogin) {
-                const autoOk = await invoke<boolean>('try_auto_login', { kbPath: path });
-                if (autoOk) {
-                    setAppState('main');
-                } else {
-                    setAppState('login');
-                }
+                setAppState('main');
             } else {
                 setAppState('login');
             }
@@ -58,20 +52,16 @@ export default function App() {
         }
     }
 
-    async function getKbPath(): Promise<string> {
-        try {
-            const settings = await invoke<{ kbPath?: string }>('get_settings').catch(() => ({}));
-            if (settings && (settings as { knowledge?: { kbPath?: string } }).knowledge) {
-                return (settings as { knowledge?: { kbPath?: string } }).knowledge?.kbPath || '';
-            }
-        } catch { }
-        return '';
-    }
-
     if (appState === 'loading') {
         return (
-            <div className="flex h-screen w-screen items-center justify-center bg-surface-base">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-stroke-divider border-t-accent-default" />
+            <div className="flex h-screen w-screen items-center justify-center bg-surface-base text-text-primary">
+                <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-stroke-divider border-t-accent-default" />
+                    <div>
+                        <p className="text-fs-lg font-semibold">正在啟動 InsightCAP</p>
+                        <p className="mt-2 text-fs-sm text-text-secondary">首次啟動可能需要幾秒鐘，請稍候。</p>
+                    </div>
+                </div>
             </div>
         );
     }

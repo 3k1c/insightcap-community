@@ -27,6 +27,15 @@ pub struct AuthStatus {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StartupStatus {
+    pub kb_path: String,
+    pub is_setup: bool,
+    pub auto_login: bool,
+    pub is_migrated: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LockStatus {
     pub is_locked: bool,
     pub is_permanently_locked: bool,
@@ -159,12 +168,169 @@ mod existing_kb_tests {
 
         assert!(!target_is_empty_or_missing(temp.path()).expect("check workspace"));
     }
+
+    #[test]
+    fn startup_status_for_existing_setup_does_not_report_empty_workspace() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let insightcap_dir = temp.path().join(".insightcap");
+        std::fs::create_dir_all(&insightcap_dir).expect("create .insightcap");
+        std::fs::write(
+            insightcap_dir.join("auth.json"),
+            r#"{"version":1,"salt":""}"#,
+        )
+        .expect("write auth");
+        std::fs::write(insightcap_dir.join("recovery.bin"), b"recovery").expect("write recovery");
+
+        let status =
+            read_auth_status(temp.path().to_str().unwrap(), true, false).expect("read status");
+
+        assert!(status.is_setup);
+        assert!(status.auto_login);
+        assert!(!status.is_empty_for_new_setup);
+    }
+
+    #[test]
+    fn restored_kb_path_is_persisted_to_bootstrap() {
+        let app_data = tempfile::tempdir().expect("app data");
+        let kb = tempfile::tempdir().expect("kb");
+
+        persist_active_kb_path(app_data.path(), kb.path().to_str().unwrap())
+            .expect("persist active kb");
+
+        assert_eq!(
+            crate::db::connection::read_bootstrap(app_data.path()),
+            Some(kb.path().to_string_lossy().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn rekey_database_verifies_new_key_before_returning() {
+        let kb = tempfile::tempdir().expect("kb");
+        let old_key = "1111111111111111111111111111111111111111111111111111111111111111";
+        let new_key = "2222222222222222222222222222222222222222222222222222222222222222";
+
+        let pool = crate::db::connection::init_db(kb.path(), Some(old_key))
+            .await
+            .expect("create encrypted db");
+        sqlx::query("CREATE TABLE IF NOT EXISTS rekey_probe (id INTEGER PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .expect("create probe");
+        pool.close().await;
+
+        rekey_database(kb.path().to_str().unwrap(), old_key, new_key)
+            .await
+            .expect("rekey db");
+
+        assert!(verify_database_key(kb.path().to_str().unwrap(), new_key)
+            .await
+            .is_ok());
+        assert!(verify_database_key(kb.path().to_str().unwrap(), old_key)
+            .await
+            .is_err());
+    }
 }
 
 #[derive(Serialize, Deserialize)]
 struct AuthJson {
     version: u32,
     salt: String, // hex-encoded 32-byte Argon2id salt
+}
+
+fn read_keychain_auto_login() -> bool {
+    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
+        .and_then(|e| e.get_password())
+        .is_ok()
+}
+
+fn read_auth_status(
+    kb_path: &str,
+    keychain_ok: bool,
+    check_empty_for_new_setup: bool,
+) -> Result<AuthStatus, String> {
+    let auth_exists = auth_json_path(kb_path).exists();
+    let recovery_exists = recovery_bin_path(kb_path).exists();
+    let db_exists = PathBuf::from(kb_path)
+        .join(".insightcap")
+        .join("insightcap.db")
+        .exists();
+
+    let is_setup = auth_exists && recovery_exists;
+    let is_migrated = is_setup && db_exists && !keychain_ok;
+    let is_empty_for_new_setup = if is_setup || !check_empty_for_new_setup {
+        false
+    } else {
+        target_is_empty_or_missing(Path::new(kb_path))?
+    };
+
+    Ok(AuthStatus {
+        is_setup,
+        auto_login: keychain_ok,
+        is_migrated,
+        is_empty_for_new_setup,
+    })
+}
+
+fn persist_active_kb_path(app_data_dir: &Path, kb_path: &str) -> Result<(), String> {
+    crate::db::connection::write_bootstrap(app_data_dir, kb_path)
+}
+
+fn persist_active_kb_path_for_app(app: &tauri::AppHandle, kb_path: &str) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e: tauri::Error| e.to_string())?;
+    persist_active_kb_path(&app_data_dir, kb_path)
+}
+
+async fn open_kb_pool_with_key(kb_path: &str, key_hex: &str) -> Result<SqlitePool, String> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    let db_path = PathBuf::from(kb_path)
+        .join(".insightcap")
+        .join("insightcap.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
+    let options = SqliteConnectOptions::from_str(&db_url)
+        .map_err(|e| format!("DB URL     : {}", e))?
+        .pragma("key", format!("\"x'{}'\"", key_hex))
+        .create_if_missing(false);
+
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|e| format!("DB open failed: {}", e))
+}
+
+async fn verify_database_key(kb_path: &str, key_hex: &str) -> Result<(), String> {
+    let pool = open_kb_pool_with_key(kb_path, key_hex).await?;
+    let res = sqlx::query("SELECT 1 FROM sqlite_master LIMIT 1")
+        .fetch_optional(&pool)
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("DB key verification failed: {}", e));
+    pool.close().await;
+    res
+}
+
+async fn rekey_database(kb_path: &str, old_key_hex: &str, new_key_hex: &str) -> Result<(), String> {
+    let pool = open_kb_pool_with_key(kb_path, old_key_hex).await?;
+
+    let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("PRAGMA journal_mode = DELETE")
+        .fetch_optional(&pool)
+        .await;
+
+    sqlx::raw_sql(&format!("PRAGMA rekey = \"x'{}'\";", new_key_hex))
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("PRAGMA rekey failed: {}", e))?;
+
+    pool.close().await;
+    verify_database_key(kb_path, new_key_hex).await
 }
 
 fn load_auth_json(kb_path: &str) -> Option<AuthJson> {
@@ -190,27 +356,30 @@ fn save_auth_json(kb_path: &str, salt_hex: &str) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_auth_status(kb_path: String) -> Result<AuthStatus, String> {
-    let auth_exists = auth_json_path(&kb_path).exists();
-    let recovery_exists = recovery_bin_path(&kb_path).exists();
-    let db_exists = PathBuf::from(&kb_path)
-        .join(".insightcap")
-        .join("insightcap.db")
-        .exists();
+    read_auth_status(&kb_path, read_keychain_auto_login(), true)
+}
 
-    let is_setup = auth_exists && recovery_exists;
+#[tauri::command]
+pub async fn get_startup_status(
+    state: tauri::State<'_, crate::db::AppState>,
+) -> Result<StartupStatus, String> {
+    if let Some(issue) = &state.startup_issue {
+        return Ok(StartupStatus {
+            kb_path: issue.kb_path.to_string_lossy().to_string(),
+            is_setup: true,
+            auto_login: false,
+            is_migrated: true,
+        });
+    }
 
-    let keychain_ok = Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
-        .and_then(|e| e.get_password())
-        .is_ok();
+    let kb_path = state.kb_path.to_string_lossy().to_string();
+    let status = read_auth_status(&kb_path, read_keychain_auto_login(), false)?;
 
-    let is_migrated = is_setup && db_exists && !keychain_ok;
-    let is_empty_for_new_setup = target_is_empty_or_missing(Path::new(&kb_path))?;
-
-    Ok(AuthStatus {
-        is_setup,
-        auto_login: keychain_ok,
-        is_migrated,
-        is_empty_for_new_setup,
+    Ok(StartupStatus {
+        kb_path,
+        is_setup: status.is_setup,
+        auto_login: status.auto_login,
+        is_migrated: status.is_migrated,
     })
 }
 
@@ -442,7 +611,8 @@ pub async fn confirm_new_recovery(_kb_path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn recover_with_mnemonic(
-    pool: tauri::State<'_, SqlitePool>,
+    _pool: tauri::State<'_, SqlitePool>,
+    app: tauri::AppHandle,
     payload: RecoveryPayload,
 ) -> Result<String, String> {
     let rec_path = recovery_bin_path(&payload.kb_path);
@@ -457,6 +627,7 @@ pub async fn recover_with_mnemonic(
         derive_recovery_key_verify(&payload.mnemonic, &stored_salt).map_err(|e| e.to_string())?;
     let (mut db_key, _) =
         read_recovery_bin(&rec_path, &recovery_key).map_err(|_| "INVALID_MNEMONIC".to_string())?;
+    let db_key_hex = hex::encode(&db_key);
 
     let mut new_salt = [0u8; 32];
     rand::rng().fill_bytes(&mut new_salt);
@@ -464,11 +635,7 @@ pub async fn recover_with_mnemonic(
         derive_db_key(&payload.new_password, &new_salt).map_err(|e| e.to_string())?;
 
     let new_key_hex = hex::encode(&new_db_key);
-    let rekey_pragma = format!("PRAGMA rekey = \"x'{}'\";", new_key_hex);
-    sqlx::query(&rekey_pragma)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| format!("PRAGMA rekey failed: {}", e))?;
+    rekey_database(&payload.kb_path, &db_key_hex, &new_key_hex).await?;
 
     save_auth_json(&payload.kb_path, &hex::encode(&new_salt))?;
 
@@ -491,6 +658,12 @@ pub async fn recover_with_mnemonic(
     )
     .map_err(|e| e.to_string())?;
 
+    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
+        .map_err(|e| format!("Keychain     : {}", e))?
+        .set_password(&new_key_hex)
+        .map_err(|e| format!("Keychain     : {}", e))?;
+    persist_active_kb_path_for_app(&app, &payload.kb_path)?;
+
     db_key.zeroize();
     new_db_key.zeroize();
 
@@ -499,12 +672,10 @@ pub async fn recover_with_mnemonic(
 
 #[tauri::command]
 pub async fn unlock_migrated_with_password(
+    app: tauri::AppHandle,
     kb_path: String,
     password: String,
 ) -> Result<(), String> {
-    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-    use std::str::FromStr;
-
     let auth = load_auth_json(&kb_path).ok_or_else(|| "    auth.json".to_string())?;
     let salt_bytes = hex::decode(&auth.salt).map_err(|_| "auth.json salt     ".to_string())?;
     if salt_bytes.len() != 32 {
@@ -516,27 +687,15 @@ pub async fn unlock_migrated_with_password(
     let mut db_key = derive_db_key(&password, &salt).map_err(|e| format!("key     : {}", e))?;
     let db_key_hex = hex::encode(&db_key);
 
-    let db_path = PathBuf::from(&kb_path)
-        .join(".insightcap")
-        .join("insightcap.db");
-    let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
-    let options = SqliteConnectOptions::from_str(&db_url)
-        .map_err(|e| format!("DB URL     : {}", e))?
-        .pragma("key", format!("\"x'{}' \"", db_key_hex))
-        .create_if_missing(false);
-
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(options)
+    verify_database_key(&kb_path, &db_key_hex)
         .await
         .map_err(|_| "WRONG_PASSWORD".to_string())?;
-
-    pool.close().await;
 
     Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_AUTO_LOGIN)
         .map_err(|e| format!("Keychain     : {}", e))?
         .set_password(&db_key_hex)
         .map_err(|e| format!("Keychain     : {}", e))?;
+    persist_active_kb_path_for_app(&app, &kb_path)?;
 
     db_key.zeroize();
     Ok(())
@@ -544,13 +703,11 @@ pub async fn unlock_migrated_with_password(
 
 #[tauri::command]
 pub async fn unlock_migrated_with_mnemonic(
+    app: tauri::AppHandle,
     kb_path: String,
     mnemonic: String,
     new_password: String,
 ) -> Result<String, String> {
-    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-    use std::str::FromStr;
-
     let rec_path = recovery_bin_path(&kb_path);
     let bin_data = std::fs::read(&rec_path).map_err(|e| format!("   recovery.bin   : {}", e))?;
     if bin_data.len() < 17 {
@@ -565,33 +722,15 @@ pub async fn unlock_migrated_with_mnemonic(
         read_recovery_bin(&rec_path, &recovery_key).map_err(|_| "INVALID_MNEMONIC".to_string())?;
     let db_key_hex = hex::encode(&db_key);
 
-    let db_path = PathBuf::from(&kb_path)
-        .join(".insightcap")
-        .join("insightcap.db");
-    let db_url = format!("sqlite:{}", db_path.to_string_lossy().replace('\\', "/"));
-    let options = SqliteConnectOptions::from_str(&db_url)
-        .map_err(|e| format!("DB URL     : {}", e))?
-        .pragma("key", format!("\"x'{}' \"", db_key_hex))
-        .create_if_missing(false);
-
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(options)
-        .await
-        .map_err(|_| "INVALID_MNEMONIC".to_string())?;
-
     let mut new_salt = [0u8; 32];
     rand::rng().fill_bytes(&mut new_salt);
     let mut new_db_key =
         derive_db_key(&new_password, &new_salt).map_err(|e| format!("    key     : {}", e))?;
     let new_key_hex = hex::encode(&new_db_key);
 
-    sqlx::query(&format!("PRAGMA rekey = \"x'{}'\";", new_key_hex))
-        .execute(&pool)
+    rekey_database(&kb_path, &db_key_hex, &new_key_hex)
         .await
-        .map_err(|e| format!("PRAGMA rekey   : {}", e))?;
-
-    pool.close().await;
+        .map_err(|_| "INVALID_MNEMONIC".to_string())?;
 
     save_auth_json(&kb_path, &hex::encode(&new_salt))?;
 
@@ -610,6 +749,7 @@ pub async fn unlock_migrated_with_mnemonic(
         .map_err(|e| format!("Keychain     : {}", e))?
         .set_password(&new_key_hex)
         .map_err(|e| format!("Keychain     : {}", e))?;
+    persist_active_kb_path_for_app(&app, &kb_path)?;
 
     db_key.zeroize();
     new_db_key.zeroize();

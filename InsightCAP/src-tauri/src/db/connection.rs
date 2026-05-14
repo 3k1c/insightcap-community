@@ -11,6 +11,7 @@ use crate::vector_store::local::VectorStore;
 pub struct AppState {
     pub db: SqlitePool,
     pub kb_path: PathBuf,
+    pub startup_issue: Option<StartupIssue>,
     pub vector_store: VectorStore,
     pub embedder: Arc<dyn Embedder>,
     pub current_conversation_id: Arc<tokio::sync::Mutex<Option<String>>>,
@@ -19,10 +20,17 @@ pub struct AppState {
     pub summary_wakeup_tx: Arc<tokio::sync::Notify>,
 }
 
+#[derive(Clone, Debug)]
+pub struct StartupIssue {
+    pub kb_path: PathBuf,
+    pub message: String,
+}
+
 impl AppState {
     pub fn new(
         pool: SqlitePool,
         kb_path: PathBuf,
+        startup_issue: Option<StartupIssue>,
         vector_store: VectorStore,
         embedder: Arc<dyn Embedder>,
         shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
@@ -30,6 +38,7 @@ impl AppState {
         Self {
             db: pool,
             kb_path,
+            startup_issue,
             vector_store,
             embedder,
             current_conversation_id: Arc::new(tokio::sync::Mutex::new(None)),
@@ -37,6 +46,126 @@ impl AppState {
             reminder_loop_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             summary_wakeup_tx: Arc::new(tokio::sync::Notify::new()),
         }
+    }
+}
+
+pub struct StartupDb {
+    pub pool: SqlitePool,
+    pub kb_path: PathBuf,
+    pub startup_issue: Option<StartupIssue>,
+}
+
+pub async fn init_startup_db(
+    app_data_dir: &Path,
+    preferred_kb_path: PathBuf,
+    db_key_hex: Option<&str>,
+) -> Result<StartupDb, String> {
+    match init_db(&preferred_kb_path, db_key_hex).await {
+        Ok(pool) => Ok(StartupDb {
+            pool,
+            kb_path: preferred_kb_path,
+            startup_issue: None,
+        }),
+        Err(err) => {
+            let fallback_candidates = [
+                app_data_dir.join("insightcap_v2_pending"),
+                app_data_dir.join(format!(
+                    "insightcap_startup_repair_{}",
+                    chrono::Utc::now().timestamp_millis()
+                )),
+            ];
+            eprintln!(
+                "[DB-STARTUP] Failed to open {:?}: {}. Falling back to a repair database.",
+                preferred_kb_path, err
+            );
+
+            let mut last_fallback_err = None;
+            for fallback_kb_path in fallback_candidates {
+                match init_db(&fallback_kb_path, None).await {
+                    Ok(pool) => {
+                        return Ok(StartupDb {
+                            pool,
+                            kb_path: fallback_kb_path,
+                            startup_issue: Some(StartupIssue {
+                                kb_path: preferred_kb_path,
+                                message: err,
+                            }),
+                        });
+                    }
+                    Err(fallback_err) => {
+                        last_fallback_err = Some(fallback_err);
+                    }
+                }
+            }
+
+            Err(format!(
+                "Failed to open active knowledge base ({}) and repair database ({})",
+                err,
+                last_fallback_err.unwrap_or_else(|| "unknown fallback error".to_string())
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn startup_db_falls_back_when_active_kb_cannot_open() {
+        let app_data = tempfile::tempdir().expect("app data");
+        let broken_kb = tempfile::tempdir().expect("broken kb");
+        let insightcap_dir = broken_kb.path().join(".insightcap");
+        std::fs::create_dir_all(&insightcap_dir).expect("create .insightcap");
+        std::fs::write(
+            insightcap_dir.join("insightcap.db"),
+            b"not a sqlite database",
+        )
+        .expect("write broken db");
+
+        let startup = init_startup_db(app_data.path(), broken_kb.path().to_path_buf(), Some("00"))
+            .await
+            .expect("fallback db");
+
+        assert_eq!(
+            startup.kb_path,
+            app_data.path().join("insightcap_v2_pending")
+        );
+        let issue = startup.startup_issue.expect("startup issue");
+        assert_eq!(issue.kb_path, broken_kb.path());
+        assert!(issue.message.contains("file is not a database"));
+        startup.pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn startup_db_uses_fresh_repair_db_when_pending_fallback_is_corrupt() {
+        let app_data = tempfile::tempdir().expect("app data");
+        let broken_kb = tempfile::tempdir().expect("broken kb");
+        let broken_dir = broken_kb.path().join(".insightcap");
+        std::fs::create_dir_all(&broken_dir).expect("create broken .insightcap");
+        std::fs::write(broken_dir.join("insightcap.db"), b"not a sqlite database")
+            .expect("write broken db");
+
+        let pending_dir = app_data
+            .path()
+            .join("insightcap_v2_pending")
+            .join(".insightcap");
+        std::fs::create_dir_all(&pending_dir).expect("create pending .insightcap");
+        std::fs::write(pending_dir.join("insightcap.db"), b"also not sqlite")
+            .expect("write broken pending db");
+
+        let startup = init_startup_db(app_data.path(), broken_kb.path().to_path_buf(), Some("00"))
+            .await
+            .expect("fresh repair db");
+
+        assert!(startup
+            .kb_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .starts_with("insightcap_startup_repair_"));
+        assert!(startup.startup_issue.is_some());
+        startup.pool.close().await;
     }
 }
 

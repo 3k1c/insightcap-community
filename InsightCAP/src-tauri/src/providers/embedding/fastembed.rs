@@ -35,6 +35,97 @@ impl FastEmbedder {
     }
 }
 
+pub struct LazyFastEmbedder {
+    requested_model_name: String,
+    canonical_model_name: String,
+    state: Arc<Mutex<LazyFastEmbedderState>>,
+}
+
+enum LazyFastEmbedderState {
+    Pending,
+    Ready(Arc<FastEmbedder>),
+    Failed(String),
+}
+
+impl LazyFastEmbedder {
+    pub fn new(model_name: &str) -> Self {
+        Self {
+            requested_model_name: model_name.to_string(),
+            canonical_model_name: canonical_embedding_model_name(model_name).to_string(),
+            state: Arc::new(Mutex::new(LazyFastEmbedderState::Pending)),
+        }
+    }
+
+    async fn get_or_init(
+        &self,
+    ) -> Result<Arc<FastEmbedder>, crate::providers::embedding::EmbedError> {
+        let mut state = self.state.lock().await;
+        match &*state {
+            LazyFastEmbedderState::Ready(embedder) => return Ok(embedder.clone()),
+            LazyFastEmbedderState::Failed(err) => {
+                return Err(crate::providers::embedding::EmbedError::Failed(err.clone()));
+            }
+            LazyFastEmbedderState::Pending => {}
+        }
+
+        match FastEmbedder::new(&self.requested_model_name) {
+            Ok(embedder) => {
+                let embedder = Arc::new(embedder);
+                *state = LazyFastEmbedderState::Ready(embedder.clone());
+                Ok(embedder)
+            }
+            Err(err) => {
+                eprintln!(
+                    "[Embedder] Lazy initialization failed: {}. Falling back to zero vectors.",
+                    err
+                );
+                *state = LazyFastEmbedderState::Failed(err.clone());
+                Err(crate::providers::embedding::EmbedError::Failed(err))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn is_initialized_for_test(&self) -> bool {
+        match self.state.try_lock() {
+            Ok(state) => matches!(*state, LazyFastEmbedderState::Ready(_)),
+            Err(_) => true,
+        }
+    }
+}
+
+#[async_trait]
+impl Embedder for LazyFastEmbedder {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, crate::providers::embedding::EmbedError> {
+        match self.get_or_init().await {
+            Ok(embedder) => embedder.embed(text).await,
+            Err(_) => Ok(vec![0.0; self.dimension()]),
+        }
+    }
+
+    async fn embed_batch(
+        &self,
+        texts: &[&str],
+    ) -> Result<Vec<Vec<f32>>, crate::providers::embedding::EmbedError> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        match self.get_or_init().await {
+            Ok(embedder) => embedder.embed_batch(texts).await,
+            Err(_) => Ok(texts.iter().map(|_| vec![0.0; self.dimension()]).collect()),
+        }
+    }
+
+    fn dimension(&self) -> usize {
+        384
+    }
+
+    fn model_name(&self) -> &str {
+        &self.canonical_model_name
+    }
+}
+
 fn fastembed_cache_dir_from_env(local: Option<&Path>, home: Option<&Path>) -> PathBuf {
     if let Some(local) = local {
         return local.join("com.insightcap.app").join(".fastembed_cache");
@@ -116,5 +207,14 @@ mod tests {
             fastembed_cache_dir_from_env(Some(local), None),
             local.join("com.insightcap.app").join(".fastembed_cache")
         );
+    }
+
+    #[test]
+    fn lazy_fastembedder_constructor_does_not_initialize_model() {
+        let embedder = LazyFastEmbedder::new("MultilingualE5Small");
+
+        assert_eq!(embedder.dimension(), 384);
+        assert_eq!(embedder.model_name(), "multilingual-e5-small");
+        assert!(!embedder.is_initialized_for_test());
     }
 }

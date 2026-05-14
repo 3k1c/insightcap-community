@@ -58,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new(
         pool.clone(),
         kb_path,
+        None,
         vector_store,
         embedder,
         Arc::new(shutdown_tx),

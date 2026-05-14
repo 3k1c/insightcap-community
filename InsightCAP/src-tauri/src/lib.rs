@@ -114,9 +114,15 @@ pub fn run() {
                 .and_then(|e| e.get_password().ok());
             let db_key_ref = db_key_hex.as_deref();
 
-            let pool = tauri::async_runtime::block_on(
-                db::connection::init_db(&effective_kb_path, db_key_ref)
-            ).expect("Database initialization failed. Check path permissions or key validity.");
+            let startup_db = tauri::async_runtime::block_on(db::connection::init_startup_db(
+                &app_data_dir,
+                effective_kb_path.clone(),
+                db_key_ref,
+            ))
+            .expect("Fallback database initialization failed. Check app data path permissions.");
+            let pool = startup_db.pool;
+            let effective_kb_path = startup_db.kb_path;
+            let startup_issue = startup_db.startup_issue;
 
             println!("[SETUP] Database initialized at {:?}", effective_kb_path);
 
@@ -150,13 +156,7 @@ pub fn run() {
 
             let embedder: Arc<dyn providers::embedding::Embedder> = {
                 let model_name = "MultilingualE5Small";
-                match providers::embedding::fastembed::FastEmbedder::new(model_name) {
-                    Ok(e) => Arc::new(e),
-                    Err(err) => {
-                        eprintln!("[SETUP] Embedder init failed: {}. RAG will fall back to keyword mode", err);
-                        Arc::new(providers::embedding::NoopEmbedder)
-                    }
-                }
+                Arc::new(providers::embedding::fastembed::LazyFastEmbedder::new(model_name))
             };
 
             let vector_store = vector_store::local::VectorStore::load_or_create(
@@ -174,7 +174,14 @@ pub fn run() {
             let shutdown_tx = std::sync::Arc::new(shutdown_tx);
 
             app.manage(pool.clone());
-            app.manage(db::AppState::new(pool.clone(), effective_kb_path.clone(), vector_store, embedder, shutdown_tx));
+            app.manage(db::AppState::new(
+                pool.clone(),
+                effective_kb_path.clone(),
+                startup_issue,
+                vector_store,
+                embedder,
+                shutdown_tx,
+            ));
             app.manage(tray_status::TrayState::new());
 
             let processor_pool = pool.clone();
@@ -288,6 +295,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::auth_commands::get_auth_status,
+            commands::auth_commands::get_startup_status,
             commands::auth_commands::setup_auth,
             commands::auth_commands::try_auto_login,
             commands::auth_commands::login,
