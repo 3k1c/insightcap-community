@@ -1060,32 +1060,12 @@ impl RagEngine {
         let user_instruction = instruction_override
             .unwrap_or_else(|| settings.chat_prompt_instruction.trim().to_string());
 
-        let has_extra = !system_parts.is_empty()
-            || !user_instruction.is_empty()
-            || conversation_summary
-                .as_ref()
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-
-        let system_prompt = if !has_extra {
-            prompts::RAG_SYSTEM_BASE.to_string()
-        } else {
-            let mut parts = vec![prompts::RAG_SYSTEM_BASE.to_string()];
-            if let Some(summary) = &conversation_summary {
-                let s = summary.trim();
-                if !s.is_empty() {
-                    parts.push(format!("##                   \n{}", s));
-                }
-            }
-            if !system_parts.is_empty() {
-                parts.push(system_parts.join("\n\n"));
-            }
-            parts.push(prompts::RAG_SYSTEM_PRIORITY.to_string());
-            if !user_instruction.is_empty() {
-                parts.push(format!("##     \n{}", user_instruction));
-            }
-            parts.join("\n\n")
-        };
+        let system_prompt = prompts::build_chat_system_prompt(prompts::ChatPromptInput {
+            kind: prompts::ChatPromptKind::Rag,
+            conversation_summary: conversation_summary.as_deref(),
+            context_sections: &system_parts,
+            user_instruction: &user_instruction,
+        });
 
         let mut citation_sources: Vec<String> = ctx["citation_sources"]
             .as_array()

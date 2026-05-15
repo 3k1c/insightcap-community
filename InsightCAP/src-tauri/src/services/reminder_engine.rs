@@ -608,16 +608,12 @@ impl ReminderEngine {
             return Err("Missing API key".to_string());
         }
 
-        let input = format!(
-            "Conversation summary:\n{}\n\nConversation content:\n{}",
-            summary, dialogue
-        );
-        let prompt = format!(
-            "{}{}\n\n{}",
-            prompts::REMINDER_EXTRACT_PROMPT,
-            conversation_timestamp,
-            input
-        );
+        let prompt =
+            prompts::build_reminder_extraction_prompt(prompts::ReminderExtractionPromptInput {
+                conversation_timestamp,
+                summary,
+                dialogue,
+            });
 
         let provider = OpenAiProvider::new(
             api_key,

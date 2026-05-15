@@ -5,6 +5,10 @@ use uuid::Uuid;
 
 use crate::background::conversation_scheduler::enqueue_conversation;
 use crate::db::AppState;
+use crate::prompts::{
+    build_auto_title_prompt, build_conversation_brief_summary_prompt, build_reminder_ack_prompt,
+    ReminderAckPromptInput,
+};
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
 
@@ -231,7 +235,7 @@ pub async fn summarize_conversation(
     }
 
     let summary = if let Some(llm) = opt_provider {
-        let prompt = format!("Summarize the following conversation in 2-3 sentences. Identify key patterns or tasks.\n\n{}", text);
+        let prompt = build_conversation_brief_summary_prompt(&text);
         llm.complete(&prompt, LLMOptions::default())
             .await
             .map_err(|e| e.to_string())?
@@ -373,11 +377,7 @@ pub async fn auto_title_conversation(
     let is_ollama = cfg.provider == "ollama";
 
     let title = if !api_key.is_empty() || is_ollama {
-        let prompt = format!(
-            "{}\n\nPlease generate a concise conversation title.\n{}",
-            crate::prompts::AUTO_TITLE_SYSTEM,
-            dialogue
-        );
+        let prompt = build_auto_title_prompt(&dialogue);
 
         let provider = OpenAiProvider::new(
             api_key,
@@ -467,25 +467,11 @@ pub async fn decide_reminder_ack(
         cfg.provider.clone(),
     );
 
-    let prompt = format!(
-        "You are a dialogue policy checker.\n\
-Decide whether the assistant should append ONE extra sentence confirming reminder setup.\n\
-Return a JSON object only, with this exact schema:\n\
-{{\"append\": boolean, \"message\": string}}\n\n\
-Rules:\n\
-1) append=true only if user message means 'no further help needed / thanks'.\n\
-2) append=true only if recent assistant context indicates reminder/schedule was already created.\n\
-3) If current answer already confirms reminder setup, set append=false.\n\
-4) If append=true, message must be short, natural, and in the same language as user message.\n\
-5) If append=false, message must be an empty string.\n\
-6) Keep factual: confirm reminder is set, do not add new details.\n\n\
-User message:\n{user}\n\n\
-Recent assistant context:\n{ctx}\n\n\
-Current answer:\n{ans}\n",
-        user = user_message,
-        ctx = recent_assistant_context,
-        ans = current_answer
-    );
+    let prompt = build_reminder_ack_prompt(ReminderAckPromptInput {
+        user_message: &user_message,
+        recent_assistant_context: &recent_assistant_context,
+        current_answer: &current_answer,
+    });
 
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(10),

@@ -196,13 +196,12 @@ impl PatternEngine {
             }
         }
 
-        let prompt_input = format!(
-            "{sys}\n\nAcross {conv_count} conversations, found {chunk_count} similar chunks:\n{data}",
-            sys = prompts::PATTERN_ANALYSIS,
-            conv_count = group.conversation_count,
-            chunk_count = group.candidates.len(),
-            data = combined_text
-        );
+        let prompt_input =
+            prompts::build_pattern_analysis_prompt(prompts::PatternAnalysisPromptInput {
+                conversation_count: group.conversation_count,
+                chunk_count: group.candidates.len(),
+                combined_text: &combined_text,
+            });
 
         let response: String = provider
             .complete(&prompt_input, LLMOptions::default())

@@ -1,72 +1,40 @@
 use crate::db::AppState;
 use crate::providers::llm::model_caps;
-use crate::providers::llm::openai::OpenAiProvider;
+use crate::providers::llm::openai::{LlmTimingTrace, OpenAiProvider};
 use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
 use crate::services::rag_engine::RagEngine;
 use crate::services::web_search::tavily_search;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tauri::{Emitter, State};
 
-fn build_editor_ai_rewrite_system_prompt(instruction_override: Option<&str>) -> String {
-    let mut parts = vec![
-        "You are an editor rewrite assistant inside InsightCAP.".to_string(),
-        "Rewrite only the provided selected text according to the requested action.".to_string(),
-        "Preserve the original meaning unless the action explicitly asks for a change.".to_string(),
-        "Do not explain the rewrite, do not include markdown fences, and return only the final replacement text.".to_string(),
-    ];
-
-    if let Some(instruction) = instruction_override
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        parts.push(format!(
-            "Global editor rewrite preference:\n{}",
-            instruction
-        ));
-    }
-
-    parts.join("\n\n")
-}
-
-fn build_editor_ai_rewrite_user_prompt(action_prompt: &str, selected_text: &str) -> String {
-    format!(
-        "Action prompt:\n{}\n\nSelected text:\n{}",
-        action_prompt.trim(),
-        selected_text
-    )
-}
-
 fn should_use_fast_chat_path(
-    _rag_enabled: bool,
-    _web_enabled: bool,
-    _source_ids: Option<&Vec<String>>,
-    _tag_filter: Option<&Vec<String>>,
-    _temp_chunk_ids: Option<&Vec<String>>,
+    rag_enabled: bool,
+    web_enabled: bool,
+    source_ids: Option<&Vec<String>>,
+    tag_filter: Option<&Vec<String>>,
+    temp_chunk_ids: Option<&Vec<String>>,
 ) -> bool {
-    // 為了確保 Pattern/Log/Reminder 始終生效，我們不再使用快速路徑
-    false
+    // 純聊天不需要 context tool 時走快速路徑，避免第一個 token 被檢索前處理阻塞。
+    rag_enabled == false
+        && web_enabled == false
+        && source_ids.map_or(true, Vec::is_empty)
+        && tag_filter.map_or(true, Vec::is_empty)
+        && temp_chunk_ids.map_or(true, Vec::is_empty)
 }
 
 fn build_fast_chat_system_prompt(
     conversation_summary: Option<String>,
     user_instruction: &str,
 ) -> String {
-    let summary = conversation_summary.unwrap_or_default();
-    let summary = summary.trim();
-    let instruction = user_instruction.trim();
-
-    if summary.is_empty() && instruction.is_empty() {
-        return crate::prompts::RAG_SYSTEM_BASE.to_string();
-    }
-
-    let mut parts = vec![crate::prompts::RAG_SYSTEM_BASE.to_string()];
-    if !summary.is_empty() {
-        parts.push(format!("## Conversation Summary\n{}", summary));
-    }
-    parts.push(crate::prompts::RAG_SYSTEM_PRIORITY.to_string());
-    if !instruction.is_empty() {
-        parts.push(format!("## User Instruction\n{}", instruction));
-    }
-    parts.join("\n\n")
+    crate::prompts::build_chat_system_prompt(crate::prompts::ChatPromptInput {
+        kind: crate::prompts::ChatPromptKind::Plain,
+        conversation_summary: conversation_summary.as_deref(),
+        context_sections: &[],
+        user_instruction,
+    })
 }
 
 #[tauri::command]
@@ -151,10 +119,12 @@ pub async fn editor_ai_rewrite_stream(
         return Err("LLM API key not configured".to_string());
     }
 
-    let system_prompt = build_editor_ai_rewrite_system_prompt(
-        settings.editor.prompt_instruction_override.as_deref(),
-    );
-    let user_prompt = build_editor_ai_rewrite_user_prompt(&action_prompt, &selected_text);
+    let editor_prompts =
+        crate::prompts::build_editor_rewrite_prompts(crate::prompts::EditorRewritePromptInput {
+            action_prompt: &action_prompt,
+            selected_text: &selected_text,
+            instruction_override: settings.editor.prompt_instruction_override.as_deref(),
+        });
 
     let llm = OpenAiProvider::new(
         api_key,
@@ -173,9 +143,9 @@ pub async fn editor_ai_rewrite_stream(
 
     let stream_result = llm
         .complete_stream(
-            &system_prompt,
+            &editor_prompts.system_prompt,
             &[],
-            &user_prompt,
+            &editor_prompts.user_prompt,
             llm_opts,
             move |token| match &token {
                 StreamToken::Reasoning(r) => {
@@ -228,9 +198,29 @@ pub async fn rag_query_stream(
     temp_chunk_ids: Option<Vec<String>>,
     thinking_mode: Option<String>,
 ) -> Result<(), String> {
+    let timing_trace = LlmTimingTrace::new(conversation_id.clone());
+    timing_trace.log("backend_received", None);
+
     let is_think = thinking_mode.as_deref().unwrap_or("normal") == "think";
     let rag_enabled_value = rag_enabled.unwrap_or(true);
     let web_enabled_value = web_enabled.unwrap_or(false);
+    let use_fast_chat = should_use_fast_chat_path(
+        rag_enabled_value,
+        web_enabled_value,
+        source_ids.as_ref(),
+        tag_filter.as_ref(),
+        temp_chunk_ids.as_ref(),
+    );
+    let fast_path_detail = format!(
+        "fastPath={} ragEnabled={} webEnabled={} sourceIds={} tagFilter={} tempChunks={}",
+        use_fast_chat,
+        rag_enabled_value,
+        web_enabled_value,
+        source_ids.as_ref().map_or(0, Vec::len),
+        tag_filter.as_ref().map_or(0, Vec::len),
+        temp_chunk_ids.as_ref().map_or(0, Vec::len)
+    );
+    timing_trace.log("fast_path_decided", Some(&fast_path_detail));
 
     let settings = crate::settings::store::get_settings(&state.db)
         .await
@@ -252,14 +242,6 @@ pub async fn rag_query_stream(
     } else {
         (None, vec![])
     };
-
-    let use_fast_chat = should_use_fast_chat_path(
-        rag_enabled_value,
-        web_enabled_value,
-        source_ids.as_ref(),
-        tag_filter.as_ref(),
-        temp_chunk_ids.as_ref(),
-    );
 
     let (base_prompt, history_vec, citation_sources, context_hints) = if use_fast_chat {
         (
@@ -345,6 +327,9 @@ pub async fn rag_query_stream(
     );
     let app_clone = app.clone();
     let conv_id = conversation_id.clone();
+    let first_token_logged = Arc::new(AtomicBool::new(false));
+    let first_token_trace = timing_trace.clone();
+    let first_token_flag = first_token_logged.clone();
 
     let llm_opts = if is_think {
         LLMOptions {
@@ -361,14 +346,20 @@ pub async fn rag_query_stream(
         }
     };
 
+    timing_trace.log("llm_request_start", None);
+
     let stream_result = llm
-        .complete_stream(
+        .complete_stream_traced(
             &system_prompt,
             &history_vec,
             &query,
             llm_opts,
+            Some(timing_trace.clone()),
             move |token| match &token {
                 StreamToken::Reasoning(r) => {
+                    if !first_token_flag.swap(true, Ordering::Relaxed) {
+                        first_token_trace.log("backend_first_stream_token", None);
+                    }
                     let _ = app_clone.emit(
                         "rag-stream-reasoning",
                         serde_json::json!({
@@ -378,6 +369,9 @@ pub async fn rag_query_stream(
                     );
                 }
                 StreamToken::Content(c) => {
+                    if !first_token_flag.swap(true, Ordering::Relaxed) {
+                        first_token_trace.log("backend_first_stream_token", None);
+                    }
                     let _ = app_clone.emit(
                         "rag-stream-token",
                         serde_json::json!({
@@ -404,33 +398,11 @@ pub async fn rag_query_stream(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_editor_ai_rewrite_system_prompt, build_editor_ai_rewrite_user_prompt,
-        build_fast_chat_system_prompt, should_use_fast_chat_path,
-    };
+    use super::{build_fast_chat_system_prompt, should_use_fast_chat_path};
 
     #[test]
-    fn editor_rewrite_system_prompt_includes_global_preference() {
-        let prompt =
-            build_editor_ai_rewrite_system_prompt(Some("Preserve technical terms in English."));
-
-        assert!(prompt.contains("editor rewrite assistant"));
-        assert!(prompt.contains("return only the final replacement text"));
-        assert!(prompt.contains("Preserve technical terms in English."));
-    }
-
-    #[test]
-    fn editor_rewrite_user_prompt_keeps_action_and_selected_text_separate() {
-        let prompt =
-            build_editor_ai_rewrite_user_prompt("Make it concise", "This is the selected text.");
-
-        assert!(prompt.contains("Action prompt:\nMake it concise"));
-        assert!(prompt.contains("Selected text:\nThis is the selected text."));
-    }
-
-    #[test]
-    fn fast_chat_path_is_disabled_so_memory_context_always_applies() {
-        assert!(!should_use_fast_chat_path(false, false, None, None, None));
+    fn fast_chat_path_is_used_only_for_plain_chat_without_context_tools() {
+        assert!(should_use_fast_chat_path(false, false, None, None, None));
         assert!(!should_use_fast_chat_path(true, false, None, None, None));
         assert!(!should_use_fast_chat_path(false, true, None, None, None));
         assert!(!should_use_fast_chat_path(
@@ -463,7 +435,8 @@ mod tests {
             "Answer in Traditional Chinese.",
         );
 
-        assert!(prompt.contains(crate::prompts::RAG_SYSTEM_BASE));
+        assert!(prompt.contains(crate::prompts::CHAT_SYSTEM_BASE));
+        assert!(!prompt.contains(crate::prompts::RAG_SYSTEM_BASE));
         assert!(prompt.contains("Earlier summary"));
         assert!(prompt.contains("Answer in Traditional Chinese."));
     }

@@ -4,6 +4,7 @@ use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::prompts::{build_chunk_relation_prompt, ChunkRelationPromptInput};
 use crate::providers::embedding::Embedder;
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
@@ -144,24 +145,10 @@ impl ChunkRelationEngine {
         new_content: &str,
         existing_content: &str,
     ) -> Option<(String, f32)> {
-        let prompt = format!(
-            "                        \n\
-            \n\
-                 \n{new}\n\
-            \n\
-                  \n{existing}\n\
-            \n\
-                                   \n\
-            - references                         \n\
-            - extends                         \n\
-            - contradicts                         \n\
-            \n\
-                          :     0.0-1.0 \n\
-               references:0.85\n\
-                        NONE",
-            new = &new_content.chars().take(300).collect::<String>(),
-            existing = &existing_content.chars().take(300).collect::<String>(),
-        );
+        let prompt = build_chunk_relation_prompt(ChunkRelationPromptInput {
+            new_content,
+            existing_content,
+        });
 
         let opts = LLMOptions {
             temperature: 0.1,

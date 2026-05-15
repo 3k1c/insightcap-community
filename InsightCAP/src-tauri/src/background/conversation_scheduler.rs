@@ -196,33 +196,12 @@ async fn process_next_summary(app: &AppHandle) -> Result<(), String> {
             .filter(|s: &String| !s.trim().is_empty());
 
     let raw_summary = if !api_key.is_empty() || is_ollama {
-        let prompt = if let Some(prev) = &existing_summary {
-            format!(
-                "Below are an existing summary and new messages from the same conversation.\n\
-                 Integrate the new messages into the existing summary and output a single updated summary.\n\
-                 Requirements:\n\
-                 - Write in clear concise English\n\
-                 - Preserve decisions, chosen technical approaches, issues, and conclusions\n\
-                 - Keep concrete technical details (function names, tool names, error messages)\n\
-                 - Target length: 150-250 words\n\
-                 - Output summary only, no title or preface\n\n\
-                 [Existing Summary]\n{}\n\n\
-                 [New Messages]\n{}",
-                prev, dialogue
-            )
-        } else {
-            format!(
-                "Generate a summary for the conversation below.\n\
-                 Requirements:\n\
-                 - Write in clear concise English\n\
-                 - Preserve decisions, chosen technical approaches, issues, and conclusions\n\
-                 - Keep concrete technical details (function names, tool names, error messages)\n\
-                 - Target length: 150-250 words\n\
-                 - Output summary only, no title or preface\n\n\
-                 [Conversation]\n{}",
-                dialogue
-            )
-        };
+        let prompt = crate::prompts::build_conversation_summary_prompt(
+            crate::prompts::ConversationSummaryPromptInput {
+                existing_summary: existing_summary.as_deref(),
+                dialogue: &dialogue,
+            },
+        );
 
         match call_summary_llm(&primary_cfg, &prompt).await {
             Ok(s) => s,

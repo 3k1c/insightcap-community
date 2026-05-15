@@ -1,5 +1,7 @@
 use sqlx::SqlitePool;
 
+use crate::prompts::{build_tag_extraction_prompt, TagExtractionPromptInput};
+
 pub struct TagEngine {
     pool: SqlitePool,
 }
@@ -38,11 +40,10 @@ impl TagEngine {
             let byte_limit = content.len().min(2000);
             let safe_limit = content.floor_char_boundary(byte_limit);
             let sample = &content[..safe_limit];
-            let prompt = format!(
-                "Extract 3-5 tags from the following text to represent its core concepts. \
-                Return ONLY a comma-separated list of short tags in {output_language}. \
-                Preserve dominant technical terms exactly as written. NO other text.\n\nText:\n{sample}"
-            );
+            let prompt = build_tag_extraction_prompt(TagExtractionPromptInput {
+                content: sample,
+                output_language,
+            });
             match llm
                 .complete(&prompt, crate::providers::llm::LLMOptions::default())
                 .await
@@ -132,12 +133,10 @@ impl TagEngine {
         let safe_limit = full_content.floor_char_boundary(byte_limit);
         let sample = &full_content[..safe_limit];
         let generated_tags = if let Some(llm) = opt_provider {
-            let prompt = format!(
-                "Extract 3-5 tags from the following text to represent its core concepts. \
-                Return ONLY a comma-separated list of short tags in {output_language}. \
-                Preserve dominant technical terms exactly as written. NO other text.\n\nText:\n{}",
-                sample
-            );
+            let prompt = build_tag_extraction_prompt(TagExtractionPromptInput {
+                content: sample,
+                output_language,
+            });
             match llm
                 .complete(&prompt, crate::providers::llm::LLMOptions::default())
                 .await

@@ -49,16 +49,11 @@ impl MemoryEngine {
             return Ok(fallback);
         }
 
-        let prompt = format!(
-            "Analyze the following text and perform two tasks:\n\
-             1. Extract 1 to 5 relevant tags (short keywords).\n\
-             - Tags must be in {output_language}. Preserve dominant technical terms exactly as written.\n\
-             2. Classify the knowledge type into one of: 'data', 'pattern', 'log'.\n\
-             Output ONLY a valid JSON object with keys \"tags\" and \"knowledge_type\".\n\
-             Example: {{\"tags\": [\"rust\", \"memory\"], \"knowledge_type\": \"data\"}}\n\
-             Do not output any other text or markdown.\n\n\
-             Text:\n{content}",
-            content = content
+        let prompt = crate::prompts::build_capture_tagging_prompt(
+            crate::prompts::CaptureTaggingPromptInput {
+                content,
+                output_language,
+            },
         );
 
         let provider = OpenAiProvider::new(
@@ -260,25 +255,11 @@ impl MemoryEngine {
         model: String,
         output_language: &'static str,
     ) -> (String, Vec<String>, String, f32) {
-        let prompt = format!(
-            "Analyze the following conversation summary and return a strict JSON object.\n\n\
-             Tasks:\n\
-             1. Extract 1 to 5 relevant short tags.\n\
-             - Tags must be in {output_language}. Preserve dominant technical terms exactly as written.\n\
-             2. Classify knowledge_type using strict rules:\n\
-             - \"pattern\": confirmed reusable method/workflow/SOP/decision framework.\n\
-             - \"log\": concrete failure, error, wrong direction, pitfall, or lesson learned.\n\
-             - \"data\": all other cases. If uncertain, choose \"data\".\n\
-             3. If type is \"log\", fill \"trigger_context\" with pipe-separated scenario keywords (example: \"competitor-analysis | crawler\"). Otherwise keep it empty.\n\
-             4. Set \"confidence\" as a float between 0.0 and 1.0.\n\
-             - data without clear signals: 0.85-0.95\n\
-             - pattern/log with clear signals: 0.80-0.95\n\
-             - pattern/log with weak signals: 0.50-0.75\n\n\
-             Output valid JSON only, with keys: \"tags\", \"knowledge_type\", \"trigger_context\", \"confidence\".\n\
-             Example: {{\"tags\": [\"rust\", \"async\"], \"knowledge_type\": \"pattern\", \"trigger_context\": \"\", \"confidence\": 0.88}}\n\
-             Do not output any extra text or markdown.\n\n\
-             Conversation summary:\n{content}",
-            content = content
+        let prompt = crate::prompts::build_memory_classification_prompt(
+            crate::prompts::MemoryClassificationPromptInput {
+                content,
+                output_language,
+            },
         );
 
         let provider =

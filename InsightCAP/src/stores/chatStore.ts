@@ -363,6 +363,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }) => {
         const { activeConversationId, activeProjectId, messages } = get();
         if (!activeConversationId) return;
+        const timingStartedAt = performance.now();
+        const logChatTiming = (stage: string, extra?: Record<string, unknown>) => {
+            console.info('[ChatTiming]', {
+                trace: activeConversationId,
+                stage,
+                elapsedMs: Math.round(performance.now() - timingStartedAt),
+                ...(extra ?? {}),
+            });
+        };
+        logChatTiming('sendMessage_start');
 
         const appendConfirmedReminderAck = async (answer: string): Promise<string> => {
             const createdCount = await get().triggerUrgentReminderCheck(activeConversationId, content, answer);
@@ -444,6 +454,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 hints?: { patternCount?: number; logCount?: number; dataCount?: number; patternHints?: string[]; logHints?: string[] };
             } | null = null;
             let finalized = false;
+            let firstUiTokenLogged = false;
 
             const clearStreamTimer = () => {
                 if (streamTimer) {
@@ -502,6 +513,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 visibleReasoning = nextReasoning;
 
                 if (changed) {
+                    if (!firstUiTokenLogged && (visibleContent.length > 0 || visibleReasoning.length > 0)) {
+                        firstUiTokenLogged = true;
+                        logChatTiming('ui_first_token', {
+                            visibleContentLength: visibleContent.length,
+                            visibleReasoningLength: visibleReasoning.length,
+                        });
+                    }
                     set(state => ({
                         streamingContent: visibleContent,
                         messages: state.messages.map(m =>

@@ -161,9 +161,10 @@ async fn run_deep_synthesis(app: &AppHandle) {
         Err(_) => String::new(),
     };
 
-    let prompt = prompts::DEEP_SYNTHESIS_PROMPT
-        .replace("{{new_chunks}}", &new_chunks_text)
-        .replace("{{existing_knowledge}}", &existing_knowledge);
+    let prompt = prompts::build_deep_synthesis_prompt(prompts::DeepSynthesisPromptInput {
+        new_chunks: &new_chunks_text,
+        existing_knowledge: &existing_knowledge,
+    });
 
     let opts = LLMOptions {
         temperature: 0.2,
@@ -267,7 +268,9 @@ async fn generate_compiled_knowledge(
         return Ok(());
     }
 
-    let prompt = prompts::COMPILED_KNOWLEDGE_PROMPT.replace("{{chunks}}", &chunks_text);
+    let prompt = prompts::build_compiled_knowledge_prompt(prompts::CompiledKnowledgePromptInput {
+        chunks: &chunks_text,
+    });
 
     let opts = LLMOptions {
         temperature: 0.3,

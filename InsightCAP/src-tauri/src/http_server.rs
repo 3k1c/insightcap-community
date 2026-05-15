@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     db::AppState,
+    prompts,
     providers::llm::openai::OpenAiProvider,
     providers::llm::{LLMOptions, LLMProvider, StreamToken},
     services::rag_engine::RagEngine,
@@ -235,14 +236,7 @@ async fn handle_chat(
     };
     let context_text = rag_to_text(&rag_context);
 
-    let system_prompt = if context_text.is_empty() {
-        "You are InsightCAP assistant. Provide concise and actionable answers.".to_string()
-    } else {
-        format!(
-            "You are InsightCAP assistant. Use the following retrieved context when relevant.\n\n{}\n\nIf context is insufficient, state assumptions clearly.",
-            context_text
-        )
-    };
+    let system_prompt = prompts::build_mobile_chat_system_prompt(&context_text);
 
     let history_vec: Vec<(String, String)> = req
         .history

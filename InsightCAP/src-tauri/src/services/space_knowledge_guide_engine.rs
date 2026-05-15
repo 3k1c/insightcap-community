@@ -1,7 +1,9 @@
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 
-use crate::prompts::{SPACE_KNOWLEDGE_GUIDE_PROMPT, SPACE_KNOWLEDGE_GUIDE_SYSTEM};
+use crate::prompts::{
+    self, build_space_knowledge_guide_user_prompt, SpaceKnowledgeGuideUserPromptInput,
+};
 use crate::providers::llm::openai::OpenAiProvider;
 use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::settings::store::get_settings;
@@ -73,17 +75,13 @@ impl SpaceKnowledgeGuideEngine {
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        let mut user_prompt = format!(
-            "{}\n\nOutput language: {}\n\nSpace name: {}\n\nMemory chunks:\n{}\n",
-            SPACE_KNOWLEDGE_GUIDE_PROMPT, output_language, space_name, chunks_text
-        );
-
-        if !existing_guide.trim().is_empty() {
-            user_prompt.push_str(&format!(
-                "\nExisting Knowledge Guide. Update it incrementally based on the new chunks:\n{}\n",
-                existing_guide
-            ));
-        }
+        let user_prompt =
+            build_space_knowledge_guide_user_prompt(SpaceKnowledgeGuideUserPromptInput {
+                output_language,
+                space_name: &space_name,
+                chunks_text: &chunks_text,
+                existing_guide: Some(&existing_guide),
+            });
 
         let cfg = settings.ai_models.content_processor_llm;
         let api_key = cfg.api_key.clone().unwrap_or_default();
@@ -106,7 +104,10 @@ impl SpaceKnowledgeGuideEngine {
             think_mode: None,
         };
 
-        let full_prompt = format!("{}\n\n{}", SPACE_KNOWLEDGE_GUIDE_SYSTEM, user_prompt);
+        let full_prompt =
+            prompts::build_space_knowledge_guide_prompt(prompts::SpaceKnowledgeGuidePromptInput {
+                user_prompt: &user_prompt,
+            });
         let result = llm
             .complete(&full_prompt, opts)
             .await

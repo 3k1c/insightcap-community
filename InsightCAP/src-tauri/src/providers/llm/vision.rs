@@ -199,11 +199,11 @@ fn is_openai_compatible_model(model: &str) -> bool {
 }
 
 pub fn general_vision_prompt() -> &'static str {
-    "You are a precise visual content analyzer. Analyze the provided image and respond in the same language as the text visible in the image (use Traditional Chinese if Chinese text is present, otherwise use English).\n\nPlease provide:\n1. SUMMARY: A concise 1-3 sentence description of what the image shows\n2. TEXT: Extract ALL readable text (UI labels, headings, body text, code, etc.) preserving original formatting where possible\n3. TYPE: Classify as one of: [code, document, screenshot, diagram, photo, other]\n\nOutput Format:\n---\nSUMMARY: <description>\nTEXT: <all visible text>\nTYPE: <classification>\n---\n\nIf no text is visible, write: TEXT: (no text detected)"
+    crate::prompts::VISION_GENERAL_PROMPT
 }
 
 pub fn ocr_only_prompt() -> &'static str {
-    "You are an OCR engine. Extract all text from this image exactly as written, preserving line breaks, paragraph spacing, bullet points, list structure, headers, and numbers. Output ONLY the extracted text, no commentary. If no text is visible, output: (no text detected)"
+    crate::prompts::VISION_OCR_ONLY_PROMPT
 }
 
 pub fn extract_text_from_vision_output(raw: &str) -> String {

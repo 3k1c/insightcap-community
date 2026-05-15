@@ -1,3 +1,4 @@
+use crate::prompts::{build_space_assignment_prompt, SpaceAssignmentPromptInput};
 use crate::providers::embedding::Embedder;
 use crate::vector_store::local::VectorStore;
 use sqlx::{Row, SqlitePool};
@@ -61,23 +62,11 @@ impl SpaceEngine {
             let safe_limit = content.floor_char_boundary(byte_limit);
             let sample = &content[..safe_limit];
 
-            let prompt = if existing_names.is_empty() {
-                format!(
-                    "Create a highly specific, short category or Space name for the following text. \
-                     Return ONLY the category name in {output_language}. No punctuation.\n\nText:\n{}",
-                    sample
-                )
-            } else {
-                format!(
-                    "Existing Space names:\n{}\n\n\
-                     Categorize the following text. If it VERY STRICTLY belongs to one of the existing Spaces, return that Space name. \
-                     Otherwise, create a NEW, highly specific short Space name in {output_language}. \
-                     Do NOT default to an existing space if the topic is even slightly different. \
-                     Return ONLY the Space name. No punctuation.\n\nText:\n{}",
-                    existing_names.join(", "),
-                    sample
-                )
-            };
+            let prompt = build_space_assignment_prompt(SpaceAssignmentPromptInput {
+                content: sample,
+                output_language,
+                existing_names: &existing_names,
+            });
 
             if let Ok(category) = llm
                 .complete(&prompt, crate::providers::llm::LLMOptions::default())
