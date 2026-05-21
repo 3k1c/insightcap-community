@@ -3,7 +3,45 @@ use crate::ocr::postprocess::{detect_language, postprocess_ocr_text};
 use crate::ocr::preprocess::preprocess_for_ocr;
 use sqlx::{Row, SqlitePool};
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OcrTaskProgressPayload {
+    task_id: Option<String>,
+    file_path: String,
+    file_name: String,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: String,
+}
+
+fn emit_ocr_task_progress(
+    app: &AppHandle,
+    capture_id: &str,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: impl Into<String>,
+) {
+    let short_id = &capture_id[..8.min(capture_id.len())];
+    let _ = app.emit(
+        "processing-task-progress",
+        OcrTaskProgressPayload {
+            task_id: Some(format!("ocr-{capture_id}")),
+            file_path: capture_id.to_string(),
+            file_name: format!("OCR image {short_id}"),
+            stage,
+            status,
+            current,
+            total,
+            message: message.into(),
+        },
+    );
+}
 
 pub fn start_ocr_worker(app: AppHandle) {
     let mut shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();
@@ -41,6 +79,15 @@ pub fn start_ocr_worker(app: AppHandle) {
             for row in rows {
                 let capture_id: String = row.get("id");
                 let img_bytes: Option<Vec<u8>> = row.try_get("image_data").unwrap_or(None);
+                emit_ocr_task_progress(
+                    &app,
+                    &capture_id,
+                    "parsing",
+                    "processing",
+                    0,
+                    1,
+                    "Running OCR",
+                );
 
                 if let Some(bytes) = img_bytes {
                     let raw_bytes = bytes.clone();
@@ -55,6 +102,15 @@ pub fn start_ocr_worker(app: AppHandle) {
 
                     match crate::ocr::perform_ocr(&ocr_input).await {
                         Ok(raw_text) => {
+                            emit_ocr_task_progress(
+                                &app,
+                                &capture_id,
+                                "cleaning",
+                                "processing",
+                                0,
+                                1,
+                                "Cleaning OCR text",
+                            );
                             let language = detect_language(&raw_text);
                             let mut clean_text = postprocess_ocr_text(&raw_text, language);
 
@@ -82,6 +138,15 @@ pub fn start_ocr_worker(app: AppHandle) {
                             }
 
                             let app_state = app.state::<AppState>();
+                            emit_ocr_task_progress(
+                                &app,
+                                &capture_id,
+                                "indexing",
+                                "processing",
+                                0,
+                                1,
+                                "Creating knowledge points and index",
+                            );
                             let vector_id_opt: Option<i64> =
                                 match app_state.embedder.embed(&clean_text).await {
                                     Ok(vec) => {
@@ -160,9 +225,27 @@ pub fn start_ocr_worker(app: AppHandle) {
                             });
 
                             println!("[OCR-WORKER] OCR completed: {capture_id}");
+                            emit_ocr_task_progress(
+                                &app,
+                                &capture_id,
+                                "completed",
+                                "done",
+                                1,
+                                1,
+                                "OCR completed",
+                            );
                         }
                         Err(e) => {
                             eprintln!("[OCR-WORKER] OCR failed {capture_id}: {e}");
+                            emit_ocr_task_progress(
+                                &app,
+                                &capture_id,
+                                "failed",
+                                "failed",
+                                0,
+                                1,
+                                e.to_string(),
+                            );
                             let _ = sqlx::query(
                                 "UPDATE captures SET status = 'processed', clean_content = '' WHERE id = ?"
                             )
@@ -172,6 +255,15 @@ pub fn start_ocr_worker(app: AppHandle) {
                         }
                     }
                 } else {
+                    emit_ocr_task_progress(
+                        &app,
+                        &capture_id,
+                        "failed",
+                        "failed",
+                        0,
+                        1,
+                        "No image data",
+                    );
                     let _ = sqlx::query(
                         "UPDATE captures SET status = 'processed', clean_content = '' WHERE id = ?",
                     )

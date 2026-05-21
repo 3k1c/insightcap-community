@@ -8,6 +8,45 @@ use uuid::Uuid;
 use crate::db::AppState;
 use crate::tray_status::{set_tray_status, TrayStatus};
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessingTaskProgressPayload {
+    task_id: Option<String>,
+    file_path: String,
+    file_name: String,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: String,
+}
+
+fn emit_processing_task_progress(
+    app: &AppHandle,
+    task_id: &str,
+    file_path: &str,
+    file_name: &str,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: impl Into<String>,
+) {
+    let _ = app.emit(
+        "processing-task-progress",
+        ProcessingTaskProgressPayload {
+            task_id: Some(task_id.to_string()),
+            file_path: file_path.to_string(),
+            file_name: file_name.to_string(),
+            stage,
+            status,
+            current,
+            total,
+            message: message.into(),
+        },
+    );
+}
+
 fn extract_bvid(value: &str) -> Option<String> {
     let start = value.find("BV")?;
     let bvid: String = value[start..]
@@ -180,10 +219,39 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     let window_title: String = row.try_get("window_title").unwrap_or_default();
     let image_data: Option<Vec<u8>> = row.try_get("image_data").unwrap_or(None);
     let captured_at: String = row.get("captured_at");
+    let task_file_path = if !source_url.is_empty() {
+        source_url.clone()
+    } else if !window_title.is_empty() {
+        window_title.clone()
+    } else if !source_exe.is_empty() {
+        source_exe.clone()
+    } else {
+        id.clone()
+    };
+    let task_file_name = if !window_title.is_empty() {
+        crate::utils::title_cleaner::clean_window_title(&window_title)
+    } else if !source_url.is_empty() {
+        source_url.clone()
+    } else if !source_exe.is_empty() {
+        source_exe.clone()
+    } else {
+        "Captured content".to_string()
+    };
 
     println!(
         "[CaptureProcessor] Processing inbox: {} (type: {})",
         id, content_type
+    );
+    emit_processing_task_progress(
+        app,
+        &id,
+        &task_file_path,
+        &task_file_name,
+        "parsing",
+        "processing",
+        0,
+        0,
+        "Parsing captured content",
     );
 
     sqlx::query("UPDATE inbox SET status = 'processing' WHERE id = ?")
@@ -244,6 +312,18 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
             content.clone(),
         )
     };
+
+    emit_processing_task_progress(
+        app,
+        &id,
+        &task_file_path,
+        &display_title,
+        "cleaning",
+        "processing",
+        0,
+        0,
+        "Cleaning captured content",
+    );
 
     let normalized_content = crate::services::language_normalizer::NORMALIZER
         .normalize(&processed_content, &settings.general);
@@ -337,6 +417,17 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     let mut chunk_count: i64 = 0;
 
     if content_type == "image" {
+        emit_processing_task_progress(
+            app,
+            &id,
+            &task_file_path,
+            &display_title,
+            "indexing",
+            "processing",
+            0,
+            1,
+            "Creating knowledge points and index",
+        );
         let capture_id = Uuid::now_v7().to_string();
         sqlx::query(
             "INSERT INTO captures (id, source_id, type, raw_content, clean_content, image_data, capture_method, chunk_index, status, content_type, knowledge_type, chunk_strategy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'image_ocr', 'data', 'semantic', ?, ?)"
@@ -356,6 +447,17 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
         .await
         .map_err(|e| e.to_string())?;
         chunk_count = 1;
+        emit_processing_task_progress(
+            app,
+            &id,
+            &task_file_path,
+            &display_title,
+            "indexing",
+            "processing",
+            1,
+            1,
+            "Creating knowledge points and index",
+        );
     } else {
         let routed_chunks =
             crate::capture::chunking::chunks_for_text(&normalized_content, &content_type);
@@ -369,8 +471,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
         };
 
         let app_state = app.state::<AppState>();
+        let total_chunks = routed_chunks.len();
 
         for (idx, routed) in routed_chunks.iter().enumerate() {
+            emit_processing_task_progress(
+                app,
+                &id,
+                &task_file_path,
+                &display_title,
+                "indexing",
+                "processing",
+                chunk_count as usize,
+                total_chunks,
+                "Creating knowledge points and index",
+            );
             let capture_id = Uuid::now_v7().to_string();
             let para = &routed.content;
 
@@ -461,6 +575,17 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
             });
 
             chunk_count += 1;
+            emit_processing_task_progress(
+                app,
+                &id,
+                &task_file_path,
+                &display_title,
+                "indexing",
+                "processing",
+                chunk_count as usize,
+                total_chunks,
+                "Creating knowledge points and index",
+            );
         }
 
         let tag_pool = pool.clone();
@@ -505,6 +630,17 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     println!(
         "[CaptureProcessor] inbox {} processed, source {} got {} chunks",
         id, source_id, chunk_count
+    );
+    emit_processing_task_progress(
+        app,
+        &id,
+        &task_file_path,
+        &display_title,
+        "completed",
+        "done",
+        chunk_count as usize,
+        chunk_count.max(1) as usize,
+        "Processing completed",
     );
     Ok(true)
 }

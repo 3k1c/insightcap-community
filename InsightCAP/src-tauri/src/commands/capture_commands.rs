@@ -2,8 +2,53 @@ use crate::db::AppState;
 use chrono::Utc;
 use sqlx::SqlitePool;
 use std::path::Path;
-use tauri::State;
+use tauri::{Emitter, State};
 use uuid::Uuid;
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportTaskProgressPayload {
+    task_id: Option<String>,
+    file_path: String,
+    file_name: String,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: String,
+}
+
+fn file_name_for_progress(file_path: &str) -> String {
+    Path::new(file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_path)
+        .to_string()
+}
+
+fn emit_import_task_progress(
+    app: &tauri::AppHandle,
+    task_id: &Option<String>,
+    file_path: &str,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: impl Into<String>,
+) {
+    let payload = ImportTaskProgressPayload {
+        task_id: task_id.clone(),
+        file_path: file_path.to_string(),
+        file_name: file_name_for_progress(file_path),
+        stage,
+        status,
+        current,
+        total,
+        message: message.into(),
+    };
+    let _ = app.emit("import-task-progress", payload.clone());
+    let _ = app.emit("processing-task-progress", payload);
+}
 
 #[tauri::command]
 pub async fn quick_capture(pool: State<'_, SqlitePool>, content: String) -> Result<(), String> {
@@ -141,11 +186,23 @@ pub async fn create_temp_chunk(
 #[tauri::command]
 pub async fn ingest_file(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     file_path: String,
     _conversation_id: Option<String>,
+    import_task_id: Option<String>,
 ) -> Result<(), String> {
     let db = &state.db;
     println!("[IngestFile] Starting import: {}", file_path);
+    emit_import_task_progress(
+        &app,
+        &import_task_id,
+        &file_path,
+        "parsing",
+        "processing",
+        0,
+        0,
+        "Parsing source file",
+    );
 
     let settings = crate::settings::store::get_settings(db)
         .await
@@ -162,6 +219,16 @@ pub async fn ingest_file(
             Ok(parsed) => parsed,
             Err(e) => {
                 eprintln!("[IngestFile] Parse failed for {}: {}", file_path, e);
+                emit_import_task_progress(
+                    &app,
+                    &import_task_id,
+                    &file_path,
+                    "failed",
+                    "failed",
+                    0,
+                    0,
+                    e.clone(),
+                );
                 return Err(e);
             }
         };
@@ -185,6 +252,16 @@ pub async fn ingest_file(
         .map(|c| c.content.as_str())
         .collect::<Vec<_>>()
         .join("\n\n");
+    emit_import_task_progress(
+        &app,
+        &import_task_id,
+        &file_path,
+        "cleaning",
+        "processing",
+        0,
+        0,
+        "Cleaning parsed content",
+    );
     let source_identity =
         crate::capture::source_group::identity_for_file(&file_path, &source_clean_content);
     let source_group_id =
@@ -271,12 +348,38 @@ pub async fn ingest_file(
     .await
     .map_err(|e| format!("insert source failed: {}", e))?;
 
+    emit_import_task_progress(
+        &app,
+        &import_task_id,
+        &file_path,
+        "saving",
+        "processing",
+        0,
+        0,
+        "Saving source metadata",
+    );
+
+    let total_chunks: usize = parsed
+        .chunks
+        .iter()
+        .map(|f_chunk| crate::capture::chunking::chunks_for_file_chunk(f_chunk).len())
+        .sum();
     let mut chunk_count: usize = 0;
 
     for f_chunk in parsed.chunks {
         let routed_chunks = crate::capture::chunking::chunks_for_file_chunk(&f_chunk);
 
         for routed in routed_chunks {
+            emit_import_task_progress(
+                &app,
+                &import_task_id,
+                &file_path,
+                "indexing",
+                "processing",
+                chunk_count,
+                total_chunks,
+                "Creating knowledge points and index",
+            );
             let chunk_id = Uuid::now_v7().to_string();
             let para = routed.content;
             let vec = state
@@ -363,6 +466,16 @@ pub async fn ingest_file(
             });
 
             chunk_count += 1;
+            emit_import_task_progress(
+                &app,
+                &import_task_id,
+                &file_path,
+                "indexing",
+                "processing",
+                chunk_count,
+                total_chunks,
+                "Creating knowledge points and index",
+            );
         }
     }
 
@@ -393,5 +506,15 @@ pub async fn ingest_file(
     });
 
     println!("[IngestFile] source={} chunks={}", source_id, chunk_count);
+    emit_import_task_progress(
+        &app,
+        &import_task_id,
+        &file_path,
+        "completed",
+        "done",
+        chunk_count,
+        total_chunks,
+        "Import completed",
+    );
     Ok(())
 }

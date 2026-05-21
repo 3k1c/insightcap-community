@@ -1,15 +1,25 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import i18n from '../i18n';
 import { useKnowledgeStore } from '../stores/knowledgeStore';
 import { useTagStore } from '../stores/tagStore';
 import { RepositoryPage } from './RepositoryPage';
 
+const eventHandlers = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
+
 vi.mock('@tauri-apps/api/core', () => ({
     invoke: vi.fn(),
     convertFileSrc: vi.fn((path: string) => path),
+}));
+
+vi.mock('@tauri-apps/api/event', () => ({
+    listen: vi.fn(async (event: string, handler: (event: { payload: unknown }) => void) => {
+        eventHandlers.set(event, handler);
+        return () => eventHandlers.delete(event);
+    }),
 }));
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -35,6 +45,7 @@ vi.mock('../lib/noteStore', () => ({
 }));
 
 const mockInvoke = vi.mocked(invoke);
+const mockOpen = vi.mocked(open);
 
 function resetStores() {
     useKnowledgeStore.setState({
@@ -55,6 +66,7 @@ describe('RepositoryPage empty state', () => {
     beforeEach(async () => {
         await i18n.changeLanguage('en');
         vi.clearAllMocks();
+        eventHandlers.clear();
         resetStores();
         mockInvoke.mockImplementation(async (command: string) => {
             if (command === 'get_sources_timeline') return [];
@@ -76,6 +88,10 @@ describe('RepositoryPage empty state', () => {
         expect(screen.queryByText('New Note')).not.toBeInTheDocument();
     });
 
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('shows only the source add card while the Sources filter is active', async () => {
         const user = userEvent.setup();
         render(<RepositoryPage />);
@@ -85,6 +101,69 @@ describe('RepositoryPage empty state', () => {
         expect(screen.getByRole('button', { name: 'Add Source File' })).toBeInTheDocument();
         expect(screen.getByText('Choose local files')).toBeInTheDocument();
         expect(screen.queryByText('New Note')).not.toBeInTheDocument();
+    });
+
+    it('shows import progress after choosing source files', async () => {
+        const user = userEvent.setup();
+        mockOpen.mockResolvedValue(['C:\\docs\\alpha.pdf', 'C:\\docs\\beta.pdf']);
+        render(<RepositoryPage />);
+
+        await user.click(await screen.findByRole('button', { name: 'Sources' }));
+        await user.click(screen.getByRole('button', { name: 'Add Source File' }));
+
+        expect(screen.getByText('Processing progress')).toBeInTheDocument();
+        expect(screen.getByText(/\/2$/)).toBeInTheDocument();
+        expect(screen.getByText('alpha.pdf')).toBeInTheDocument();
+        expect(screen.getByText('beta.pdf')).toBeInTheDocument();
+    });
+
+    it('shows background processing progress and auto closes after completion', () => {
+        render(<RepositoryPage />);
+
+        const handler = eventHandlers.get('processing-task-progress');
+        expect(handler).toBeDefined();
+        vi.useFakeTimers();
+
+        act(() => {
+            handler?.({
+                payload: {
+                    taskId: 'capture-1',
+                    filePath: 'https://example.com/article',
+                    fileName: 'Example Article',
+                    stage: 'cleaning',
+                    status: 'processing',
+                    current: 0,
+                    total: 1,
+                    message: 'Cleaning',
+                },
+            });
+        });
+
+        expect(screen.getByText('Processing progress')).toBeInTheDocument();
+        expect(screen.getByText('Example Article')).toBeInTheDocument();
+
+        act(() => {
+            handler?.({
+                payload: {
+                    taskId: 'capture-1',
+                    filePath: 'https://example.com/article',
+                    fileName: 'Example Article',
+                    stage: 'completed',
+                    status: 'done',
+                    current: 1,
+                    total: 1,
+                    message: 'Done',
+                },
+            });
+        });
+
+        expect(screen.getByText('1/1')).toBeInTheDocument();
+
+        act(() => {
+            vi.advanceTimersByTime(4500);
+        });
+
+        expect(screen.queryByText('Processing progress')).not.toBeInTheDocument();
     });
 
     it('keeps the no-match empty state for an empty search result', async () => {

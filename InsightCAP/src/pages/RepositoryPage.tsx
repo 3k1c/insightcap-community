@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback, KeyboardEvent
 import { Search, FileText, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers, Pencil, Check, ChevronDown, Globe, FileCode, FileSpreadsheet, File, BookText, Brain, Fingerprint, Bug, RefreshCw } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { useKnowledgeStore, type TimelineSourceItem, type CaptureDetail, type RepositoryStats } from '../stores/knowledgeStore';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -340,6 +341,54 @@ interface PreviewDoc {
     sourceItem?: TimelineSourceItem;
 }
 
+type ImportTaskStatus = 'queued' | 'processing' | 'done' | 'failed';
+
+interface ImportTaskItem {
+    id: string;
+    filePath: string;
+    fileName: string;
+    stage: string;
+    status: ImportTaskStatus;
+    current: number;
+    total: number;
+    message: string;
+}
+
+interface ImportTaskProgressPayload {
+    taskId?: string | null;
+    filePath: string;
+    fileName: string;
+    stage: string;
+    status: ImportTaskStatus;
+    current: number;
+    total: number;
+    message: string;
+}
+
+function fileNameFromPath(path: string): string {
+    return path.split(/[\\/]/).filter(Boolean).pop() || path;
+}
+
+function createImportTaskId(index: number): string {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+        return crypto.randomUUID();
+    }
+    return `import-${Date.now()}-${index}`;
+}
+
+function importStageLabel(stage: string, t: (key: string) => string): string {
+    const labels: Record<string, string> = {
+        queued: t('repository.import_stage_queued'),
+        parsing: t('repository.import_stage_parsing'),
+        cleaning: t('repository.import_stage_cleaning'),
+        saving: t('repository.import_stage_saving'),
+        indexing: t('repository.import_stage_indexing'),
+        completed: t('repository.import_stage_completed'),
+        failed: t('repository.import_stage_failed'),
+    };
+    return labels[stage] || stage;
+}
+
 
 export const RepositoryPage: React.FC = () => {
     const t = useT();
@@ -355,6 +404,8 @@ export const RepositoryPage: React.FC = () => {
     const [typeFilter, setTypeFilter] = useState<'all' | 'source' | 'note'>('all');
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false);
+    const [importTasks, setImportTasks] = useState<ImportTaskItem[]>([]);
+    const [importPanelExpanded, setImportPanelExpanded] = useState(true);
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const firstRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -471,6 +522,57 @@ export const RepositoryPage: React.FC = () => {
         loadRepositoryStats().catch(console.error);
     }, [loadTimeline, loadRecentTags, loadSpaces, loadRepositoryStats]);
 
+    useEffect(() => {
+        let disposed = false;
+        const handleProgress = (event: { payload: ImportTaskProgressPayload }) => {
+            const payload = event.payload;
+            const taskId = payload.taskId || payload.filePath || payload.fileName;
+            if (!taskId) return;
+            setImportTasks((prev) =>
+                prev.some((task) => task.id === taskId || task.filePath === payload.filePath)
+                    ? prev.map((task) =>
+                        task.id === taskId || task.filePath === payload.filePath
+                            ? {
+                                ...task,
+                                filePath: payload.filePath || task.filePath,
+                                fileName: payload.fileName || task.fileName,
+                                stage: payload.stage || task.stage,
+                                status: payload.status,
+                                current: payload.current ?? task.current,
+                                total: payload.total ?? task.total,
+                                message: payload.message || task.message,
+                            }
+                            : task,
+                    )
+                    : [
+                        ...prev,
+                        {
+                            id: taskId,
+                            filePath: payload.filePath,
+                            fileName: payload.fileName || fileNameFromPath(payload.filePath),
+                            stage: payload.stage || 'queued',
+                            status: payload.status,
+                            current: payload.current ?? 0,
+                            total: payload.total ?? 0,
+                            message: payload.message || '',
+                        },
+                    ],
+            );
+        };
+        const importUnlistenPromise = listen<ImportTaskProgressPayload>('import-task-progress', handleProgress);
+        const processingUnlistenPromise = listen<ImportTaskProgressPayload>('processing-task-progress', handleProgress);
+
+        return () => {
+            disposed = true;
+            importUnlistenPromise.then((unlisten) => {
+                if (disposed) unlisten();
+            }).catch(console.error);
+            processingUnlistenPromise.then((unlisten) => {
+                if (disposed) unlisten();
+            }).catch(console.error);
+        };
+    }, []);
+
     const handleRefreshClassification = useCallback(async () => {
         setIsRefreshingClassification(true);
         try {
@@ -521,6 +623,29 @@ export const RepositoryPage: React.FC = () => {
         () => (Array.isArray(timelineSources) ? timelineSources : []).reduce((sum, s) => sum + (s.captureCount || 0), 0),
         [timelineSources],
     );
+
+    const importProgress = useMemo(() => {
+        const total = importTasks.length;
+        const done = importTasks.filter((task) => task.status === 'done').length;
+        const failed = importTasks.filter((task) => task.status === 'failed').length;
+        const active = importTasks.find((task) => task.status === 'processing') ?? importTasks.find((task) => task.status === 'queued') ?? null;
+        return {
+            total,
+            done,
+            failed,
+            active,
+            isRunning: importTasks.some((task) => task.status === 'queued' || task.status === 'processing'),
+            percent: total > 0 ? Math.round(((done + failed) / total) * 100) : 0,
+        };
+    }, [importTasks]);
+
+    useEffect(() => {
+        if (importProgress.total === 0 || importProgress.isRunning || importProgress.failed > 0) return;
+        const timer = window.setTimeout(() => {
+            setImportTasks([]);
+        }, 4000);
+        return () => window.clearTimeout(timer);
+    }, [importProgress.failed, importProgress.isRunning, importProgress.total]);
 
     const topTags = useMemo(() => {
         const sorted = [...recentTags].sort((a, b) => b.recentCount - a.recentCount || b.useCount - a.useCount);
@@ -740,7 +865,54 @@ export const RepositoryPage: React.FC = () => {
             const paths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
             if (paths.length === 0) return;
 
-            const results = await Promise.allSettled(paths.map((path) => tauriCmd.ingestFile(path)));
+            const tasks: ImportTaskItem[] = paths.map((path, index) => ({
+                id: createImportTaskId(index),
+                filePath: path,
+                fileName: fileNameFromPath(path),
+                stage: 'queued',
+                status: 'queued',
+                current: 0,
+                total: 0,
+                message: '',
+            }));
+            setImportTasks(tasks);
+            setImportPanelExpanded(true);
+
+            const results = await Promise.allSettled(
+                tasks.map((task) =>
+                    tauriCmd.ingestFile(task.filePath, undefined, task.id)
+                        .then(() => {
+                            setImportTasks((prev) =>
+                                prev.map((item) =>
+                                    item.id === task.id && item.status !== 'done'
+                                        ? {
+                                            ...item,
+                                            stage: 'completed',
+                                            status: 'done',
+                                            current: item.total || 1,
+                                            total: item.total || 1,
+                                        }
+                                        : item,
+                                ),
+                            );
+                        })
+                        .catch((error) => {
+                            setImportTasks((prev) =>
+                                prev.map((item) =>
+                                    item.id === task.id
+                                        ? {
+                                            ...item,
+                                            stage: 'failed',
+                                            status: 'failed',
+                                            message: String(error ?? ''),
+                                        }
+                                        : item,
+                                ),
+                            );
+                            throw error;
+                        }),
+                ),
+            );
             const successCount = results.filter((r) => r.status === 'fulfilled').length;
             const failures = results
                 .map((result, index) => ({ result, path: paths[index] }))
@@ -873,6 +1045,77 @@ export const RepositoryPage: React.FC = () => {
 
         return groups;
     }, [dayGroups, shouldShowTodayActionGroup, typeFilter, todayKey, tagSourceIds]);
+
+    const importProgressPanel = importProgress.total > 0 ? (
+        <div className="mb-5 rounded-xl border border-stroke-card bg-surface-layer px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    onClick={() => setImportPanelExpanded((open) => !open)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-text-tertiary transition-transform ${importPanelExpanded ? 'rotate-180' : ''}`} />
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-fs-sm font-semibold text-text-primary">{t('repository.import_progress_title')}</span>
+                            <span className="rounded-full bg-accent-default/10 px-2 py-0.5 text-fs-xs font-semibold text-accent-default">
+                                {importProgress.done + importProgress.failed}/{importProgress.total}
+                            </span>
+                            {importProgress.failed > 0 && (
+                                <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-fs-xs font-semibold text-red-500">
+                                    {t('repository.import_progress_failed', { count: importProgress.failed })}
+                                </span>
+                            )}
+                        </div>
+                        {importProgress.active && (
+                            <p className="mt-0.5 truncate text-fs-xs text-text-tertiary">
+                                {importStageLabel(importProgress.active.stage, t)} · {importProgress.active.fileName}
+                            </p>
+                        )}
+                    </div>
+                </button>
+                {!importProgress.isRunning && (
+                    <button
+                        type="button"
+                        onClick={() => setImportTasks([])}
+                        className="rounded-full p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                        aria-label={t('common.close')}
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                )}
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-subtle">
+                <div
+                    className={`h-full rounded-full transition-all duration-300 ${importProgress.failed > 0 && !importProgress.isRunning ? 'bg-red-500' : 'bg-accent-default'}`}
+                    style={{ width: `${importProgress.percent}%` }}
+                />
+            </div>
+            {importPanelExpanded && (
+                <div className="mt-3 max-h-44 space-y-1 overflow-y-auto pr-1">
+                    {importTasks.map((task) => (
+                        <div key={task.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-fs-xs hover:bg-surface-hover">
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${task.status === 'done'
+                                ? 'bg-emerald-500'
+                                : task.status === 'failed'
+                                    ? 'bg-red-500'
+                                    : task.status === 'processing'
+                                        ? 'bg-accent-default'
+                                        : 'bg-text-tertiary/40'
+                                }`}
+                            />
+                            <span className="min-w-0 flex-1 truncate text-text-secondary">{task.fileName}</span>
+                            <span className="shrink-0 text-text-tertiary">
+                                {task.total > 0 && task.status === 'processing'
+                                    ? `${importStageLabel(task.stage, t)} ${task.current}/${task.total}`
+                                    : importStageLabel(task.stage, t)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    ) : null;
 
     return (
         <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface-base">
@@ -1023,6 +1266,7 @@ export const RepositoryPage: React.FC = () => {
             </div>
 
             <div className="w-full px-6 py-5">
+                {importProgressPanel}
                 {isLoadingTimeline ? (
                     <div className="flex flex-col items-center justify-center py-20">
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-default/20 border-t-accent-default" />

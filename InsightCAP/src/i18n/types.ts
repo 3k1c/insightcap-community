@@ -49,6 +49,15 @@ export interface TranslationKeys {
         chunk_tag_placeholder: string;
         chunk_save_success: string;
         chunk_no_space: string;
+        import_progress_title: string;
+        import_progress_failed: string;
+        import_stage_queued: string;
+        import_stage_parsing: string;
+        import_stage_cleaning: string;
+        import_stage_saving: string;
+        import_stage_indexing: string;
+        import_stage_completed: string;
+        import_stage_failed: string;
         refresh_classification: string;
         refresh_classification_success: string;
         refresh_classification_failed: string;
