@@ -10,7 +10,7 @@ import {
     Settings2, Server, Sparkles, BookOpen, PenLine,
     Plus, Trash2, Eye, EyeOff, ExternalLink,
     RefreshCw, Download, Upload, AlertTriangle, Wrench,
-    User, ShieldCheck, KeyRound, Save, Clock, GripVertical, ArrowUp, ArrowDown,
+    User, ShieldCheck, KeyRound, Save, Clock, GripVertical, ArrowUp, ArrowDown, ChevronDown,
 } from 'lucide-react';
 import { useT } from '../hooks/useT';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -226,15 +226,67 @@ const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = (
     </button>
 );
 
-const SelectField: React.FC<{ value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; className?: string }> = ({ value, onChange, options, className }) => (
-    <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className={`bg-surface-base border border-stroke-divider rounded-lg px-3 py-1.5 text-fs-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-default ${className ?? ''}`}
-    >
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-);
+const SelectField: React.FC<{ value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; className?: string }> = ({ value, onChange, options, className }) => {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const selected = options.find(o => o.value === value) ?? options[0];
+
+    useEffect(() => {
+        if (!open) return;
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!rootRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [open]);
+
+    return (
+        <div ref={rootRef} className={`relative ${className ?? ''}`}>
+            <button
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                onClick={() => setOpen(v => !v)}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-stroke-divider bg-surface-base px-3 py-1.5 text-left text-fs-sm text-text-primary transition-colors hover:border-accent-default/50 focus:outline-none focus:ring-1 focus:ring-accent-default"
+            >
+                <span className="min-w-0 truncate">{selected?.label ?? value}</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-text-tertiary transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && (
+                <div className="absolute right-0 top-full z-50 mt-1 max-h-64 w-full min-w-max overflow-auto rounded-xl border border-stroke-control bg-surface-flyout p-1 shadow-lg">
+                    {options.map(option => {
+                        const isSelected = option.value === value;
+                        return (
+                            <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => {
+                                    onChange(option.value);
+                                    setOpen(false);
+                                }}
+                                className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-fs-sm transition-colors ${isSelected
+                                    ? 'bg-accent-default/12 text-accent-default'
+                                    : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'
+                                    }`}
+                            >
+                                {option.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const InputField: React.FC<{ value: string; onChange: (v: string) => void; placeholder?: string; type?: string; className?: string }> = ({ value, onChange, placeholder, type = 'text', className }) => (
     <input

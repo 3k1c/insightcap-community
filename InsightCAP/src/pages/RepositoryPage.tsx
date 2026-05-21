@@ -825,6 +825,9 @@ export const RepositoryPage: React.FC = () => {
         !keyword &&
         !selectedTag &&
         !spaceFilter;
+    const shouldShowSourceAction = shouldShowTimelineActions && typeFilter === 'source';
+    const shouldShowNoteAction = shouldShowTimelineActions && typeFilter === 'note';
+    const shouldShowTodayActionGroup = shouldShowSourceAction || shouldShowNoteAction;
 
     const [tagSourceIds, setTagSourceIds] = useState<Set<string> | null>(null);
 
@@ -845,7 +848,7 @@ export const RepositoryPage: React.FC = () => {
     const visibleGroups = useMemo(() => {
         let groups = dayGroups;
 
-        if (shouldShowTimelineActions && !groups.some((group) => group.dateKey === todayKey)) {
+        if (shouldShowTodayActionGroup && !groups.some((group) => group.dateKey === todayKey)) {
             groups = [{ dateKey: todayKey, sourceItems: [], noteItems: [] }, ...groups];
         }
 
@@ -856,7 +859,7 @@ export const RepositoryPage: React.FC = () => {
                     sourceItems: typeFilter === 'source' ? g.sourceItems : [],
                     noteItems: typeFilter === 'note' ? g.noteItems : [],
                 }))
-                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (shouldShowTimelineActions && g.dateKey === todayKey));
+                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (shouldShowTodayActionGroup && g.dateKey === todayKey));
         }
 
         if (tagSourceIds) {
@@ -865,11 +868,11 @@ export const RepositoryPage: React.FC = () => {
                     ...g,
                     sourceItems: g.sourceItems.filter((s) => tagSourceIds.has(s.id)),
                 }))
-                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (shouldShowTimelineActions && g.dateKey === todayKey));
+                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (shouldShowTodayActionGroup && g.dateKey === todayKey));
         }
 
         return groups;
-    }, [dayGroups, shouldShowTimelineActions, typeFilter, todayKey, tagSourceIds]);
+    }, [dayGroups, shouldShowTodayActionGroup, typeFilter, todayKey, tagSourceIds]);
 
     return (
         <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface-base">
@@ -1091,7 +1094,7 @@ export const RepositoryPage: React.FC = () => {
                                         <span className="text-fs-xs text-text-tertiary">{formatDateSub(group.dateKey, t)}</span>
                                     </div>
 
-                                    {(group.sourceItems.length > 0 || group.dateKey === todayKey) && typeFilter !== 'note' && (
+                                    {(group.sourceItems.length > 0 || (group.dateKey === todayKey && shouldShowSourceAction)) && typeFilter !== 'note' && (
                                         <div className="mb-3">
                                             <div className="mb-2 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
                                                 <FileText className="h-3 w-3" />
@@ -1185,7 +1188,7 @@ export const RepositoryPage: React.FC = () => {
                                                         </button>
                                                     );
                                                 })}
-                                                {group.dateKey === todayKey && (
+                                                {group.dateKey === todayKey && shouldShowSourceAction && (
                                                     <button
                                                         type="button"
                                                         aria-label={t('repository.import_file')}
@@ -1203,7 +1206,7 @@ export const RepositoryPage: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {(group.noteItems.length > 0 || group.dateKey === todayKey) && typeFilter !== 'source' && (
+                                    {(group.noteItems.length > 0 || (group.dateKey === todayKey && shouldShowNoteAction)) && typeFilter !== 'source' && (
                                         <div className="mb-3">
                                             <div className="mb-2 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
                                                 <NotebookPen className="h-3 w-3" />
@@ -1245,7 +1248,7 @@ export const RepositoryPage: React.FC = () => {
                                                         </button>
                                                     );
                                                 })}
-                                                {group.dateKey === todayKey && (
+                                                {group.dateKey === todayKey && shouldShowNoteAction && (
                                                     <button
                                                         type="button"
                                                         aria-label={t('repository.add_document')}

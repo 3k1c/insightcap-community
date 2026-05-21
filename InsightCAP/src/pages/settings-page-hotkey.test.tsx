@@ -127,4 +127,18 @@ describe('SettingsPage hotkey recorder', () => {
         expect(await screen.findByText('InsightCAP v0.9.0-beta.1')).toBeInTheDocument();
         expect(screen.queryByText('InsightCAP v0.1.0')).not.toBeInTheDocument();
     });
+
+    it('uses app-rendered dropdowns instead of native selects in model settings', async () => {
+        const user = userEvent.setup();
+        render(<SettingsPage />);
+
+        await user.click(await screen.findByRole('button', { name: /Model Settings|模型設定/ }));
+
+        expect(await screen.findByText(/AI Usage Policy|AI 使用策略/)).toBeInTheDocument();
+        expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: /Balanced|平衡/ }));
+
+        expect(screen.getByRole('button', { name: /High Quality|高品質/ })).toBeInTheDocument();
+    });
 });

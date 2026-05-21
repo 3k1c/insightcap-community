@@ -68,13 +68,23 @@ describe('RepositoryPage empty state', () => {
         });
     });
 
-    it('shows the today timeline and import card when the repository has no sources or notes', async () => {
+    it('hides add cards while the All filter is active', async () => {
         render(<RepositoryPage />);
 
-        expect(await screen.findByText('Add Source File')).toBeInTheDocument();
+        expect(await screen.findByText('No sources or notes yet')).toBeInTheDocument();
+        expect(screen.queryByText('Add Source File')).not.toBeInTheDocument();
+        expect(screen.queryByText('New Note')).not.toBeInTheDocument();
+    });
+
+    it('shows only the source add card while the Sources filter is active', async () => {
+        const user = userEvent.setup();
+        render(<RepositoryPage />);
+
+        await user.click(await screen.findByRole('button', { name: 'Sources' }));
+
+        expect(screen.getByRole('button', { name: 'Add Source File' })).toBeInTheDocument();
         expect(screen.getByText('Choose local files')).toBeInTheDocument();
-        expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
-        expect(screen.queryByText('No sources or notes yet')).not.toBeInTheDocument();
+        expect(screen.queryByText('New Note')).not.toBeInTheDocument();
     });
 
     it('keeps the no-match empty state for an empty search result', async () => {
@@ -151,7 +161,7 @@ describe('RepositoryPage empty state', () => {
         expect(mockInvoke).toHaveBeenCalledWith('trigger_space_recluster');
     });
 
-    it('keeps source and note add buttons visible when repository already has items', async () => {
+    it('keeps add cards hidden while the All filter is active when repository already has items', async () => {
         mockInvoke.mockImplementation(async (command: string) => {
             if (command === 'get_sources_timeline') {
                 return [{
@@ -179,7 +189,8 @@ describe('RepositoryPage empty state', () => {
 
         render(<RepositoryPage />);
 
-        expect(await screen.findByRole('button', { name: 'Add Source File' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'New Note' })).toBeInTheDocument();
+        expect(await screen.findByText('Existing Source')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Add Source File' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'New Note' })).not.toBeInTheDocument();
     });
 });
