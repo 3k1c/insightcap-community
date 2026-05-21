@@ -2,7 +2,6 @@ use crate::capture::file_parser::{FileChunk, ParsedDocument};
 use md5::{Digest, Md5};
 use reqwest::Client;
 use std::path::Path;
-use std::process::Command;
 
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
@@ -117,7 +116,11 @@ fn find_ytdlp() -> Option<std::path::PathBuf> {
             }
         }
     }
-    if Command::new("yt-dlp").arg("--version").output().is_ok() {
+    if crate::utils::hidden_command::std_command("yt-dlp")
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
         return Some(std::path::PathBuf::from("yt-dlp"));
     }
     None
@@ -149,7 +152,7 @@ async fn fetch_with_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<String, 
     let ffmpeg_path = ytdlp.parent().unwrap_or(Path::new(".")).join("ffmpeg.exe");
 
     // 合併 --dump-json 和 --write-sub 為單次 yt-dlp 調用，避免重複下載網頁
-    let combined_output = tokio::process::Command::new(ytdlp)
+    let combined_output = crate::utils::hidden_command::tokio_command(ytdlp)
         .args([
             "--dump-json",
             "--write-sub",

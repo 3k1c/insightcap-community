@@ -236,7 +236,7 @@ pub async fn download_audio_as_wav(
     let wav_path = output_dir.join(format!("{}.wav", file_id));
     let ffmpeg_path = ytdlp.parent().unwrap_or(Path::new(".")).join("ffmpeg.exe");
 
-    let output = tokio::process::Command::new(ytdlp)
+    let output = crate::utils::hidden_command::tokio_command(ytdlp)
         .args([
             "--no-playlist",
             "-f",
@@ -269,7 +269,7 @@ pub async fn download_audio_as_wav(
 
     // yt-dlp 下載的可能是 webm/m4a，用 ffmpeg 轉成 16kHz mono WAV
     let converted_path = output_dir.join(format!("{}_16k.wav", file_id));
-    let ffmpeg_output = tokio::process::Command::new(&ffmpeg_path)
+    let ffmpeg_output = crate::utils::hidden_command::tokio_command(&ffmpeg_path)
         .args([
             "-i",
             wav_path.to_str().unwrap_or("audio"),
@@ -347,7 +347,7 @@ pub async fn transcribe_audio_file(
     let _ = std::fs::create_dir_all(&temp_dir);
     let wav_path = temp_dir.join(format!("{}.wav", uuid::Uuid::now_v7()));
 
-    let output = tokio::process::Command::new(&ffmpeg)
+    let output = crate::utils::hidden_command::tokio_command(&ffmpeg)
         .args([
             "-i",
             audio_path.to_str().unwrap_or("audio"),
@@ -426,7 +426,7 @@ fn first_runnable_candidate(
 }
 
 fn whisper_cli_is_runnable(path: &Path) -> bool {
-    std::process::Command::new(path)
+    crate::utils::hidden_command::std_command(path)
         .arg("--help")
         .output()
         .map(|output| output.status.success())
@@ -441,7 +441,7 @@ fn ffmpeg_candidates_from_base(base: &Path) -> Vec<PathBuf> {
 }
 
 fn ffmpeg_is_runnable(path: &Path) -> bool {
-    std::process::Command::new(path)
+    crate::utils::hidden_command::std_command(path)
         .arg("-version")
         .output()
         .map(|output| output.status.success())
@@ -571,7 +571,7 @@ async fn run_whisper_cli(
     let _ = std::fs::remove_file(&srt_path);
 
     let args = build_whisper_cli_args(wav_path, model, &output_base, language);
-    let output = tokio::process::Command::new(&whisper_cli)
+    let output = crate::utils::hidden_command::tokio_command(&whisper_cli)
         .args(&args)
         .output()
         .await
@@ -902,5 +902,31 @@ mod tests {
         let status = whisper_binary_status_from_candidates(None);
         assert_eq!(status["available"], false);
         assert_eq!(status["path"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn youtube_whisper_external_commands_use_hidden_spawn_helpers() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let raw_tokio_command_new = ["tokio::process::Command", "::new("].concat();
+        let raw_std_command_new = ["std::process::Command", "::new("].concat();
+        let raw_std_command_import = ["use std::process", "::Command;"].concat();
+
+        for rel_path in ["src/whisper_transcribe.rs", "src/capture/video_parser.rs"] {
+            let source = std::fs::read_to_string(manifest_dir.join(rel_path))
+                .unwrap_or_else(|error| panic!("read {rel_path}: {error}"));
+
+            assert!(
+                !source.contains(&raw_tokio_command_new),
+                "{rel_path} should use hidden tokio command helpers"
+            );
+            assert!(
+                !source.contains(&raw_std_command_new),
+                "{rel_path} should use hidden std command helpers"
+            );
+            assert!(
+                !source.contains(&raw_std_command_import),
+                "{rel_path} should not import raw std Command"
+            );
+        }
     }
 }
