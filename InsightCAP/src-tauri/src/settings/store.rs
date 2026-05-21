@@ -54,6 +54,38 @@ pub struct AIModelSettings {
     pub provider_profiles: Vec<ProviderProfile>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AIUsageMode {
+    Economy,
+    Balanced,
+    Quality,
+}
+
+impl AIUsageMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Economy => "economy",
+            Self::Balanced => "balanced",
+            Self::Quality => "quality",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AIUsageSettings {
+    pub mode: AIUsageMode,
+}
+
+impl Default for AIUsageSettings {
+    fn default() -> Self {
+        Self {
+            mode: AIUsageMode::Balanced,
+        }
+    }
+}
+
 impl Default for AIModelSettings {
     fn default() -> Self {
         let default_url = Some("http://localhost:11434".to_string());
@@ -348,6 +380,8 @@ pub struct AllSettings {
     pub chat_prompt_instruction: String,
     #[serde(default)]
     pub background_synthesis: BackgroundSynthesisSettings,
+    #[serde(default)]
+    pub ai_usage: AIUsageSettings,
 }
 
 impl AllSettings {
@@ -560,6 +594,11 @@ pub async fn get_settings(pool: &SqlitePool) -> Result<AllSettings, sqlx::Error>
                     settings.background_synthesis = val;
                 }
             }
+            "ai_usage" => {
+                if let Ok(val) = serde_json::from_str(&value) {
+                    settings.ai_usage = val;
+                }
+            }
             _ => {}
         }
     }
@@ -652,6 +691,11 @@ pub async fn save_settings(
             serde_json::to_string(&settings.background_synthesis)
                 .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
         ),
+        (
+            "ai_usage",
+            serde_json::to_string(&settings.ai_usage)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?,
+        ),
     ];
 
     for (key, value) in queries {
@@ -671,7 +715,7 @@ pub async fn save_settings(
 
 #[cfg(test)]
 mod tests {
-    use super::{AIModelSettings, ReminderSettings};
+    use super::{AIModelSettings, AllSettings, ReminderSettings};
 
     #[test]
     fn reminder_settings_legacy_json_defaults_ai_enabled() {
@@ -700,5 +744,39 @@ mod tests {
         assert_eq!(settings.content_processor_llm.model, "gemma4:e4b");
         assert_eq!(settings.vision_model.provider, "ollama");
         assert_eq!(settings.vision_model.model, "gemma4:e4b");
+    }
+
+    #[test]
+    fn legacy_all_settings_defaults_ai_usage_to_balanced() {
+        let settings: AllSettings = serde_json::from_str(
+            r#"{
+                "general": { "launchAtStartup": false, "minimizeToTray": true, "language": "zh-TW" },
+                "aiModels": {
+                    "chatLlm": { "provider": "ollama", "model": "gemma4:e4b", "apiKey": null, "baseUrl": "http://localhost:11434" },
+                    "contentProcessorLlm": { "provider": "ollama", "model": "gemma4:e4b", "apiKey": null, "baseUrl": "http://localhost:11434" },
+                    "visionModel": { "provider": "ollama", "model": "gemma4:e4b", "apiKey": null, "baseUrl": "http://localhost:11434" },
+                    "embeddingModel": { "provider": "local", "model": "MultilingualE5Small", "apiKey": null, "baseUrl": null },
+                    "speechToTextModel": { "provider": "local", "model": "base", "apiKey": null, "baseUrl": null },
+                    "summaryModel": "follow_chat",
+                    "providerProfiles": []
+                },
+                "knowledge": { "kbPath": "", "autoClassifyEnabled": true, "autoSpaceMode": "suggest" },
+                "hotkeys": { "captureClipboard": "Ctrl+Alt+F", "quickInput": "Ctrl+Alt+H" },
+                "autoCleanup": { "enabled": true, "retentionDays": 30 },
+                "webSearch": { "enabled": false, "provider": "tavily", "apiKey": "" },
+                "telegram": { "botToken": "", "allowedUserIds": [], "enabled": false, "streaming": "disabled" },
+                "reminders": {
+                    "aiEnabled": true,
+                    "enabled": false,
+                    "dailyReminderTime": "09:00",
+                    "quietHoursStart": "22:00",
+                    "quietHoursEnd": "08:00",
+                    "weekendQuiet": false
+                }
+            }"#,
+        )
+        .expect("legacy all settings should deserialize");
+
+        assert_eq!(settings.ai_usage.mode.as_str(), "balanced");
     }
 }

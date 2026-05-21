@@ -1,5 +1,6 @@
 pub mod model_caps;
 pub mod openai;
+pub mod usage_policy;
 pub mod vision;
 
 #[derive(Debug, Clone)]

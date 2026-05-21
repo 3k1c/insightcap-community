@@ -1,6 +1,7 @@
 use crate::db::AppState;
 use crate::providers::llm::model_caps;
 use crate::providers::llm::openai::{LlmTimingTrace, OpenAiProvider};
+use crate::providers::llm::usage_policy::{apply_llm_usage_policy, LLMTaskKind};
 use crate::providers::llm::{LLMOptions, LLMProvider, StreamToken};
 use crate::services::rag_engine::RagEngine;
 use crate::services::web_search::tavily_search;
@@ -111,6 +112,7 @@ pub async fn editor_ai_rewrite_stream(
     let settings = crate::settings::store::get_settings(&state.db)
         .await
         .map_err(|e| e.to_string())?;
+    let ai_usage = settings.ai_usage.clone();
     let cfg = settings.ai_models.chat_llm;
     let is_ollama = cfg.provider == "ollama";
     let api_key = cfg.api_key.clone().unwrap_or_default();
@@ -134,12 +136,16 @@ pub async fn editor_ai_rewrite_stream(
     );
     let app_clone = app.clone();
     let conv_id = conversation_id.clone();
-    let llm_opts = LLMOptions {
-        temperature: 0.2,
-        max_tokens: 4096,
-        stream: true,
-        think_mode: Some(false),
-    };
+    let llm_opts = apply_llm_usage_policy(
+        LLMOptions {
+            temperature: 0.2,
+            max_tokens: 4096,
+            stream: true,
+            think_mode: Some(false),
+        },
+        &ai_usage,
+        LLMTaskKind::EditorRewrite,
+    );
 
     let stream_result = llm
         .complete_stream(
@@ -340,11 +346,21 @@ pub async fn rag_query_stream(
         }
     } else {
         LLMOptions {
+            max_tokens: 8192,
             stream: true,
             think_mode: Some(false),
             ..LLMOptions::default()
         }
     };
+    let llm_opts = apply_llm_usage_policy(
+        llm_opts,
+        &settings.ai_usage,
+        if is_think {
+            LLMTaskKind::InteractiveThink
+        } else {
+            LLMTaskKind::InteractiveChat
+        },
+    );
 
     timing_trace.log("llm_request_start", None);
 

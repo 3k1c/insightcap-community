@@ -123,6 +123,10 @@ export interface AIModelSettings {
     providerProfiles?: ProviderProfile[];
 }
 
+export interface AIUsageSettings {
+    mode: 'economy' | 'balanced' | 'quality';
+}
+
 export interface KnowledgeSettings {
     kbPath: string;
     autoClassifyEnabled: boolean;
@@ -191,6 +195,7 @@ export interface AllSettings {
     editor: EditorSettings;
     telegram: TelegramSettings;
     chatPromptInstruction: string;
+    aiUsage?: AIUsageSettings;
     bilibiliSessdata?: string | null;
     lastOpenFile?: string | null;
     lastOpenConv?: string | null;

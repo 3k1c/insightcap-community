@@ -8,6 +8,7 @@ use sqlx::{Row, SqlitePool};
 use crate::prompts;
 use crate::providers::embedding::Embedder;
 use crate::providers::llm::openai::OpenAiProvider;
+use crate::providers::llm::usage_policy::{apply_llm_usage_policy, LLMTaskKind};
 use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::vector_store::local::VectorStore;
 
@@ -1115,6 +1116,7 @@ impl RagEngine {
         let settings = crate::settings::store::get_settings(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
+        let ai_usage = settings.ai_usage.clone();
         let cfg = settings.ai_models.chat_llm;
 
         let is_ollama = cfg.provider == "ollama";
@@ -1184,10 +1186,20 @@ impl RagEngine {
             }
         } else {
             LLMOptions {
+                max_tokens: 8192,
                 think_mode: Some(false),
                 ..LLMOptions::default()
             }
         };
+        let llm_opts = apply_llm_usage_policy(
+            llm_opts,
+            &ai_usage,
+            if think_mode {
+                LLMTaskKind::InteractiveThink
+            } else {
+                LLMTaskKind::InteractiveChat
+            },
+        );
 
         let is_simulated = opt_provider.is_none();
         let answer = if let Some(llm) = opt_provider {

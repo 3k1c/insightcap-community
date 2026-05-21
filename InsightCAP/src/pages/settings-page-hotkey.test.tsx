@@ -83,6 +83,9 @@ const settings = {
         quietHoursEnd: '08:00',
         weekendQuiet: false,
     },
+    aiUsage: {
+        mode: 'balanced',
+    },
     chatPromptInstruction: '',
 };
 

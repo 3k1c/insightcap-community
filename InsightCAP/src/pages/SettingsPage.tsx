@@ -107,6 +107,9 @@ interface AllSettings {
     };
     bilibiliSessdata?: string;
     chatPromptInstruction: string;
+    aiUsage?: {
+        mode: 'economy' | 'balanced' | 'quality';
+    };
 }
 
 type SettingsTab = 'general' | 'personal' | 'provider' | 'ai' | 'knowledge' | 'other';
@@ -727,6 +730,7 @@ export const SettingsPage: React.FC = () => {
             const s = await invoke<AllSettings>('get_settings');
             const hydrated = {
                 ...s,
+                aiUsage: s.aiUsage ?? { mode: 'balanced' as const },
                 editor: {
                     ...s.editor,
                     aiActions: normalizeEditorAiActions(s.editor?.aiActions),
@@ -1124,6 +1128,26 @@ export const SettingsPage: React.FC = () => {
                             </div>
                         </div>
                     )}
+                </SectionCard>
+
+                <SectionCard title={t('settings.ai_usage_title')} desc={t('settings.ai_usage_desc')}>
+                    <SettingRow label={t('settings.ai_usage_mode')} desc={t('settings.ai_usage_mode_desc')}>
+                        <SelectField
+                            value={settings.aiUsage?.mode ?? 'balanced'}
+                            onChange={v => updateSettings(s => {
+                                s.aiUsage = { mode: v as 'economy' | 'balanced' | 'quality' };
+                            })}
+                            options={[
+                                { value: 'economy', label: t('settings.ai_usage_economy') },
+                                { value: 'balanced', label: t('settings.ai_usage_balanced') },
+                                { value: 'quality', label: t('settings.ai_usage_quality') },
+                            ]}
+                            className="w-44"
+                        />
+                    </SettingRow>
+                    <div className="text-fs-xs text-text-tertiary leading-relaxed bg-surface-base border border-stroke-divider rounded-lg px-4 py-3">
+                        {t('settings.ai_usage_note')}
+                    </div>
                 </SectionCard>
 
                 <SectionCard title={t('settings.model_config_title')} desc={t('settings.model_config_desc')}>

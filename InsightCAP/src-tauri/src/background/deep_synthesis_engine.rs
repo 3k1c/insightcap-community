@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::db::AppState;
 use crate::prompts;
 use crate::providers::llm::openai::OpenAiProvider;
+use crate::providers::llm::usage_policy::{apply_llm_usage_policy, LLMTaskKind};
 use crate::providers::llm::{LLMOptions, LLMProvider};
 use crate::settings::store::get_settings;
 
@@ -112,6 +113,7 @@ async fn run_deep_synthesis(app: &AppHandle) {
     }
     drop(conv_lock);
 
+    let ai_usage = settings.ai_usage.clone();
     let cfg = settings.ai_models.content_processor_llm;
     let api_key = cfg.api_key.clone().unwrap_or_default();
 
@@ -166,12 +168,16 @@ async fn run_deep_synthesis(app: &AppHandle) {
         existing_knowledge: &existing_knowledge,
     });
 
-    let opts = LLMOptions {
-        temperature: 0.2,
-        max_tokens: 2048,
-        stream: false,
-        think_mode: None,
-    };
+    let opts = apply_llm_usage_policy(
+        LLMOptions {
+            temperature: 0.2,
+            max_tokens: 2048,
+            stream: false,
+            think_mode: None,
+        },
+        &ai_usage,
+        LLMTaskKind::BackgroundSynthesis,
+    );
 
     let result = match tokio::time::timeout(
         Duration::from_secs(LLM_TIMEOUT_SECS),
@@ -223,7 +229,7 @@ async fn run_deep_synthesis(app: &AppHandle) {
     }
 
     for sid in &space_ids {
-        if let Err(e) = generate_compiled_knowledge(&pool, &llm, sid.as_deref()).await {
+        if let Err(e) = generate_compiled_knowledge(&pool, &llm, &ai_usage, sid.as_deref()).await {
             eprintln!("[DeepSynthesis]          (space={:?}): {}", sid, e);
         }
     }
@@ -232,6 +238,7 @@ async fn run_deep_synthesis(app: &AppHandle) {
 async fn generate_compiled_knowledge(
     pool: &SqlitePool,
     llm: &OpenAiProvider,
+    ai_usage: &crate::settings::store::AIUsageSettings,
     space_id: Option<&str>,
 ) -> Result<(), String> {
     let chunks_text: String = if let Some(sid) = space_id {
@@ -272,12 +279,16 @@ async fn generate_compiled_knowledge(
         chunks: &chunks_text,
     });
 
-    let opts = LLMOptions {
-        temperature: 0.3,
-        max_tokens: 1024,
-        stream: false,
-        think_mode: None,
-    };
+    let opts = apply_llm_usage_policy(
+        LLMOptions {
+            temperature: 0.3,
+            max_tokens: 1024,
+            stream: false,
+            think_mode: None,
+        },
+        ai_usage,
+        LLMTaskKind::BackgroundSummary,
+    );
 
     let result = match tokio::time::timeout(
         Duration::from_secs(LLM_TIMEOUT_SECS),
