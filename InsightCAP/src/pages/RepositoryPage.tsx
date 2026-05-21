@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback, KeyboardEvent } from 'react';
-import { Search, FileText, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers, Pencil, Check, ChevronDown, Globe, FileCode, FileSpreadsheet, File, BookText, Brain, Fingerprint, Bug } from 'lucide-react';
+import { Search, FileText, PlayCircle, ImageIcon, NotebookPen, X, Database, Trash2, Plus, Tag, Layers, Pencil, Check, ChevronDown, Globe, FileCode, FileSpreadsheet, File, BookText, Brain, Fingerprint, Bug, RefreshCw } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
-import { useKnowledgeStore, type TimelineSourceItem, type CaptureDetail } from '../stores/knowledgeStore';
+import { useKnowledgeStore, type TimelineSourceItem, type CaptureDetail, type RepositoryStats } from '../stores/knowledgeStore';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { loadFiles, loadContent, deleteFile, type NoteFile } from '../lib/noteStore';
+import { loadFiles, loadContent, saveContent, upsertFile, deleteFile, type NoteFile } from '../lib/noteStore';
 import { tauriCmd } from '../lib/tauri';
 import { useTagStore } from '../stores/tagStore';
 import { useT } from '../hooks/useT';
@@ -331,6 +331,8 @@ interface DayGroup {
     noteItems: NoteFile[];
 }
 
+const EMPTY_NOTE_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
+
 interface PreviewDoc {
     title: string;
     content: string;
@@ -350,7 +352,7 @@ export const RepositoryPage: React.FC = () => {
     const [isLoadingChunks, setIsLoadingChunks] = useState(false);
     const [failedEmbeddedUrls, setFailedEmbeddedUrls] = useState<Set<string>>(() => new Set());
     const [bilibiliCovers, setBilibiliCovers] = useState<Record<string, string>>({});
-    const [typeFilter, setTypeFilter] = useState<'all' | 'source' | 'note'>('source');
+    const [typeFilter, setTypeFilter] = useState<'all' | 'source' | 'note'>('all');
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false);
     const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -371,13 +373,15 @@ export const RepositoryPage: React.FC = () => {
     const titleOf = (value: string | undefined | null) => safeTitle(value) || t('repository.untitled');
     const embeddedMedia = useMemo(() => getEmbeddedMedia(docPreview?.sourceItem), [docPreview]);
 
-    const [repoStats, setRepoStats] = useState({
+    const [repoStats, setRepoStats] = useState<RepositoryStats>({
         todaySources: 0,
         totalChunks: 0,
+        totalTags: 0,
         totalData: 0,
         totalPatterns: 0,
         totalLogs: 0,
     });
+    const [isRefreshingClassification, setIsRefreshingClassification] = useState(false);
 
     const [editingChunkId, setEditingChunkId] = useState<string | null>(null);
     const [editSpaceId, setEditSpaceId] = useState<string>('');
@@ -454,13 +458,32 @@ export const RepositoryPage: React.FC = () => {
     const recentTags = useTagStore((s) => s.recentTags);
     const loadRecentTags = useTagStore((s) => s.loadRecentTags);
 
+    const loadRepositoryStats = useCallback(async () => {
+        const stats = await invoke<Partial<RepositoryStats>>('get_repository_stats');
+        setRepoStats((prev) => ({ ...prev, ...stats }));
+    }, []);
+
     useEffect(() => {
         loadTimeline();
         loadRecentTags();
         loadSpaces();
         try { setNotes(loadFiles()); } catch { /* ignore */ }
-        invoke('get_repository_stats').then((stats: any) => setRepoStats(stats)).catch(console.error);
-    }, [loadTimeline, loadRecentTags, loadSpaces]);
+        loadRepositoryStats().catch(console.error);
+    }, [loadTimeline, loadRecentTags, loadSpaces, loadRepositoryStats]);
+
+    const handleRefreshClassification = useCallback(async () => {
+        setIsRefreshingClassification(true);
+        try {
+            const updated = await invoke<number>('trigger_space_recluster');
+            await Promise.all([loadSpaces(), loadTimeline(), loadRepositoryStats()]);
+            toast.success(t('repository.refresh_classification_success', { count: updated ?? 0 }));
+        } catch (error) {
+            console.error('Failed to refresh classification:', error);
+            toast.error(t('repository.refresh_classification_failed'));
+        } finally {
+            setIsRefreshingClassification(false);
+        }
+    }, [loadSpaces, loadTimeline, loadRepositoryStats, t]);
 
     useEffect(() => {
         const bvids = Array.from(
@@ -742,6 +765,25 @@ export const RepositoryPage: React.FC = () => {
         }
     };
 
+    const handleAddTodayNote = () => {
+        const now = Date.now();
+        const note: NoteFile = {
+            id: `note-${now}`,
+            title: t('repository.add_document'),
+            createdAt: now,
+            updatedAt: now,
+        };
+        upsertFile(note);
+        saveContent(note.id, EMPTY_NOTE_DOC);
+        setNotes(loadFiles());
+        setDocPreview({
+            title: titleOf(note.title),
+            content: '',
+            sourceId: undefined,
+            sourceItem: undefined,
+        });
+    };
+
     const handleSelectDate = (dateKey: string) => {
         setSelectedDateKey(dateKey);
         const scroller = scrollerRef.current;
@@ -778,14 +820,11 @@ export const RepositoryPage: React.FC = () => {
     };
 
 
-    const totalCount = filteredSources.length + filteredNotes.length;
     const todayKey = new Date().toISOString().slice(0, 10);
-    const shouldShowImportOnlyTodayGroup =
-        totalCount === 0 &&
+    const shouldShowTimelineActions =
         !keyword &&
         !selectedTag &&
-        !spaceFilter &&
-        typeFilter !== 'note';
+        !spaceFilter;
 
     const [tagSourceIds, setTagSourceIds] = useState<Set<string> | null>(null);
 
@@ -806,8 +845,8 @@ export const RepositoryPage: React.FC = () => {
     const visibleGroups = useMemo(() => {
         let groups = dayGroups;
 
-        if (shouldShowImportOnlyTodayGroup && groups.length === 0) {
-            groups = [{ dateKey: todayKey, sourceItems: [], noteItems: [] }];
+        if (shouldShowTimelineActions && !groups.some((group) => group.dateKey === todayKey)) {
+            groups = [{ dateKey: todayKey, sourceItems: [], noteItems: [] }, ...groups];
         }
 
         if (typeFilter !== 'all') {
@@ -817,7 +856,7 @@ export const RepositoryPage: React.FC = () => {
                     sourceItems: typeFilter === 'source' ? g.sourceItems : [],
                     noteItems: typeFilter === 'note' ? g.noteItems : [],
                 }))
-                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (typeFilter !== 'note' && g.dateKey === todayKey));
+                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (shouldShowTimelineActions && g.dateKey === todayKey));
         }
 
         if (tagSourceIds) {
@@ -826,11 +865,11 @@ export const RepositoryPage: React.FC = () => {
                     ...g,
                     sourceItems: g.sourceItems.filter((s) => tagSourceIds.has(s.id)),
                 }))
-                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || g.dateKey === todayKey);
+                .filter((g) => g.sourceItems.length > 0 || g.noteItems.length > 0 || (shouldShowTimelineActions && g.dateKey === todayKey));
         }
 
         return groups;
-    }, [dayGroups, shouldShowImportOnlyTodayGroup, typeFilter, todayKey, tagSourceIds]);
+    }, [dayGroups, shouldShowTimelineActions, typeFilter, todayKey, tagSourceIds]);
 
     return (
         <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface-base">
@@ -847,7 +886,8 @@ export const RepositoryPage: React.FC = () => {
                                 { label: t('repository.stat_sources'), count: filteredSources.length, icon: <FileText className="h-3.5 w-3.5" />, color: 'text-blue-500 bg-blue-500/10' },
                                 { label: t('repository.stat_notes'), count: filteredNotes.length, icon: <NotebookPen className="h-3.5 w-3.5" />, color: 'text-amber-500 bg-amber-500/10' },
                                 { label: t('repository.stat_chunks'), count: totalChunks, icon: <Layers className="h-3.5 w-3.5" />, color: 'text-purple-500 bg-purple-500/10' },
-                                { label: t('repository.stat_tags'), count: recentTags.length, icon: <Tag className="h-3.5 w-3.5" />, color: 'text-emerald-500 bg-emerald-500/10' },
+                                { label: t('repository.stat_tags'), count: repoStats.totalTags, icon: <Tag className="h-3.5 w-3.5" />, color: 'text-emerald-500 bg-emerald-500/10' },
+                                { label: t('repository.stat_spaces'), count: spaces.length, icon: <Database className="h-3.5 w-3.5" />, color: 'text-sky-500 bg-sky-500/10' },
                                 { label: t('repository.stat_total_data'), count: repoStats.totalData, icon: <Brain className="h-3.5 w-3.5" />, color: 'text-cyan-500 bg-cyan-500/10' },
                                 { label: t('repository.stat_total_patterns'), count: repoStats.totalPatterns, icon: <Fingerprint className="h-3.5 w-3.5" />, color: 'text-indigo-500 bg-indigo-500/10' },
                                 { label: t('repository.stat_total_logs'), count: repoStats.totalLogs, icon: <Bug className="h-3.5 w-3.5" />, color: 'text-rose-500 bg-rose-500/10' },
@@ -927,6 +967,15 @@ export const RepositoryPage: React.FC = () => {
                         {spaces.length > 0 && (
                             <>
                                 <div className="mx-1 h-4 w-px shrink-0 bg-stroke-divider" />
+                                <button
+                                    type="button"
+                                    onClick={handleRefreshClassification}
+                                    disabled={isRefreshingClassification}
+                                    className="shrink-0 inline-flex items-center gap-1 rounded-full border border-stroke-control bg-surface-subtle px-3 py-1 text-fs-xs font-semibold text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <RefreshCw className={`h-3 w-3 ${isRefreshingClassification ? 'animate-spin' : ''}`} />
+                                    {t('repository.refresh_classification')}
+                                </button>
                                 <div className="relative shrink-0">
                                     <button
                                         type="button"
@@ -1139,8 +1188,9 @@ export const RepositoryPage: React.FC = () => {
                                                 {group.dateKey === todayKey && (
                                                     <button
                                                         type="button"
+                                                        aria-label={t('repository.import_file')}
                                                         onClick={handleAddTodayDocument}
-                                                        className="group/card relative flex min-h-[120px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-accent-default/5 text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-accent-default/10 hover:shadow-[var(--shadow-card-hover)]"
+                                                        className="group/card relative flex min-h-[160px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-accent-default/45 bg-accent-default/5 text-accent-default transition-all duration-200 hover:border-accent-default hover:bg-accent-default/10 hover:shadow-[var(--shadow-card-hover)]"
                                                     >
                                                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-accent-default/25 bg-accent-default/12 transition-transform duration-200 group-hover/card:scale-105">
                                                             <Plus className="h-4 w-4" />
@@ -1153,7 +1203,7 @@ export const RepositoryPage: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {group.noteItems.length > 0 && (
+                                    {(group.noteItems.length > 0 || group.dateKey === todayKey) && typeFilter !== 'source' && (
                                         <div className="mb-3">
                                             <div className="mb-2 flex items-center gap-1.5 text-fs-xs font-semibold uppercase tracking-wider text-text-tertiary">
                                                 <NotebookPen className="h-3 w-3" />
@@ -1195,6 +1245,19 @@ export const RepositoryPage: React.FC = () => {
                                                         </button>
                                                     );
                                                 })}
+                                                {group.dateKey === todayKey && (
+                                                    <button
+                                                        type="button"
+                                                        aria-label={t('repository.add_document')}
+                                                        onClick={handleAddTodayNote}
+                                                        className="group/card relative flex min-h-[120px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-500/45 bg-amber-500/5 text-amber-600 transition-all duration-200 hover:border-amber-500 hover:bg-amber-500/10 hover:shadow-[var(--shadow-card-hover)] dark:text-amber-400"
+                                                    >
+                                                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/12 transition-transform duration-200 group-hover/card:scale-105">
+                                                            <Plus className="h-4 w-4" />
+                                                        </span>
+                                                        <span className="text-fs-sm font-semibold tracking-wide">{t('repository.add_document')}</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     )}

@@ -785,6 +785,7 @@ pub async fn process_source(
 pub struct RepositoryStats {
     pub today_sources: i64,
     pub total_chunks: i64,
+    pub total_tags: i64,
     pub total_data: i64,
     pub total_patterns: i64,
     pub total_logs: i64,
@@ -807,6 +808,11 @@ pub async fn get_repository_stats(state: State<'_, AppState>) -> Result<Reposito
     )
     .fetch_one(db).await.unwrap_or(0);
 
+    let total_tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tags")
+        .fetch_one(db)
+        .await
+        .unwrap_or(0);
+
     let total_data: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM memory_chunks WHERE knowledge_type = 'data'")
             .fetch_one(db)
@@ -828,6 +834,7 @@ pub async fn get_repository_stats(state: State<'_, AppState>) -> Result<Reposito
     Ok(RepositoryStats {
         today_sources,
         total_chunks,
+        total_tags,
         total_data,
         total_patterns,
         total_logs,

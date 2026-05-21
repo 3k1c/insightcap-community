@@ -63,6 +63,7 @@ export type MediaFilter = string | null; // null = all
 export interface RepositoryStats {
     todaySources: number;
     totalChunks: number;
+    totalTags: number;
     totalData: number;
     totalPatterns: number;
     totalLogs: number;

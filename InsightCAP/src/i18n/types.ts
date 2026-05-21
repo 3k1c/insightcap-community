@@ -38,6 +38,7 @@ export interface TranslationKeys {
         doc_title_placeholder: string;
         stat_today_sources: string;
         stat_total_chunks: string;
+        stat_spaces: string;
         stat_total_data: string;
         stat_total_patterns: string;
         stat_total_logs: string;
@@ -48,6 +49,9 @@ export interface TranslationKeys {
         chunk_tag_placeholder: string;
         chunk_save_success: string;
         chunk_no_space: string;
+        refresh_classification: string;
+        refresh_classification_success: string;
+        refresh_classification_failed: string;
     };
 
     common: {
