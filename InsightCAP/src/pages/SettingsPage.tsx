@@ -1130,6 +1130,14 @@ export const SettingsPage: React.FC = () => {
                     )}
                 </SectionCard>
 
+                <SectionCard title={t('settings.model_config_title')} desc={t('settings.model_config_desc')}>
+                    {renderModelField(t('settings.model_chat'), t('settings.model_chat_desc'), ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }), false, false, 'chat')}
+                    {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }), false, false, 'chat')}
+                    {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }), false, false, 'chat')}
+                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }), true, false, 'embedding')}
+                    {renderModelField(t('settings.model_speech_to_text'), t('settings.model_speech_to_text_desc'), ai.speechToTextModel, m => updateSettings(s => { s.aiModels.speechToTextModel = m; }), true, true, 'speech-to-text')}
+                </SectionCard>
+
                 <SectionCard title={t('settings.ai_usage_title')} desc={t('settings.ai_usage_desc')}>
                     <SettingRow label={t('settings.ai_usage_mode')} desc={t('settings.ai_usage_mode_desc')}>
                         <SelectField
@@ -1148,14 +1156,6 @@ export const SettingsPage: React.FC = () => {
                     <div className="text-fs-xs text-text-tertiary leading-relaxed bg-surface-base border border-stroke-divider rounded-lg px-4 py-3">
                         {t('settings.ai_usage_note')}
                     </div>
-                </SectionCard>
-
-                <SectionCard title={t('settings.model_config_title')} desc={t('settings.model_config_desc')}>
-                    {renderModelField(t('settings.model_chat'), t('settings.model_chat_desc'), ai.chatLlm, m => updateSettings(s => { s.aiModels.chatLlm = m; }), false, false, 'chat')}
-                    {renderModelField(t('settings.model_processor'), t('settings.model_processor_desc'), ai.contentProcessorLlm, m => updateSettings(s => { s.aiModels.contentProcessorLlm = m; }), false, false, 'chat')}
-                    {renderModelField(t('settings.model_vision'), t('settings.model_vision_desc'), ai.visionModel, m => updateSettings(s => { s.aiModels.visionModel = m; }), false, false, 'chat')}
-                    {renderModelField(t('settings.model_embedding'), t('settings.model_embedding_desc'), ai.embeddingModel, m => updateSettings(s => { s.aiModels.embeddingModel = m; }), true, false, 'embedding')}
-                    {renderModelField(t('settings.model_speech_to_text'), t('settings.model_speech_to_text_desc'), ai.speechToTextModel, m => updateSettings(s => { s.aiModels.speechToTextModel = m; }), true, true, 'speech-to-text')}
                 </SectionCard>
 
                 <SectionCard title={t('settings.model_summary_section')}>
