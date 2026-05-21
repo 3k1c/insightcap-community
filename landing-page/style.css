@@ -1,0 +1,24 @@
+body { background-color: #f8fafc; color: #0f172a; overflow-x: hidden; }
+        .blob-bg { position: fixed; filter: blur(90px); z-index: -2; opacity: 0.6; mix-blend-mode: multiply; border-radius: 50%; pointer-events: none; }
+        .texture-grid {
+            position: fixed; inset: 0; background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+            mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+            -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+            z-index: -3;
+            pointer-events: none;
+        }
+        .reveal { opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+        .delay-100 { transition-delay: 100ms; }
+        .delay-200 { transition-delay: 200ms; }
+        .delay-300 { transition-delay: 300ms; }
+        .soft-card {
+            background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 1);
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03); transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .soft-card:hover { transform: translateY(-5px); box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.08); border-color: #e0e7ff; }
+        .text-gradient {
+            background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-image: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%);
+        }
