@@ -807,6 +807,28 @@ mod tests {
     }
 
     #[test]
+    fn tauri_bundle_includes_whisper_runtime_dlls() {
+        let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let config = std::fs::read_to_string(&config_path).expect("read tauri config");
+        let config: serde_json::Value = serde_json::from_str(&config).expect("parse tauri config");
+        let resources = config["bundle"]["resources"]
+            .as_array()
+            .expect("bundle resources array");
+
+        for required in [
+            "resources/ggml.dll",
+            "resources/ggml-base.dll",
+            "resources/ggml-cpu.dll",
+            "resources/whisper.dll",
+        ] {
+            let is_included = resources.iter().any(|resource| {
+                resource.as_str() == Some(required) || resource.as_str() == Some("resources/*.dll")
+            });
+            assert!(is_included, "missing Tauri bundle resource: {required}");
+        }
+    }
+
+    #[test]
     fn selects_first_existing_runnable_candidate() {
         let temp = tempfile::tempdir().expect("tempdir");
         let broken = temp.path().join("broken-whisper-cli.exe");

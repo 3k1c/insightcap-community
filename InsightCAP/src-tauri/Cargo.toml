@@ -1,6 +1,6 @@
 [package]
 name = "insightcap"
-version = "0.9.0-beta.1"
+version = "0.9.0-beta.2"
 description = "InsightCAP Local-First Knowledge Base"
 authors = ["you"]
 edition = "2021"
