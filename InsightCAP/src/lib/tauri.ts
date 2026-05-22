@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { PdfExportBlock } from './editor-export';
 import type { AllSettings, Space, Chunk, ChunkStatus, Source, TimelineItem, SpaceSuggestion, RelatedContextSummary, ExternalKnowledgeBase, ExternalKbLoadResult } from './types';
 
 export interface Folder { id: string; name: string; }
@@ -339,6 +340,14 @@ export const tauriCmd = {
         return invoke('export_document', { absolutePath, content });
     },
 
+    exportPdfText: async (absolutePath: string, content: string): Promise<void> => {
+        return invoke('export_pdf_text', { absolutePath, content });
+    },
+
+    exportPdfDocument: async (absolutePath: string, blocks: PdfExportBlock[]): Promise<void> => {
+        return invoke('export_pdf_document', { absolutePath, blocks });
+    },
+
     exportDocx: async (absolutePath: string, markdown: string): Promise<void> => {
         return invoke('export_docx', { absolutePath, markdown });
     },
@@ -385,6 +394,10 @@ export const tauriCmd = {
 
     copyImageToAssets: async (docPath: string, imageAbsPath: string): Promise<string> => {
         return invoke('copy_image_to_assets', { docPath, imageAbsPath });
+    },
+
+    copyEditorImageToAssets: async (imageAbsPath: string): Promise<string> => {
+        return invoke('copy_editor_image_to_assets', { imageAbsPath });
     },
 
     saveEditorToKnowledge: async (title: string, content: string): Promise<void> => {

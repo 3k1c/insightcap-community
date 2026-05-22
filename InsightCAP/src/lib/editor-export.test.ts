@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     writeBinaryFile: vi.fn(),
     exportPdfDocument: vi.fn(),
+    readImageBase64: vi.fn(),
     html2canvas: vi.fn(),
     addImage: vi.fn(),
     savePdf: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock('./tauri', () => ({
     tauriCmd: {
         writeBinaryFile: mocks.writeBinaryFile,
         exportPdfDocument: mocks.exportPdfDocument,
+        readImageBase64: mocks.readImageBase64,
     },
 }));
 
@@ -38,6 +40,7 @@ describe('writePdfFromHtml', () => {
     beforeEach(() => {
         mocks.writeBinaryFile.mockClear();
         mocks.exportPdfDocument.mockClear();
+        mocks.readImageBase64.mockClear();
         mocks.html2canvas.mockClear();
         mocks.addImage.mockClear();
         mocks.savePdf.mockClear();
@@ -100,5 +103,68 @@ describe('writePdfFromHtml', () => {
         expect(blocks).toEqual([
             { type: 'image', src: 'data:image/png;base64,abc123', width: '50%', align: 'right' },
         ]);
+    });
+
+    it('normalizes editor image nodes before DOCX export', () => {
+        const html = __editorExportTest.normalizeHtmlForDocx(
+            '<div data-type="image-node-pro" src="data:image/png;base64,abc123" width="50%" textalign="center"></div>',
+        );
+
+        expect(html).toContain('<p data-editor-image-wrapper="true"');
+        expect(html).toContain('text-align: center');
+        expect(html).toContain('<img src="data:image/png;base64,abc123"');
+        expect(html).toContain('width="430"');
+        expect(html).toContain('data-editor-width="50%"');
+        expect(html).toContain('width: 430px');
+        expect(html).toContain('max-width: 430px');
+    });
+
+    it('normalizes right aligned editor images before DOCX export', () => {
+        const html = __editorExportTest.normalizeHtmlForDocx(
+            '<div data-type="image-node-pro" src="data:image/png;base64,abc123" width="25%" textalign="right"></div>',
+        );
+
+        expect(html).toContain('<p data-editor-image-wrapper="true"');
+        expect(html).toContain('text-align: right');
+        expect(html).toContain('width="215"');
+        expect(html).toContain('data-editor-align="right"');
+    });
+
+    it('inlines local image paths before DOCX export', async () => {
+        mocks.readImageBase64.mockResolvedValue('data:image/png;base64,abc123');
+
+        const html = await __editorExportTest.inlineDocxLocalImages('<img src="C:/tmp/photo.png">');
+
+        expect(mocks.readImageBase64).toHaveBeenCalledWith('C:/tmp/photo.png');
+        expect(html).toContain('src="data:image/png;base64,abc123"');
+    });
+
+    it('adds proportional DOCX image height from data URL dimensions', () => {
+        const png400x200 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZAAAADICAIAAADGFbfi';
+        const html = __editorExportTest.applyDocxImageDimensions(
+            `<p data-editor-image-wrapper="true"><img src="${png400x200}" width="430" data-editor-width="50%" style="width: 430px; max-width: 430px;"></p>`,
+        );
+
+        expect(html).toContain('width="430"');
+        expect(html).toContain('height="215"');
+        expect(html).toContain('height: 215px');
+    });
+
+    it('adds proportional DOCX image height from JPEG data URL dimensions', () => {
+        const jpeg300x150Bytes = [
+            0xff, 0xd8,
+            0xff, 0xc0, 0x00, 0x11, 0x08,
+            0x00, 0x96,
+            0x01, 0x2c,
+            0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+            0xff, 0xd9,
+        ];
+        const jpeg300x150 = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpeg300x150Bytes))}`;
+        const html = __editorExportTest.applyDocxImageDimensions(
+            `<p data-editor-image-wrapper="true"><img src="${jpeg300x150}" width="300" style="width: 300px;"></p>`,
+        );
+
+        expect(html).toContain('width="300"');
+        expect(html).toContain('height="150"');
     });
 });

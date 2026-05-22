@@ -103,7 +103,7 @@ import {
     buildStandaloneHtml,
     htmlToMarkdown,
     writeDocxFromHtml,
-    writePdfFromElement,
+    writePdfFromHtml,
     type EditorExportFormat,
 } from '../../lib/editor-export';
 import { validateEditorDocument } from '../../lib/editor-validation';
@@ -347,9 +347,7 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
             } else if (format === 'docx') {
                 await writeDocxFromHtml(filePath, html);
             } else if (format === 'pdf') {
-                const editorEl = document.querySelector('.ProseMirror') as HTMLElement;
-                if (!editorEl) throw new Error('Editor element not found');
-                await writePdfFromElement(filePath, editorEl);
+                await writePdfFromHtml(filePath, html);
             }
 
             const title = fileName || 'Document';
@@ -653,32 +651,37 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
 
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
-            <label className="p-1.5 rounded transition-colors text-text-secondary hover:bg-surface-subtle cursor-pointer" title={t('editor.upload_image')}>
-                <ImageIcon className="w-4 h-4" />
-                <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                                const src = event.target?.result as string;
-                                if (editor.commands.setImage) {
-                                    editor.chain().focus().setImage({ src }).run();
-                                } else {
-                                    editor.chain().focus().insertContent({
-                                        type: 'imageNodePro',
-                                        attrs: { src }
-                                    }).run();
-                                }
-                            };
-                            reader.readAsDataURL(file);
+            <button
+                type="button"
+                className="p-1.5 rounded transition-colors text-text-secondary hover:bg-surface-subtle cursor-pointer"
+                title={t('editor.upload_image')}
+                onClick={async () => {
+                    const selected = await openDialog({
+                        multiple: false,
+                        directory: false,
+                        filters: [
+                            { name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] },
+                        ],
+                    });
+                    if (!selected || Array.isArray(selected)) return;
+
+                    try {
+                        const src = await tauriCmd.copyEditorImageToAssets(selected);
+                        if (editor.commands.setImage) {
+                            editor.chain().focus().setImage({ src }).run();
+                        } else {
+                            editor.chain().focus().insertContent({
+                                type: 'imageNodePro',
+                                attrs: { src },
+                            }).run();
                         }
-                    }}
-                />
-            </label>
+                    } catch (error) {
+                        console.error('Failed to import editor image', error);
+                    }
+                }}
+            >
+                <ImageIcon className="w-4 h-4" />
+            </button>
 
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 

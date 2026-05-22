@@ -18,6 +18,8 @@ export type PdfExportBlock =
     | { type: 'table'; rows: PdfTableCell[][] }
     | { type: 'image'; src: string; width?: string; align: PdfTextAlign };
 
+const DOCX_CONTENT_WIDTH_PX = 860;
+
 export function buildStandaloneHtml(innerHtml: string): string {
     const minimalCSS = [
         'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;color:#111827;padding:32px 40px;max-width:860px;margin:0 auto;background:#ffffff}',
@@ -58,12 +60,188 @@ export async function htmlToMarkdown(html: string): Promise<string> {
 
 export async function writeDocxFromHtml(filePath: string, html: string): Promise<void> {
     const { asBlob } = await import('html-docx-js-typescript');
-    const blobOrBuffer = await asBlob(buildStandaloneHtml(html));
+    const normalizedHtml = applyDocxImageDimensions(await inlineDocxLocalImages(normalizeHtmlForDocx(html)));
+    const blobOrBuffer = await asBlob(buildStandaloneHtml(normalizedHtml));
     const bytes = blobOrBuffer instanceof Blob
         ? new Uint8Array(await blobOrBuffer.arrayBuffer())
         : new Uint8Array(blobOrBuffer as unknown as ArrayBufferLike);
 
     await tauriCmd.writeBinaryFile(filePath, bytesToBase64(bytes));
+}
+
+function normalizeHtmlForDocx(html: string): string {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    doc.body.querySelectorAll('[data-type="image-node-pro"]').forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+
+        const src = node.getAttribute('src') ?? '';
+        if (!src) {
+            node.remove();
+            return;
+        }
+
+        const align = getTextAlign(node);
+        const wrapper = doc.createElement('p');
+        wrapper.setAttribute('data-editor-image-wrapper', 'true');
+        wrapper.setAttribute('data-editor-align', align);
+        wrapper.style.textAlign = align;
+        wrapper.style.margin = '0.5rem 0';
+
+        const image = doc.createElement('img');
+        image.setAttribute('src', src);
+
+        const width = node.getAttribute('width');
+        if (width) {
+            const docxWidth = toDocxImageWidthPx(width);
+            image.setAttribute('width', String(docxWidth));
+            image.setAttribute('data-editor-width', width);
+            image.style.width = `${docxWidth}px`;
+            image.style.maxWidth = `${docxWidth}px`;
+        } else {
+            image.style.maxWidth = '100%';
+        }
+
+        const alt = node.getAttribute('alt');
+        if (alt) image.setAttribute('alt', alt);
+
+        const title = node.getAttribute('title');
+        if (title) image.setAttribute('title', title);
+
+        image.style.height = 'auto';
+        image.style.display = 'inline-block';
+
+        wrapper.appendChild(image);
+        node.replaceWith(wrapper);
+    });
+
+    return doc.body.innerHTML;
+}
+
+function toDocxImageWidthPx(width: string): number {
+    const trimmed = width.trim();
+    if (trimmed.endsWith('%')) {
+        const percent = Number.parseFloat(trimmed);
+        if (Number.isFinite(percent) && percent > 0) {
+            return Math.round(DOCX_CONTENT_WIDTH_PX * Math.min(percent, 100) / 100);
+        }
+    }
+
+    const pixels = Number.parseFloat(trimmed.replace(/px$/i, ''));
+    if (Number.isFinite(pixels) && pixels > 0) {
+        return Math.round(Math.min(pixels, DOCX_CONTENT_WIDTH_PX));
+    }
+
+    return DOCX_CONTENT_WIDTH_PX;
+}
+
+async function inlineDocxLocalImages(html: string): Promise<string> {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const images = Array.from(doc.body.querySelectorAll('img'));
+
+    for (const image of images) {
+        const src = image.getAttribute('src') ?? '';
+        if (!isLocalImageSource(src)) continue;
+
+        const path = src.startsWith('file://') ? src.slice('file://'.length) : src;
+        image.setAttribute('src', await tauriCmd.readImageBase64(path));
+    }
+
+    return doc.body.innerHTML;
+}
+
+function applyDocxImageDimensions(html: string): string {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    doc.body.querySelectorAll('img').forEach((image) => {
+        const width = Number.parseInt(image.getAttribute('width') ?? '', 10);
+        if (!Number.isFinite(width) || width <= 0) return;
+
+        const size = getDataUrlImageSize(image.getAttribute('src') ?? '');
+        if (!size) return;
+
+        const height = Math.max(1, Math.round(width * size.height / size.width));
+        image.setAttribute('height', String(height));
+        image.style.width = `${width}px`;
+        image.style.maxWidth = `${width}px`;
+        image.style.height = `${height}px`;
+    });
+
+    return doc.body.innerHTML;
+}
+
+function getDataUrlImageSize(src: string): { width: number; height: number } | null {
+    const match = /^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=]+)$/i.exec(src);
+    if (!match) return null;
+
+    try {
+        const binary = atob(match[2]);
+        if (binary.length < 10) return null;
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        const size = match[1].toLowerCase() === 'png'
+            ? getPngImageSize(bytes)
+            : getJpegImageSize(bytes);
+        if (!size) return null;
+        const { width, height } = size;
+        if (width <= 0 || height <= 0) return null;
+        return { width, height };
+    } catch {
+        return null;
+    }
+}
+
+function getPngImageSize(bytes: Uint8Array): { width: number; height: number } | null {
+    const isPng = bytes[0] === 0x89
+        && bytes[1] === 0x50
+        && bytes[2] === 0x4e
+        && bytes[3] === 0x47;
+    if (!isPng || bytes.length < 24) return null;
+    return {
+        width: readUint32Be(bytes, 16),
+        height: readUint32Be(bytes, 20),
+    };
+}
+
+function getJpegImageSize(bytes: Uint8Array): { width: number; height: number } | null {
+    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+
+    let offset = 2;
+    while (offset + 8 < bytes.length) {
+        if (bytes[offset] !== 0xff) return null;
+        const marker = bytes[offset + 1];
+        const length = (bytes[offset + 2] << 8) + bytes[offset + 3];
+        if (length < 2 || offset + 2 + length > bytes.length) return null;
+
+        const isStartOfFrame = marker >= 0xc0
+            && marker <= 0xcf
+            && ![0xc4, 0xc8, 0xcc].includes(marker);
+        if (isStartOfFrame) {
+            return {
+                height: (bytes[offset + 5] << 8) + bytes[offset + 6],
+                width: (bytes[offset + 7] << 8) + bytes[offset + 8],
+            };
+        }
+
+        offset += 2 + length;
+    }
+
+    return null;
+}
+
+function readUint32Be(bytes: Uint8Array, offset: number): number {
+    return ((bytes[offset] << 24) >>> 0)
+        + (bytes[offset + 1] << 16)
+        + (bytes[offset + 2] << 8)
+        + bytes[offset + 3];
+}
+
+function isLocalImageSource(src: string): boolean {
+    return Boolean(src)
+        && !src.startsWith('data:')
+        && !src.startsWith('http://')
+        && !src.startsWith('https://')
+        && !src.startsWith('blob:')
+        && !src.startsWith('asset:');
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -197,4 +375,7 @@ function getParagraphVariant(element: HTMLElement): 'text1' | 'text2' | 'text3' 
 
 export const __editorExportTest = {
     htmlToPdfBlocks,
+    normalizeHtmlForDocx,
+    inlineDocxLocalImages,
+    applyDocxImageDimensions,
 };

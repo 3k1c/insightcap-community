@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::State;
 use uuid::Uuid;
@@ -661,6 +661,21 @@ mod tests {
         assert!(lines.len() > 1);
         assert_eq!(lines.join(""), text);
     }
+
+    #[test]
+    fn copies_editor_image_into_kb_assets() {
+        let kb = tempfile::tempdir().expect("create kb tempdir");
+        let src_dir = tempfile::tempdir().expect("create source tempdir");
+        let src = src_dir.path().join("photo.png");
+        fs::write(&src, b"image-bytes").expect("write source image");
+
+        let saved = copy_editor_image_to_assets_dir(kb.path(), &src).expect("copy editor image");
+        let saved_path = PathBuf::from(saved);
+
+        assert!(saved_path.starts_with(kb.path().join(".insightcap").join("editor-images")));
+        assert!(saved_path.exists());
+        assert_eq!(fs::read(saved_path).expect("read copied image"), b"image-bytes");
+    }
 }
 
 #[tauri::command]
@@ -708,6 +723,39 @@ pub async fn copy_image_to_assets(
     fs::copy(&image_abs_path, &dest_path).map_err(|e| e.to_string())?;
 
     Ok(format!("./assets/{}", unique_name))
+}
+
+fn copy_editor_image_to_assets_dir(kb_path: &Path, image_abs_path: &Path) -> Result<String, String> {
+    if !image_abs_path.exists() {
+        return Err("Image file does not exist".to_string());
+    }
+
+    let assets_dir = kb_path.join(".insightcap").join("editor-images");
+    fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
+
+    let file_name = image_abs_path.file_name().ok_or("Invalid image path")?;
+    let unique_name = format!(
+        "{}_{}",
+        Uuid::now_v7()
+            .to_string()
+            .chars()
+            .take(8)
+            .collect::<String>(),
+        file_name.to_string_lossy()
+    );
+
+    let dest_path = assets_dir.join(unique_name);
+    fs::copy(image_abs_path, &dest_path).map_err(|e| e.to_string())?;
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn copy_editor_image_to_assets(
+    state: State<'_, AppState>,
+    image_abs_path: String,
+) -> Result<String, String> {
+    copy_editor_image_to_assets_dir(&state.kb_path, Path::new(&image_abs_path))
 }
 
 #[tauri::command]

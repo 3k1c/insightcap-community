@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { NodeViewWrapper, NodeViewProps } from '@tiptap/react';
 import { useT } from '../../../hooks/useT';
 
@@ -60,6 +61,14 @@ const ImageNodeView: React.FC<NodeViewProps> = ({ node, updateAttributes, select
                 'mx-auto';
 
     const displayWidth = dragWidth ? `${dragWidth}px` : width;
+    const imageSrc = typeof src === 'string' && src
+        && !src.startsWith('data:')
+        && !src.startsWith('http://')
+        && !src.startsWith('https://')
+        && !src.startsWith('blob:')
+        && !src.startsWith('asset:')
+        ? convertFileSrc(src)
+        : src;
 
     return (
         <NodeViewWrapper className={`tiptap-image-wrapper relative group ${alignmentClass}`} style={{ width: displayWidth, lineHeight: 0 }}>
@@ -85,10 +94,10 @@ const ImageNodeView: React.FC<NodeViewProps> = ({ node, updateAttributes, select
                                     (selected && !dragging ? 'scale-[1.01] transition-all duration-300 ring-2 ring-accent-default shadow-lg' : '') +
                                     (selected && dragging ? ' transition-none ring-2 ring-accent-default shadow-lg' : '') +
                                     (!selected ? 'hover:shadow-md' : '')
-                                }
+                }
                         >
                 <img
-                    src={src}
+                    src={imageSrc}
                     alt={t('editor.image_uploaded_alt')}
                     className="w-full h-auto block select-none pointer-events-none bg-surface-base"
                 />
