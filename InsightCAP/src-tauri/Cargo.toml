@@ -64,7 +64,7 @@ chardetng = "0.1"
 rtf-parser = "0.4.2"
 epub = "2.1.5"
 notify = "8.2.0"
-printpdf = "0.7"
+printpdf = { version = "0.7", features = ["embedded_images"] }
 rust_xlsxwriter = "0.94.0"
 pdfium-render = { version = "0.8.37", features = ["thread_safe"] }
 image = { version = "0.25.9", features = ["png"] }

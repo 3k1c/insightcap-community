@@ -2,6 +2,22 @@ import { tauriCmd } from './tauri';
 
 export type EditorExportFormat = 'txt' | 'md' | 'html' | 'docx' | 'pdf';
 
+export type PdfTextAlign = 'left' | 'center' | 'right';
+
+export type PdfTableCell = {
+    text: string;
+    bold: boolean;
+    background?: string;
+    align: PdfTextAlign;
+};
+
+export type PdfExportBlock =
+    | { type: 'heading'; level: number; text: string; bold: true; align: PdfTextAlign }
+    | { type: 'paragraph'; text: string; bold: boolean; align: PdfTextAlign; variant: 'text1' | 'text2' | 'text3' }
+    | { type: 'list_item'; text: string; ordered: boolean; index: number; bold: boolean; align: PdfTextAlign }
+    | { type: 'table'; rows: PdfTableCell[][] }
+    | { type: 'image'; src: string; width?: string; align: PdfTextAlign };
+
 export function buildStandaloneHtml(innerHtml: string): string {
     const minimalCSS = [
         'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;color:#111827;padding:32px 40px;max-width:860px;margin:0 auto;background:#ffffff}',
@@ -47,28 +63,138 @@ export async function writeDocxFromHtml(filePath: string, html: string): Promise
         ? new Uint8Array(await blobOrBuffer.arrayBuffer())
         : new Uint8Array(blobOrBuffer as unknown as ArrayBufferLike);
 
+    await tauriCmd.writeBinaryFile(filePath, bytesToBase64(bytes));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
     let binary = '';
     const chunk = 0x8000;
     for (let i = 0; i < bytes.length; i += chunk) {
         binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
     }
-    await tauriCmd.writeBinaryFile(filePath, btoa(binary));
+    return btoa(binary);
 }
 
-export async function writePdfFromElement(filePath: string, element: HTMLElement): Promise<void> {
-    const { default: jsPDF } = await import('jspdf');
-    const { default: html2canvas } = await import('html2canvas');
-    const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const imgH = (canvas.height * pageW) / canvas.width;
-    let yOffset = 0;
-    while (yOffset < imgH) {
-        if (yOffset > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, -yOffset, pageW, imgH);
-        yOffset += pageH;
-    }
-    pdf.save(filePath);
+export async function writePdfFromHtml(filePath: string, html: string): Promise<void> {
+    await tauriCmd.exportPdfDocument(filePath, htmlToPdfBlocks(html));
 }
+
+function normalizeText(text: string): string {
+    return text.replace(/\s+/g, ' ').trim();
+}
+
+function htmlToPdfBlocks(html: string): PdfExportBlock[] {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const blocks: PdfExportBlock[] = [];
+
+    const appendParagraph = (value: string, bold: boolean) => {
+        const text = normalizeText(value);
+        if (text) blocks.push({ type: 'paragraph', text, bold, align: 'left', variant: 'text1' });
+    };
+
+    const walk = (node: ChildNode) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            appendParagraph(node.textContent ?? '', false);
+            return;
+        }
+        if (!(node instanceof HTMLElement)) return;
+
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'img' || node.getAttribute('data-type') === 'image-node-pro') {
+            const src = node.getAttribute('src') ?? '';
+            if (src) {
+                blocks.push({
+                    type: 'image',
+                    src,
+                    width: node.getAttribute('width') ?? undefined,
+                    align: getTextAlign(node),
+                });
+            }
+            return;
+        }
+        if (/^h[1-6]$/.test(tag)) {
+            const text = normalizeText(node.textContent ?? '');
+            if (text) blocks.push({ type: 'heading', level: Number(tag.slice(1)), text, bold: true, align: getTextAlign(node) });
+            return;
+        }
+        if (tag === 'p' || tag === 'blockquote' || tag === 'pre') {
+            const text = normalizeText(node.textContent ?? '');
+            if (text) {
+                blocks.push({
+                    type: 'paragraph',
+                    text,
+                    bold: hasBoldContent(node),
+                    align: getTextAlign(node),
+                    variant: getParagraphVariant(node),
+                });
+            }
+            return;
+        }
+        if (tag === 'ul' || tag === 'ol') {
+            Array.from(node.children).forEach((item, index) => {
+                if (item.tagName.toLowerCase() !== 'li') return;
+                const text = normalizeText(item.textContent ?? '');
+                if (text) {
+                    blocks.push({
+                        type: 'list_item',
+                        text,
+                        ordered: tag === 'ol',
+                        index: index + 1,
+                        bold: hasBoldContent(item as HTMLElement),
+                        align: getTextAlign(item as HTMLElement),
+                    });
+                }
+            });
+            return;
+        }
+        if (tag === 'table') {
+            const rows = Array.from(node.querySelectorAll('tr')).map((row) => {
+                const cells = Array.from(row.children)
+                    .filter((cell) => ['td', 'th'].includes(cell.tagName.toLowerCase()))
+                    .map((cell) => {
+                        const element = cell as HTMLElement;
+                        const isHeader = element.tagName.toLowerCase() === 'th';
+                        return {
+                            text: normalizeText(element.textContent ?? ''),
+                            bold: isHeader || hasBoldContent(element),
+                            background: isHeader ? '#f3f4f6' : undefined,
+                            align: getTextAlign(element),
+                        };
+                    });
+                return cells;
+            }).filter((row) => row.length > 0);
+            if (rows.length > 0) blocks.push({ type: 'table', rows });
+            return;
+        }
+
+        Array.from(node.childNodes).forEach(walk);
+    };
+
+    Array.from(doc.body.childNodes).forEach(walk);
+    return blocks;
+}
+
+function hasBoldContent(element: HTMLElement): boolean {
+    return Boolean(element.closest('strong,b') || element.querySelector('strong,b'));
+}
+
+function getTextAlign(element: HTMLElement): PdfTextAlign {
+    const value =
+        element.style.textAlign ||
+        element.getAttribute('data-text-align') ||
+        element.getAttribute('textalign') ||
+        element.getAttribute('align') ||
+        '';
+    if (value === 'center' || value === 'right') return value;
+    return 'left';
+}
+
+function getParagraphVariant(element: HTMLElement): 'text1' | 'text2' | 'text3' {
+    const value = element.getAttribute('data-variant');
+    if (value === 'text2' || value === 'text3') return value;
+    return 'text1';
+}
+
+export const __editorExportTest = {
+    htmlToPdfBlocks,
+};
