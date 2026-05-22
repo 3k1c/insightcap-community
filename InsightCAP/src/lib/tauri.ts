@@ -87,6 +87,10 @@ export const tauriCmd = {
         return invoke('ingest_file', { filePath, conversationId: conversationId ?? null, importTaskId: importTaskId ?? null });
     },
 
+    cancelProcessingTask: async (taskId: string): Promise<void> => {
+        return invoke('cancel_processing_task', { taskId });
+    },
+
     ingestScreenshot: async (conversationId?: string): Promise<void> => {
         return invoke('ingest_screenshot', { conversationId: conversationId ?? null });
     },

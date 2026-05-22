@@ -1,6 +1,7 @@
 use crate::db::AppState;
 use crate::ocr::postprocess::{detect_language, postprocess_ocr_text};
 use crate::ocr::preprocess::preprocess_for_ocr;
+use crate::processing_tasks::ProcessingTaskState;
 use sqlx::{Row, SqlitePool};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -43,6 +44,37 @@ fn emit_ocr_task_progress(
     );
 }
 
+async fn cancel_ocr_if_requested(
+    pool: &SqlitePool,
+    app: &AppHandle,
+    tasks: &ProcessingTaskState,
+    capture_id: &str,
+    current: usize,
+    total: usize,
+) -> bool {
+    let task_id = format!("ocr-{capture_id}");
+    if !tasks.is_cancelled(&task_id) {
+        return false;
+    }
+
+    emit_ocr_task_progress(
+        app,
+        capture_id,
+        "cancelled",
+        "cancelled",
+        current,
+        total,
+        "Cancelled",
+    );
+    tasks.clear(&task_id);
+    let _ =
+        sqlx::query("UPDATE captures SET status = 'processed', clean_content = '' WHERE id = ?")
+            .bind(capture_id)
+            .execute(pool)
+            .await;
+    true
+}
+
 pub fn start_ocr_worker(app: AppHandle) {
     let mut shutdown_rx = app.state::<AppState>().shutdown_tx.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -79,6 +111,7 @@ pub fn start_ocr_worker(app: AppHandle) {
             for row in rows {
                 let capture_id: String = row.get("id");
                 let img_bytes: Option<Vec<u8>> = row.try_get("image_data").unwrap_or(None);
+                let processing_tasks = app.state::<ProcessingTaskState>();
                 emit_ocr_task_progress(
                     &app,
                     &capture_id,
@@ -88,6 +121,10 @@ pub fn start_ocr_worker(app: AppHandle) {
                     1,
                     "Running OCR",
                 );
+                if cancel_ocr_if_requested(&pool, &app, &processing_tasks, &capture_id, 0, 1).await
+                {
+                    continue;
+                }
 
                 if let Some(bytes) = img_bytes {
                     let raw_bytes = bytes.clone();
@@ -99,9 +136,26 @@ pub fn start_ocr_worker(app: AppHandle) {
                             bytes
                         }
                     };
+                    if cancel_ocr_if_requested(&pool, &app, &processing_tasks, &capture_id, 0, 1)
+                        .await
+                    {
+                        continue;
+                    }
 
                     match crate::ocr::perform_ocr(&ocr_input).await {
                         Ok(raw_text) => {
+                            if cancel_ocr_if_requested(
+                                &pool,
+                                &app,
+                                &processing_tasks,
+                                &capture_id,
+                                0,
+                                1,
+                            )
+                            .await
+                            {
+                                continue;
+                            }
                             emit_ocr_task_progress(
                                 &app,
                                 &capture_id,
@@ -135,6 +189,18 @@ pub fn start_ocr_worker(app: AppHandle) {
                                         clean_text = vision_text;
                                     }
                                 }
+                            }
+                            if cancel_ocr_if_requested(
+                                &pool,
+                                &app,
+                                &processing_tasks,
+                                &capture_id,
+                                0,
+                                1,
+                            )
+                            .await
+                            {
+                                continue;
                             }
 
                             let app_state = app.state::<AppState>();
@@ -170,6 +236,18 @@ pub fn start_ocr_worker(app: AppHandle) {
                                         None
                                     }
                                 };
+                            if cancel_ocr_if_requested(
+                                &pool,
+                                &app,
+                                &processing_tasks,
+                                &capture_id,
+                                0,
+                                1,
+                            )
+                            .await
+                            {
+                                continue;
+                            }
 
                             let _ = sqlx::query(
                                 "UPDATE captures SET raw_content = ?, clean_content = ?, status = 'processed', vector_id = ? WHERE id = ?"

@@ -10,6 +10,7 @@ pub mod readability;
 pub mod source_group;
 pub mod video_parser;
 
+use crate::processing_tasks::ProcessingTaskState;
 use crate::tray_status::{set_tray_status, TrayStatus};
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
@@ -70,6 +71,76 @@ pub struct CapturePayload {
     pub captured_at: String,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileTaskProgressPayload {
+    task_id: Option<String>,
+    file_path: String,
+    file_name: String,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: String,
+}
+
+fn file_name_for_progress(file_path: &str) -> String {
+    std::path::Path::new(file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_path)
+        .to_string()
+}
+
+fn emit_file_task_progress(
+    app: &tauri::AppHandle,
+    task_id: &str,
+    file_path: &str,
+    stage: &'static str,
+    status: &'static str,
+    current: usize,
+    total: usize,
+    message: impl Into<String>,
+) {
+    let payload = FileTaskProgressPayload {
+        task_id: Some(task_id.to_string()),
+        file_path: file_path.to_string(),
+        file_name: file_name_for_progress(file_path),
+        stage,
+        status,
+        current,
+        total,
+        message: message.into(),
+    };
+    let _ = app.emit("processing-task-progress", payload.clone());
+    let _ = app.emit("import-task-progress", payload);
+}
+
+fn cancel_file_if_requested(
+    tasks: &ProcessingTaskState,
+    app: &tauri::AppHandle,
+    task_id: &str,
+    file_path: &str,
+    current: usize,
+    total: usize,
+) -> Result<(), String> {
+    if tasks.is_cancelled(task_id) {
+        emit_file_task_progress(
+            app,
+            task_id,
+            file_path,
+            "cancelled",
+            "cancelled",
+            current,
+            total,
+            "Cancelled",
+        );
+        tasks.clear(task_id);
+        return Err("cancelled".to_string());
+    }
+    Ok(())
+}
+
 pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
     set_tray_status(&app, TrayStatus::Capturing);
     let pool = app.state::<SqlitePool>();
@@ -107,6 +178,7 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
 
     let (has_image, text_content, image_bytes) = match clipboard_data {
         clipboard::ClipboardContent::Files(paths) => {
+            let mut spawned = false;
             for path in paths {
                 let ext = path
                     .extension()
@@ -119,13 +191,25 @@ pub async fn trigger_capture(app: tauri::AppHandle) -> Result<(), String> {
                 ]
                 .contains(&ext.as_str())
                 {
+                    spawned = true;
                     let app_clone = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Err(e) = process_clipboard_file(app_clone, path).await {
-                            eprintln!("[CAPTURE] File processing error: {}", e);
+                        set_tray_status(&app_clone, TrayStatus::Processing);
+                        match process_clipboard_file(app_clone.clone(), path).await {
+                            Ok(_) => set_tray_status(&app_clone, TrayStatus::Done),
+                            Err(e) if e == "cancelled" => {
+                                set_tray_status(&app_clone, TrayStatus::Done)
+                            }
+                            Err(e) => {
+                                eprintln!("[CAPTURE] File processing error: {}", e);
+                                set_tray_status(&app_clone, TrayStatus::Error);
+                            }
                         }
                     });
                 }
+            }
+            if !spawned {
+                set_tray_status(&app, TrayStatus::Idle);
             }
             return Ok(());
         }
@@ -208,6 +292,8 @@ async fn process_clipboard_file(
     file_path: std::path::PathBuf,
 ) -> Result<(), String> {
     let pool = app.state::<SqlitePool>().inner().clone();
+    let processing_tasks = app.state::<ProcessingTaskState>();
+    let task_id = format!("file-{}", uuid::Uuid::now_v7());
 
     let (kb_path, vision_config) = match crate::settings::store::get_settings(&pool).await {
         Ok(settings) => {
@@ -220,9 +306,38 @@ async fn process_clipboard_file(
     };
 
     let path_str = file_path.to_string_lossy().to_string();
+    emit_file_task_progress(
+        &app,
+        &task_id,
+        &path_str,
+        "parsing",
+        "processing",
+        0,
+        0,
+        "Parsing source file",
+    );
+    cancel_file_if_requested(&processing_tasks, &app, &task_id, &path_str, 0, 0)?;
     let parsed =
-        crate::capture::file_parser::parse_file(&kb_path, &path_str, vision_config.as_ref())
-            .await?;
+        match crate::capture::file_parser::parse_file(&kb_path, &path_str, vision_config.as_ref())
+            .await
+        {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                emit_file_task_progress(
+                    &app,
+                    &task_id,
+                    &path_str,
+                    "failed",
+                    "failed",
+                    0,
+                    0,
+                    e.clone(),
+                );
+                processing_tasks.clear(&task_id);
+                return Err(e);
+            }
+        };
+    cancel_file_if_requested(&processing_tasks, &app, &task_id, &path_str, 0, 0)?;
     let now_iso = chrono::Utc::now().to_rfc3339();
     let source_id = uuid::Uuid::now_v7().to_string();
 
@@ -233,6 +348,17 @@ async fn process_clipboard_file(
         .collect::<Vec<_>>()
         .join("\n\n");
     let source_identity = crate::capture::source_group::identity_for_file(&path_str, &full_content);
+    emit_file_task_progress(
+        &app,
+        &task_id,
+        &path_str,
+        "cleaning",
+        "processing",
+        0,
+        0,
+        "Cleaning parsed content",
+    );
+    cancel_file_if_requested(&processing_tasks, &app, &task_id, &path_str, 0, 0)?;
     let source_group_id = crate::capture::source_group::get_or_create_source_group(
         &pool,
         &source_identity,
@@ -288,16 +414,50 @@ async fn process_clipboard_file(
     .execute(&pool)
     .await
     .map_err(|e| format!("Failed to create source: {}", e))?;
+    emit_file_task_progress(
+        &app,
+        &task_id,
+        &path_str,
+        "saving",
+        "processing",
+        0,
+        0,
+        "Saving source metadata",
+    );
+    cancel_file_if_requested(&processing_tasks, &app, &task_id, &path_str, 0, 0)?;
 
     println!("[CAPTURE] File '{}' saved as source.", parsed.title);
 
     let app_state = app.state::<crate::db::AppState>();
     let mut chunk_count: i64 = 0;
+    let total_chunks: usize = parsed
+        .chunks
+        .iter()
+        .map(|f_chunk| crate::capture::chunking::chunks_for_file_chunk(f_chunk).len())
+        .sum();
 
     for f_chunk in &parsed.chunks {
         let routed_chunks = crate::capture::chunking::chunks_for_file_chunk(f_chunk);
 
         for routed in routed_chunks {
+            cancel_file_if_requested(
+                &processing_tasks,
+                &app,
+                &task_id,
+                &path_str,
+                chunk_count as usize,
+                total_chunks,
+            )?;
+            emit_file_task_progress(
+                &app,
+                &task_id,
+                &path_str,
+                "indexing",
+                "processing",
+                chunk_count as usize,
+                total_chunks,
+                "Creating knowledge points and index",
+            );
             let chunk_id = uuid::Uuid::now_v7().to_string();
             let para = routed.content;
 
@@ -323,6 +483,14 @@ async fn process_clipboard_file(
                     None
                 }
             };
+            cancel_file_if_requested(
+                &processing_tasks,
+                &app,
+                &task_id,
+                &path_str,
+                chunk_count as usize,
+                total_chunks,
+            )?;
 
             let capture_status = if f_chunk.status == "pending_ocr" {
                 "pending_ocr"
@@ -406,6 +574,16 @@ async fn process_clipboard_file(
             });
 
             chunk_count += 1;
+            emit_file_task_progress(
+                &app,
+                &task_id,
+                &path_str,
+                "indexing",
+                "processing",
+                chunk_count as usize,
+                total_chunks,
+                "Creating knowledge points and index",
+            );
         }
     }
 
@@ -439,6 +617,17 @@ async fn process_clipboard_file(
         "[CAPTURE] File '{}' processed: {} chunks with tags",
         parsed.title, chunk_count
     );
+    emit_file_task_progress(
+        &app,
+        &task_id,
+        &path_str,
+        "completed",
+        "done",
+        chunk_count as usize,
+        total_chunks,
+        "Import completed",
+    );
+    processing_tasks.clear(&task_id);
     let _ = app.emit("knowledge-updated", ());
     Ok(())
 }

@@ -7,6 +7,7 @@ pub mod error;
 pub mod http_server;
 pub mod knowledge_source;
 pub mod ocr;
+pub mod processing_tasks;
 pub mod prompts;
 pub mod providers;
 pub mod services;
@@ -183,6 +184,7 @@ pub fn run() {
                 shutdown_tx,
             ));
             app.manage(tray_status::TrayState::new());
+            app.manage(processing_tasks::ProcessingTaskState::new());
 
             let processor_pool = pool.clone();
             let processor_app = app.handle().clone();
@@ -322,6 +324,7 @@ pub fn run() {
             commands::settings_commands::get_chat_llm_supports_thinking,
             commands::capture_commands::quick_capture,
             commands::capture_commands::ingest_file,
+            commands::capture_commands::cancel_processing_task,
             commands::capture_commands::create_temp_chunk,
             commands::knowledge_commands::get_sources,
             commands::knowledge_commands::get_captures,

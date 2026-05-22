@@ -6,6 +6,7 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::db::AppState;
+use crate::processing_tasks::ProcessingTaskState;
 use crate::tray_status::{set_tray_status, TrayStatus};
 
 #[derive(Clone, serde::Serialize)]
@@ -45,6 +46,40 @@ fn emit_processing_task_progress(
             message: message.into(),
         },
     );
+}
+
+async fn cancel_inbox_if_requested(
+    pool: &SqlitePool,
+    app: &AppHandle,
+    tasks: &ProcessingTaskState,
+    task_id: &str,
+    file_path: &str,
+    file_name: &str,
+    current: usize,
+    total: usize,
+) -> Result<bool, String> {
+    if !tasks.is_cancelled(task_id) {
+        return Ok(false);
+    }
+
+    emit_processing_task_progress(
+        app,
+        task_id,
+        file_path,
+        file_name,
+        "cancelled",
+        "cancelled",
+        current,
+        total,
+        "Cancelled",
+    );
+    tasks.clear(task_id);
+    sqlx::query("UPDATE inbox SET status = 'cancelled' WHERE id = ?")
+        .bind(task_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 fn extract_bvid(value: &str) -> Option<String> {
@@ -237,6 +272,7 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     } else {
         "Captured content".to_string()
     };
+    let processing_tasks = app.state::<ProcessingTaskState>();
 
     println!(
         "[CaptureProcessor] Processing inbox: {} (type: {})",
@@ -253,6 +289,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
         0,
         "Parsing captured content",
     );
+    if cancel_inbox_if_requested(
+        pool,
+        app,
+        &processing_tasks,
+        &id,
+        &task_file_path,
+        &task_file_name,
+        0,
+        0,
+    )
+    .await?
+    {
+        return Ok(true);
+    }
 
     sqlx::query("UPDATE inbox SET status = 'processing' WHERE id = ?")
         .bind(&id)
@@ -312,6 +362,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
             content.clone(),
         )
     };
+    if cancel_inbox_if_requested(
+        pool,
+        app,
+        &processing_tasks,
+        &id,
+        &task_file_path,
+        &display_title,
+        0,
+        0,
+    )
+    .await?
+    {
+        return Ok(true);
+    }
 
     emit_processing_task_progress(
         app,
@@ -324,6 +388,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
         0,
         "Cleaning captured content",
     );
+    if cancel_inbox_if_requested(
+        pool,
+        app,
+        &processing_tasks,
+        &id,
+        &task_file_path,
+        &display_title,
+        0,
+        0,
+    )
+    .await?
+    {
+        return Ok(true);
+    }
 
     let normalized_content = crate::services::language_normalizer::NORMALIZER
         .normalize(&processed_content, &settings.general);
@@ -417,6 +495,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
     let mut chunk_count: i64 = 0;
 
     if content_type == "image" {
+        if cancel_inbox_if_requested(
+            pool,
+            app,
+            &processing_tasks,
+            &id,
+            &task_file_path,
+            &display_title,
+            0,
+            1,
+        )
+        .await?
+        {
+            return Ok(true);
+        }
         emit_processing_task_progress(
             app,
             &id,
@@ -474,6 +566,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
         let total_chunks = routed_chunks.len();
 
         for (idx, routed) in routed_chunks.iter().enumerate() {
+            if cancel_inbox_if_requested(
+                pool,
+                app,
+                &processing_tasks,
+                &id,
+                &task_file_path,
+                &display_title,
+                chunk_count as usize,
+                total_chunks,
+            )
+            .await?
+            {
+                return Ok(true);
+            }
             emit_processing_task_progress(
                 app,
                 &id,
@@ -523,6 +629,20 @@ async fn process_next_inbox(pool: &SqlitePool, app: &AppHandle) -> Result<bool, 
                     }
                 }
                 Err(e) => eprintln!("[CaptureProcessor] Embedding failed (chunk {}): {}", idx, e),
+            }
+            if cancel_inbox_if_requested(
+                pool,
+                app,
+                &processing_tasks,
+                &id,
+                &task_file_path,
+                &display_title,
+                chunk_count as usize,
+                total_chunks,
+            )
+            .await?
+            {
+                return Ok(true);
             }
 
             let space_engine = crate::services::space_engine::SpaceEngine::new(

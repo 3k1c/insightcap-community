@@ -58,6 +58,8 @@ export interface TranslationKeys {
         import_stage_indexing: string;
         import_stage_completed: string;
         import_stage_failed: string;
+        import_stage_cancelled: string;
+        import_cancel_failed: string;
         refresh_classification: string;
         refresh_classification_success: string;
         refresh_classification_failed: string;

@@ -76,6 +76,8 @@
         "import_stage_indexing": "建立索引中",
         "import_stage_completed": "完成",
         "import_stage_failed": "失败",
+        "import_stage_cancelled": "已取消",
+        "import_cancel_failed": "取消处理任务失败",
         "stat_sources": "来源",
         "stat_notes": "笔记",
         "stat_chunks": "知识点",

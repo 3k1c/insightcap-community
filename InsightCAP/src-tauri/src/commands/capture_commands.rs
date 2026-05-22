@@ -1,4 +1,5 @@
 use crate::db::AppState;
+use crate::processing_tasks::ProcessingTaskState;
 use chrono::Utc;
 use sqlx::SqlitePool;
 use std::path::Path;
@@ -48,6 +49,42 @@ fn emit_import_task_progress(
     };
     let _ = app.emit("import-task-progress", payload.clone());
     let _ = app.emit("processing-task-progress", payload);
+}
+
+fn ensure_import_not_cancelled(
+    tasks: &ProcessingTaskState,
+    app: &tauri::AppHandle,
+    task_id: &Option<String>,
+    file_path: &str,
+    current: usize,
+    total: usize,
+) -> Result<(), String> {
+    if let Some(id) = task_id {
+        if tasks.is_cancelled(id) {
+            emit_import_task_progress(
+                app,
+                task_id,
+                file_path,
+                "cancelled",
+                "cancelled",
+                current,
+                total,
+                "Cancelled",
+            );
+            tasks.clear(id);
+            return Err("cancelled".to_string());
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_processing_task(
+    tasks: State<'_, ProcessingTaskState>,
+    task_id: String,
+) -> Result<(), String> {
+    tasks.cancel(&task_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -186,6 +223,7 @@ pub async fn create_temp_chunk(
 #[tauri::command]
 pub async fn ingest_file(
     state: State<'_, AppState>,
+    tasks: State<'_, ProcessingTaskState>,
     app: tauri::AppHandle,
     file_path: String,
     _conversation_id: Option<String>,
@@ -203,6 +241,7 @@ pub async fn ingest_file(
         0,
         "Parsing source file",
     );
+    ensure_import_not_cancelled(&tasks, &app, &import_task_id, &file_path, 0, 0)?;
 
     let settings = crate::settings::store::get_settings(db)
         .await
@@ -219,6 +258,9 @@ pub async fn ingest_file(
             Ok(parsed) => parsed,
             Err(e) => {
                 eprintln!("[IngestFile] Parse failed for {}: {}", file_path, e);
+                if let Some(id) = &import_task_id {
+                    tasks.clear(id);
+                }
                 emit_import_task_progress(
                     &app,
                     &import_task_id,
@@ -232,6 +274,7 @@ pub async fn ingest_file(
                 return Err(e);
             }
         };
+    ensure_import_not_cancelled(&tasks, &app, &import_task_id, &file_path, 0, 0)?;
     let now = Utc::now().to_rfc3339();
     let source_id = Uuid::now_v7().to_string();
 
@@ -262,6 +305,7 @@ pub async fn ingest_file(
         0,
         "Cleaning parsed content",
     );
+    ensure_import_not_cancelled(&tasks, &app, &import_task_id, &file_path, 0, 0)?;
     let source_identity =
         crate::capture::source_group::identity_for_file(&file_path, &source_clean_content);
     let source_group_id =
@@ -358,6 +402,7 @@ pub async fn ingest_file(
         0,
         "Saving source metadata",
     );
+    ensure_import_not_cancelled(&tasks, &app, &import_task_id, &file_path, 0, 0)?;
 
     let total_chunks: usize = parsed
         .chunks
@@ -370,6 +415,14 @@ pub async fn ingest_file(
         let routed_chunks = crate::capture::chunking::chunks_for_file_chunk(&f_chunk);
 
         for routed in routed_chunks {
+            ensure_import_not_cancelled(
+                &tasks,
+                &app,
+                &import_task_id,
+                &file_path,
+                chunk_count,
+                total_chunks,
+            )?;
             emit_import_task_progress(
                 &app,
                 &import_task_id,
@@ -387,6 +440,14 @@ pub async fn ingest_file(
                 .embed(&para)
                 .await
                 .map_err(|e| e.to_string())?;
+            ensure_import_not_cancelled(
+                &tasks,
+                &app,
+                &import_task_id,
+                &file_path,
+                chunk_count,
+                total_chunks,
+            )?;
             let vector_id = {
                 use std::collections::hash_map::DefaultHasher;
                 use std::hash::{Hash, Hasher};
@@ -478,6 +539,14 @@ pub async fn ingest_file(
             );
         }
     }
+    ensure_import_not_cancelled(
+        &tasks,
+        &app,
+        &import_task_id,
+        &file_path,
+        chunk_count,
+        total_chunks,
+    )?;
 
     let tag_pool = db.clone();
     let tag_source_id = source_id.clone();
@@ -516,5 +585,8 @@ pub async fn ingest_file(
         total_chunks,
         "Import completed",
     );
+    if let Some(id) = &import_task_id {
+        tasks.clear(id);
+    }
     Ok(())
 }

@@ -166,6 +166,34 @@ describe('RepositoryPage empty state', () => {
         expect(screen.queryByText('Processing progress')).not.toBeInTheDocument();
     });
 
+    it('can cancel a processing task from the progress panel', async () => {
+        const user = userEvent.setup();
+        render(<RepositoryPage />);
+
+        const handler = eventHandlers.get('processing-task-progress');
+        expect(handler).toBeDefined();
+
+        act(() => {
+            handler?.({
+                payload: {
+                    taskId: 'capture-cancel-1',
+                    filePath: 'C:\\docs\\slow.pdf',
+                    fileName: 'slow.pdf',
+                    stage: 'indexing',
+                    status: 'processing',
+                    current: 1,
+                    total: 5,
+                    message: 'Indexing',
+                },
+            });
+        });
+
+        await user.click(screen.getByRole('button', { name: 'Cancel slow.pdf' }));
+
+        expect(mockInvoke).toHaveBeenCalledWith('cancel_processing_task', { taskId: 'capture-cancel-1' });
+        expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    });
+
     it('keeps the no-match empty state for an empty search result', async () => {
         const user = userEvent.setup();
         render(<RepositoryPage />);

@@ -76,6 +76,8 @@
         "import_stage_indexing": "Indexing",
         "import_stage_completed": "Completed",
         "import_stage_failed": "Failed",
+        "import_stage_cancelled": "Cancelled",
+        "import_cancel_failed": "Failed to cancel processing task",
         "stat_sources": "Sources",
         "stat_notes": "Notes",
         "stat_chunks": "Knowledge Points",

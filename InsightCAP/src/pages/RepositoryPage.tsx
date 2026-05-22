@@ -341,7 +341,7 @@ interface PreviewDoc {
     sourceItem?: TimelineSourceItem;
 }
 
-type ImportTaskStatus = 'queued' | 'processing' | 'done' | 'failed';
+type ImportTaskStatus = 'queued' | 'processing' | 'done' | 'failed' | 'cancelled';
 
 interface ImportTaskItem {
     id: string;
@@ -385,6 +385,7 @@ function importStageLabel(stage: string, t: (key: string) => string): string {
         indexing: t('repository.import_stage_indexing'),
         completed: t('repository.import_stage_completed'),
         failed: t('repository.import_stage_failed'),
+        cancelled: t('repository.import_stage_cancelled'),
     };
     return labels[stage] || stage;
 }
@@ -534,13 +535,17 @@ export const RepositoryPage: React.FC = () => {
                         task.id === taskId || task.filePath === payload.filePath
                             ? {
                                 ...task,
+                                ...(task.status === 'cancelled' && payload.status !== 'cancelled'
+                                    ? {}
+                                    : {
+                                        stage: payload.stage || task.stage,
+                                        status: payload.status,
+                                        current: payload.current ?? task.current,
+                                        total: payload.total ?? task.total,
+                                        message: payload.message || task.message,
+                                    }),
                                 filePath: payload.filePath || task.filePath,
                                 fileName: payload.fileName || task.fileName,
-                                stage: payload.stage || task.stage,
-                                status: payload.status,
-                                current: payload.current ?? task.current,
-                                total: payload.total ?? task.total,
-                                message: payload.message || task.message,
                             }
                             : task,
                     )
@@ -628,14 +633,16 @@ export const RepositoryPage: React.FC = () => {
         const total = importTasks.length;
         const done = importTasks.filter((task) => task.status === 'done').length;
         const failed = importTasks.filter((task) => task.status === 'failed').length;
+        const cancelled = importTasks.filter((task) => task.status === 'cancelled').length;
         const active = importTasks.find((task) => task.status === 'processing') ?? importTasks.find((task) => task.status === 'queued') ?? null;
         return {
             total,
             done,
             failed,
+            cancelled,
             active,
             isRunning: importTasks.some((task) => task.status === 'queued' || task.status === 'processing'),
-            percent: total > 0 ? Math.round(((done + failed) / total) * 100) : 0,
+            percent: total > 0 ? Math.round(((done + failed + cancelled) / total) * 100) : 0,
         };
     }, [importTasks]);
 
@@ -646,6 +653,22 @@ export const RepositoryPage: React.FC = () => {
         }, 4000);
         return () => window.clearTimeout(timer);
     }, [importProgress.failed, importProgress.isRunning, importProgress.total]);
+
+    const handleCancelImportTask = useCallback(async (task: ImportTaskItem) => {
+        setImportTasks((prev) =>
+            prev.map((item) =>
+                item.id === task.id
+                    ? { ...item, stage: 'cancelled', status: 'cancelled', message: 'Cancelled' }
+                    : item,
+            ),
+        );
+        try {
+            await tauriCmd.cancelProcessingTask(task.id);
+        } catch (error) {
+            console.error('Failed to cancel processing task:', error);
+            toast.error(t('repository.import_cancel_failed'));
+        }
+    }, [t]);
 
     const topTags = useMemo(() => {
         const sorted = [...recentTags].sort((a, b) => b.recentCount - a.recentCount || b.useCount - a.useCount);
@@ -884,7 +907,7 @@ export const RepositoryPage: React.FC = () => {
                         .then(() => {
                             setImportTasks((prev) =>
                                 prev.map((item) =>
-                                    item.id === task.id && item.status !== 'done'
+                                    item.id === task.id && item.status !== 'done' && item.status !== 'cancelled'
                                         ? {
                                             ...item,
                                             stage: 'completed',
@@ -897,6 +920,16 @@ export const RepositoryPage: React.FC = () => {
                             );
                         })
                         .catch((error) => {
+                            if (String(error ?? '') === 'cancelled') {
+                                setImportTasks((prev) =>
+                                    prev.map((item) =>
+                                        item.id === task.id
+                                            ? { ...item, stage: 'cancelled', status: 'cancelled', message: 'Cancelled' }
+                                            : item,
+                                    ),
+                                );
+                                return;
+                            }
                             setImportTasks((prev) =>
                                 prev.map((item) =>
                                     item.id === task.id
@@ -1110,6 +1143,16 @@ export const RepositoryPage: React.FC = () => {
                                     ? `${importStageLabel(task.stage, t)} ${task.current}/${task.total}`
                                     : importStageLabel(task.stage, t)}
                             </span>
+                            {(task.status === 'queued' || task.status === 'processing') && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleCancelImportTask(task)}
+                                    className="shrink-0 rounded-full px-2 py-0.5 text-text-tertiary transition-colors hover:bg-red-500/10 hover:text-red-500"
+                                    aria-label={`Cancel ${task.fileName}`}
+                                >
+                                    {t('common.cancel')}
+                                </button>
+                            )}
                         </div>
                     ))}
                 </div>
