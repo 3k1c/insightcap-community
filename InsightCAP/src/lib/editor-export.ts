@@ -1,6 +1,6 @@
 import { tauriCmd } from './tauri';
 
-export type EditorExportFormat = 'txt' | 'md' | 'html' | 'docx' | 'pdf';
+export type EditorExportFormat = 'txt' | 'md' | 'docx' | 'pdf';
 
 export type PdfTextAlign = 'left' | 'center' | 'right';
 
@@ -56,6 +56,15 @@ export async function htmlToMarkdown(html: string): Promise<string> {
     const TurndownService = (await import('turndown')).default;
     const td = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-' });
     return td.turndown(html);
+}
+
+export async function getEditorKnowledgeContent(
+    format: EditorExportFormat,
+    html: string,
+    text: string,
+): Promise<string> {
+    if (format === 'txt') return text;
+    return htmlToMarkdown(html);
 }
 
 export async function writeDocxFromHtml(filePath: string, html: string): Promise<void> {

@@ -101,6 +101,7 @@ import { useUiStore } from '../../stores/uiStore';
 import { getEnabledEditorAiActions } from '../../lib/editor-ai-actions';
 import {
     buildStandaloneHtml,
+    getEditorKnowledgeContent,
     htmlToMarkdown,
     writeDocxFromHtml,
     writePdfFromHtml,
@@ -325,7 +326,6 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
         const filterMap: Record<string, { name: string; extensions: string[] }[]> = {
             txt: [{ name: 'Plain Text', extensions: ['txt'] }],
             md: [{ name: 'Markdown', extensions: ['md'] }],
-            html: [{ name: 'HTML Document', extensions: ['html'] }],
             docx: [{ name: 'Word Document', extensions: ['docx'] }],
             pdf: [{ name: 'PDF Document', extensions: ['pdf'] }],
         };
@@ -342,8 +342,6 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
                 await tauriCmd.exportDocument(filePath, text);
             } else if (format === 'md') {
                 await tauriCmd.exportDocument(filePath, await htmlToMarkdown(html));
-            } else if (format === 'html') {
-                await tauriCmd.exportDocument(filePath, buildStandaloneHtml(html));
             } else if (format === 'docx') {
                 await writeDocxFromHtml(filePath, html);
             } else if (format === 'pdf') {
@@ -351,9 +349,7 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
             }
 
             const title = fileName || 'Document';
-            const md = format === 'md'
-                ? await htmlToMarkdown(html)
-                : format === 'txt' ? text : html;
+            const md = await getEditorKnowledgeContent(format, html, text);
             try {
                 await tauriCmd.saveEditorToKnowledge(title, md);
             } catch (error) {
@@ -443,8 +439,8 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
                 </button>
                 {showExportMenu && (
                     <div className="absolute left-0 top-full mt-1 w-40 bg-surface-flyout border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 px-1.5 animate-in fade-in zoom-in duration-150">
-                        {(['txt', 'md', 'html', 'docx', 'pdf'] as const).map(fmt => {
-                            const label = fmt === 'html' ? 'HTML' : t(`editor.export_${fmt}` as any);
+                        {(['txt', 'md', 'docx', 'pdf'] as const).map(fmt => {
+                            const label = t(`editor.export_${fmt}` as any);
                             return (
                                 <button key={fmt} onClick={() => exportAs(fmt)}
                                     className="w-full px-3 py-1.5 text-fs-xs text-text-secondary hover:bg-surface-subtle hover:text-text-primary rounded-md transition-colors text-left font-medium">

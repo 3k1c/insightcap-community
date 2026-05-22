@@ -34,7 +34,7 @@ vi.mock('jspdf', () => {
     return { default: JsPDF };
 });
 
-import { writePdfFromHtml, __editorExportTest } from './editor-export';
+import { getEditorKnowledgeContent, writePdfFromHtml, __editorExportTest } from './editor-export';
 
 describe('writePdfFromHtml', () => {
     beforeEach(() => {
@@ -166,5 +166,18 @@ describe('writePdfFromHtml', () => {
 
         expect(html).toContain('width="300"');
         expect(html).toContain('height="150"');
+    });
+
+    it('stores editor exports as clean markdown instead of HTML tags', async () => {
+        const content = await getEditorKnowledgeContent(
+            'docx',
+            '<h2><strong>觀塘</strong></h2><p>歡迎觀看 <strong>18區</strong></p>',
+            '觀塘\n歡迎觀看 18區',
+        );
+
+        expect(content).toContain('## **觀塘**');
+        expect(content).toContain('歡迎觀看 **18區**');
+        expect(content).not.toContain('<h2>');
+        expect(content).not.toContain('<strong>');
     });
 });
