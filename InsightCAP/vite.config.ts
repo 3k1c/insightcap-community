@@ -78,8 +78,6 @@ export default defineConfig(async () => ({
           ],
           "vendor-markdown": ["react-markdown", "remark-gfm", "rehype-raw"],
           "vendor-syntax": ["react-syntax-highlighter"],
-          "vendor-pdf": ["jspdf"],
-          "vendor-canvas": ["html2canvas"],
           "vendor-doc-export": ["turndown", "html-docx-js-typescript"],
         },
       },
