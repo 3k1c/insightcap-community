@@ -16,6 +16,7 @@ import Link from '@tiptap/extension-link';
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import BubbleMenuExtension from '@tiptap/extension-bubble-menu';
 import { Node as TiptapNode, Extension, mergeAttributes, nodeInputRule } from '@tiptap/core';
+import type { EditorValidationIssue } from '../../lib/editor-validation';
 
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import ImageNodeView from './extensions/ImageNodeView';
@@ -94,10 +95,18 @@ import {
     Upload, Columns, Merge, Split, LayoutTemplate, ChevronDown, Link as LinkIcon, Image as ImageIcon,
     Sparkles, Wand2, Eraser, Check, RotateCcw, RefreshCw, FileText, Languages, Smile, ChevronRight,
     FolderOpen, History as HistoryIcon, PanelLeftClose, PanelLeftOpen,
-    Briefcase, Shield, Coffee, Maximize, Minimize,
+    Briefcase, Shield, Coffee, Maximize, Minimize, Eye, ClipboardCheck, AlertTriangle, Loader2,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { getEnabledEditorAiActions } from '../../lib/editor-ai-actions';
+import {
+    buildStandaloneHtml,
+    htmlToMarkdown,
+    writeDocxFromHtml,
+    writePdfFromElement,
+    type EditorExportFormat,
+} from '../../lib/editor-export';
+import { validateEditorDocument } from '../../lib/editor-validation';
 import {
     loadSession, saveSession, loadContent, saveContent,
     loadFiles, upsertFile, renameFile as renameNoteFile,
@@ -112,8 +121,61 @@ interface MenuBarProps {
     onOpenDocument: () => void;
 }
 
+interface TableAction {
+    key: string;
+    label: string;
+    icon: any;
+    onClick: () => void;
+    disabled?: boolean;
+    danger?: boolean;
+}
+
+interface TableActionGroup {
+    key: string;
+    label: string;
+    actions: TableAction[];
+}
+
+function getTableActionGroups(editor: any, t: (key: string) => string): TableActionGroup[] {
+    return [
+        {
+            key: 'rows-columns',
+            label: t('editor.rows_and_columns'),
+            actions: [
+                { key: 'add-row-before', icon: Plus, label: t('editor.add_row_above'), onClick: () => editor.chain().focus().addRowBefore().run() },
+                { key: 'add-row-after', icon: Plus, label: t('editor.add_row_below'), onClick: () => editor.chain().focus().addRowAfter().run() },
+                { key: 'add-column-before', icon: Columns, label: t('editor.add_column_left'), onClick: () => editor.chain().focus().addColumnBefore().run() },
+                { key: 'add-column-after', icon: Columns, label: t('editor.add_column_right'), onClick: () => editor.chain().focus().addColumnAfter().run() },
+            ],
+        },
+        {
+            key: 'table-actions',
+            label: t('editor.table_actions'),
+            actions: [
+                { key: 'merge-cells', icon: Merge, label: t('editor.merge_cells'), onClick: () => editor.chain().focus().mergeCells().run(), disabled: !editor.can().mergeCells() },
+                { key: 'split-cell', icon: Split, label: t('editor.split_cell'), onClick: () => editor.chain().focus().splitCell().run(), disabled: !editor.can().splitCell() },
+                { key: 'toggle-header-row', icon: LayoutTemplate, label: t('editor.toggle_header_row'), onClick: () => editor.chain().focus().toggleHeaderRow().run() },
+            ],
+        },
+        {
+            key: 'delete',
+            label: '',
+            actions: [
+                { key: 'delete-row', icon: Trash2, label: t('editor.delete_this_row'), onClick: () => editor.chain().focus().deleteRow().run(), danger: true },
+                { key: 'delete-column', icon: Trash2, label: t('editor.delete_this_column'), onClick: () => editor.chain().focus().deleteColumn().run(), danger: true },
+                { key: 'delete-table', icon: Trash2, label: t('editor.delete_table'), onClick: () => editor.chain().focus().deleteTable().run(), danger: true },
+            ],
+        },
+    ];
+}
+
 const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) => {
     const t = useT();
+    const [exportState, setExportState] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+    const [exportMessage, setExportMessage] = useState('');
+    const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+    const [showValidationPanel, setShowValidationPanel] = useState(false);
+    const [validationIssues, setValidationIssues] = useState<EditorValidationIssue[]>([]);
     const menuStatesRef = useRef({
         bold: false,
         italic: false,
@@ -201,6 +263,7 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
     }, []);
 
     if (!editor) return null;
+    const tableActionGroups = getTableActionGroups(editor, t);
 
     const ToolbarButton = ({ onClick, isActive = false, disabled = false, icon: Icon, title, label }: any) => (
         <button
@@ -233,43 +296,31 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
         </button>
     );
 
-    const exportAs = async (format: 'txt' | 'md' | 'html' | 'docx' | 'pdf') => {
+    const issueText = (issue: EditorValidationIssue) => {
+        const count = issue.count ?? 0;
+        const key = `editor.validation_${issue.code}` as any;
+        return t(key, { count });
+    };
+
+    const runValidation = () => {
+        const issues = validateEditorDocument({
+            title: fileName || '',
+            html: editor.getHTML(),
+            text: editor.getText(),
+        });
+        setValidationIssues(issues);
+        setShowValidationPanel(true);
+    };
+
+    const openPreview = () => {
+        setPreviewHtml(buildStandaloneHtml(editor.getHTML()));
+    };
+
+    const exportAs = async (format: EditorExportFormat) => {
         setShowExportMenu(false);
         const name = fileName || 'Document';
         const html = editor.getHTML();
         const text = editor.getText();
-
-        const buildStandaloneHtml = (innerHtml: string) => {
-            const minimalCSS = [
-                'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;color:#111827;padding:32px 40px;max-width:860px;margin:0 auto;background:#ffffff}',
-                'h1{font-size:1.5rem;line-height:2rem;font-weight:700;margin-top:1.5rem;margin-bottom:0.75rem;color:#0f172a}',
-                'h2{font-size:1.25rem;line-height:1.75rem;font-weight:700;margin-top:1.25rem;margin-bottom:0.5rem;color:#0f172a}',
-                'h3{font-size:1.125rem;line-height:1.625rem;font-weight:700;margin-top:1rem;margin-bottom:0.4rem;color:#0f172a}',
-                'h4{font-size:1rem;line-height:1.5rem;font-weight:700;margin-top:0.875rem;margin-bottom:0.35rem;color:#0f172a}',
-                'h5{font-size:0.9375rem;line-height:1.4rem;font-weight:700;margin-top:0.75rem;margin-bottom:0.3rem;color:#0f172a}',
-                'h6{font-size:0.875rem;line-height:1.35rem;font-weight:700;margin-top:0.625rem;margin-bottom:0.25rem;color:#0f172a}',
-                'p{margin-bottom:0.75rem;line-height:1.65;color:#1f2937}',
-                'strong{font-weight:700}',
-                'em{font-style:italic}',
-                'u{text-decoration:underline}',
-                'ul,ol{padding-left:1.75rem;margin:0.25rem 0;color:#1f2937}',
-                'ul{list-style-type:disc}ul ul{list-style-type:circle}ul ul ul{list-style-type:square}',
-                'ol{list-style-type:decimal}ol ol{list-style-type:lower-alpha}ol ol ol{list-style-type:lower-roman}',
-                'li{margin-bottom:0.15rem}',
-                'img{max-width:100%;height:auto;display:block;margin:0.5rem 0}',
-                'table{border-collapse:collapse;table-layout:fixed;width:100%;margin:1.5rem 0;border:1px solid #d1d5db}',
-                'th,td{border:1px solid #d1d5db;padding:6px 8px;vertical-align:top;box-sizing:border-box;color:#111827}',
-                'th{font-weight:700;text-align:left;background-color:#f3f4f6}',
-                'tr:nth-child(even) td{background:#fafafa}',
-                'pre{background:#f3f4f6;border-radius:6px;padding:0.75rem 1rem;font-family:"Courier New",monospace;font-size:0.875rem;overflow-x:auto;margin:0.75rem 0;color:#111827}',
-                'code{font-family:"Courier New",monospace;font-size:0.9em;background:#f3f4f6;padding:0.125rem 0.25rem;border-radius:3px;color:#111827}',
-                'pre code{background:transparent;padding:0}',
-                'mark{background-color:#fef3c7;color:#92400e;padding:0.1em 0.2em;border-radius:0.2em}',
-                'a{color:#2563eb;text-decoration:underline}',
-                'blockquote{border-left:3px solid #d1d5db;margin:0.5rem 0;padding:0.25rem 0 0.25rem 1rem;color:#6b7280;font-style:italic}',
-            ].join('\n');
-            return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${minimalCSS}</style></head><body>${innerHtml}</body></html>`;
-        };
 
         const filterMap: Record<string, { name: string; extensions: string[] }[]> = {
             txt: [{ name: 'Plain Text', extensions: ['txt'] }],
@@ -284,60 +335,39 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
         });
         if (!filePath) return; // User canceled save
 
-        if (format === 'txt') {
-            await tauriCmd.exportDocument(filePath, text);
-        } else if (format === 'md') {
-            const TurndownService = (await import('turndown')).default;
-            const td = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-' });
-            const md = td.turndown(html);
-            await tauriCmd.exportDocument(filePath, md);
-        } else if (format === 'html') {
-            await tauriCmd.exportDocument(filePath, buildStandaloneHtml(html));
-        } else if (format === 'docx') {
-            const { asBlob } = await import('html-docx-js-typescript');
-            const docHtml = buildStandaloneHtml(html);
-            const blobOrBuffer = await asBlob(docHtml);
-            const bytes = blobOrBuffer instanceof Blob
-                ? new Uint8Array(await blobOrBuffer.arrayBuffer())
-                : new Uint8Array(blobOrBuffer as unknown as ArrayBufferLike);
-
-            let binary = '';
-            const CHUNK = 0x8000;
-            for (let i = 0; i < bytes.length; i += CHUNK) {
-                binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-            }
-            await tauriCmd.writeBinaryFile(filePath, btoa(binary));
-        } else if (format === 'pdf') {
-            const { default: jsPDF } = await import('jspdf');
-            const { default: html2canvas } = await import('html2canvas');
-            const editorEl = document.querySelector('.ProseMirror') as HTMLElement;
-            if (!editorEl) return;
-            const canvas = await html2canvas(editorEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-            const pageW = pdf.internal.pageSize.getWidth();
-            const pageH = pdf.internal.pageSize.getHeight();
-            const imgH = (canvas.height * pageW) / canvas.width;
-            let yOffset = 0;
-            while (yOffset < imgH) {
-                if (yOffset > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, -yOffset, pageW, imgH);
-                yOffset += pageH;
-            }
-            pdf.save(filePath);
-        }
-
+        setExportState('running');
+        setExportMessage(t('editor.export_running'));
         try {
+            if (format === 'txt') {
+                await tauriCmd.exportDocument(filePath, text);
+            } else if (format === 'md') {
+                await tauriCmd.exportDocument(filePath, await htmlToMarkdown(html));
+            } else if (format === 'html') {
+                await tauriCmd.exportDocument(filePath, buildStandaloneHtml(html));
+            } else if (format === 'docx') {
+                await writeDocxFromHtml(filePath, html);
+            } else if (format === 'pdf') {
+                const editorEl = document.querySelector('.ProseMirror') as HTMLElement;
+                if (!editorEl) throw new Error('Editor element not found');
+                await writePdfFromElement(filePath, editorEl);
+            }
+
             const title = fileName || 'Document';
             const md = format === 'md'
-                ? await (async () => {
-                    const TurndownService = (await import('turndown')).default;
-                    return new TurndownService({ headingStyle: 'atx', bulletListMarker: '-' }).turndown(html);
-                })()
+                ? await htmlToMarkdown(html)
                 : format === 'txt' ? text : html;
-            await tauriCmd.saveEditorToKnowledge(title, md);
-        } catch (e) {
-            console.error('Save to repository failed:', e);
+            try {
+                await tauriCmd.saveEditorToKnowledge(title, md);
+            } catch (error) {
+                console.error('Save to repository failed:', error);
+            }
+            setExportState('success');
+            setExportMessage(t('editor.export_success'));
+            window.setTimeout(() => setExportState('idle'), 3000);
+        } catch (error) {
+            console.error('Export failed:', error);
+            setExportState('error');
+            setExportMessage(t('editor.export_failed'));
         }
     };
 
@@ -354,6 +384,51 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
             >
                 <FolderOpen className="w-3.5 h-3.5" />
                 <span>{t('editor.open')}</span>
+            </button>
+            <div className="w-px h-5 bg-stroke-divider mx-1" />
+
+            <div className="relative">
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); runValidation(); }}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded text-fs-xs font-medium transition-colors ${showValidationPanel ? 'bg-surface-subtle text-text-primary' : 'text-text-secondary hover:bg-surface-subtle hover:text-text-primary'}`}
+                    title={t('editor.document_check')}
+                >
+                    <ClipboardCheck className="w-3.5 h-3.5" />
+                    <span>{t('editor.check')}</span>
+                </button>
+                {showValidationPanel && (
+                    <div className="absolute left-0 top-full mt-1 w-80 bg-surface-flyout border border-stroke-divider rounded-lg shadow-2xl z-[120] py-2 animate-in fade-in zoom-in duration-150">
+                        <div className="flex items-center justify-between px-3 pb-2 border-b border-stroke-divider">
+                            <span className="text-fs-xs font-semibold text-text-primary">{t('editor.document_check')}</span>
+                            <button type="button" onClick={() => setShowValidationPanel(false)} className="p-0.5 rounded text-text-tertiary hover:bg-surface-subtle">
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        {validationIssues.length === 0 ? (
+                            <div className="px-3 py-3 text-fs-xs text-emerald-500">{t('editor.validation_passed')}</div>
+                        ) : (
+                            <div className="max-h-72 overflow-y-auto px-2 py-2 space-y-1">
+                                {validationIssues.map((issue, index) => (
+                                    <div key={`${issue.code}-${index}`} className="flex gap-2 rounded-md px-2 py-1.5 text-fs-xs text-text-secondary hover:bg-surface-subtle">
+                                        <AlertTriangle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${issue.severity === 'warning' ? 'text-amber-500' : 'text-sky-500'}`} />
+                                        <span>{issueText(issue)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); openPreview(); }}
+                className="flex items-center gap-1 px-2 py-1.5 rounded text-fs-xs font-medium transition-colors text-text-secondary hover:bg-surface-subtle hover:text-text-primary"
+                title={t('editor.export_preview')}
+            >
+                <Eye className="w-3.5 h-3.5" />
+                <span>{t('editor.preview')}</span>
             </button>
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
@@ -382,6 +457,37 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
                     </div>
                 )}
             </div>
+            {exportState !== 'idle' && (
+                <span className={`ml-1 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium ${exportState === 'error'
+                    ? 'bg-red-500/10 text-red-500'
+                    : exportState === 'success'
+                        ? 'bg-emerald-500/10 text-emerald-500'
+                        : 'bg-accent-default/10 text-accent-default'
+                    }`}>
+                    {exportState === 'running' && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {exportMessage}
+                </span>
+            )}
+            {previewHtml && (
+                <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/55 p-6" onMouseDown={(e) => e.stopPropagation()}>
+                    <div className="flex h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-stroke-divider bg-surface-base shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-stroke-divider px-4 py-3">
+                            <div>
+                                <h3 className="text-fs-sm font-semibold text-text-primary">{t('editor.export_preview')}</h3>
+                                <p className="text-fs-xs text-text-tertiary">{t('editor.preview_hint')}</p>
+                            </div>
+                            <button type="button" onClick={() => setPreviewHtml(null)} className="rounded p-1 text-text-tertiary hover:bg-surface-subtle hover:text-text-primary">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <iframe
+                            title={t('editor.export_preview')}
+                            srcDoc={previewHtml}
+                            className="h-full w-full border-0 bg-white"
+                        />
+                    </div>
+                </div>
+            )}
             <div className="w-px h-5 bg-stroke-divider mx-1" />
 
             <div className="relative" ref={turnIntoMenuRef}>
@@ -521,69 +627,26 @@ const MenuBar = React.memo(({ editor, fileName, onOpenDocument }: MenuBarProps) 
 
                 {showTableMenu && (
                     <div className="absolute left-0 top-full mt-1 w-56 bg-surface-flyout border border-stroke-divider rounded-lg shadow-2xl z-[100] py-1.5 px-1.5 overflow-hidden animate-in fade-in zoom-in duration-150">
-                        <div className="px-3 py-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">
-                            {t('editor.rows_and_columns')}
-                        </div>
-                        <MenuAction
-                            icon={Plus}
-                            label={t('editor.add_row_above')}
-                            onClick={() => editor.chain().focus().addRowBefore().run()}
-                        />
-                        <MenuAction
-                            icon={Plus}
-                            label={t('editor.add_row_below')}
-                            onClick={() => editor.chain().focus().addRowAfter().run()}
-                        />
-                        <MenuAction
-                            icon={Columns}
-                            label={t('editor.add_column_left')}
-                            onClick={() => editor.chain().focus().addColumnBefore().run()}
-                        />
-                        <MenuAction
-                            icon={Columns}
-                            label={t('editor.add_column_right')}
-                            onClick={() => editor.chain().focus().addColumnAfter().run()}
-                        />
-                        <div className="h-px bg-stroke-divider my-1.5 mx-1" />
-                        <div className="px-3 py-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">
-                            {t('editor.table_actions')}
-                        </div>
-                        <MenuAction
-                            icon={Merge}
-                            label={t('editor.merge_cells')}
-                            onClick={() => editor.chain().focus().mergeCells().run()}
-                            disabled={!editor.can().mergeCells()}
-                        />
-                        <MenuAction
-                            icon={Split}
-                            label={t('editor.split_cell')}
-                            onClick={() => editor.chain().focus().splitCell().run()}
-                            disabled={!editor.can().splitCell()}
-                        />
-                        <MenuAction
-                            icon={LayoutTemplate}
-                            label={t('editor.toggle_header_row')}
-                            onClick={() => editor.chain().focus().toggleHeaderRow().run()}
-                        />
-                        <div className="h-px bg-stroke-divider my-1.5 mx-1" />
-                        <MenuAction
-                            icon={Trash2}
-                            label={t('editor.delete_this_row')}
-                            onClick={() => editor.chain().focus().deleteRow().run()}
-                            danger
-                        />
-                        <MenuAction
-                            icon={Trash2}
-                            label={t('editor.delete_this_column')}
-                            onClick={() => editor.chain().focus().deleteColumn().run()}
-                            danger
-                        />
-                        <MenuAction
-                            icon={Trash2}
-                            label={t('editor.delete_table')}
-                            onClick={() => editor.chain().focus().deleteTable().run()}
-                            danger
-                        />
+                        {tableActionGroups.map((group, groupIndex) => (
+                            <React.Fragment key={group.key}>
+                                {groupIndex > 0 && <div className="h-px bg-stroke-divider my-1.5 mx-1" />}
+                                {group.label && (
+                                    <div className="px-3 py-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">
+                                        {group.label}
+                                    </div>
+                                )}
+                                {group.actions.map((action) => (
+                                    <MenuAction
+                                        key={action.key}
+                                        icon={action.icon}
+                                        label={action.label}
+                                        onClick={action.onClick}
+                                        disabled={action.disabled}
+                                        danger={action.danger}
+                                    />
+                                ))}
+                            </React.Fragment>
+                        ))}
                     </div>
                 )}
             </div>
@@ -1124,8 +1187,16 @@ export const EditorPane: React.FC = () => {
             });
         };
         editor.on('selectionUpdate', update);
+        editor.on('transaction', update);
+        const scroller = editor.view.dom.closest('[data-editor-drop="true"]');
+        scroller?.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
         return () => {
             editor.off('selectionUpdate', update);
+            editor.off('transaction', update);
+            scroller?.removeEventListener('scroll', update);
+            window.removeEventListener('resize', update);
             if (rafId !== null) cancelAnimationFrame(rafId);
         };
     }, [editor]);
@@ -1260,6 +1331,8 @@ export const EditorPane: React.FC = () => {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [aiImproveResult, isAiImproving]);
+
+    const floatingTableActionGroups = editor ? getTableActionGroups(editor, t) : [];
 
     return (
         <div className="w-full h-full flex flex-col border-l border-stroke-divider bg-surface-base" onClick={() => editor?.commands.focus()}>
@@ -1638,36 +1711,29 @@ export const EditorPane: React.FC = () => {
                     onMouseDown={e => e.stopPropagation()}
                     className="flex items-center gap-0.5 bg-surface-flyout border border-stroke-divider rounded-lg shadow-2xl px-2 py-1.5 animate-in fade-in zoom-in duration-200"
                 >
-                    <button onClick={() => editor.chain().focus().addColumnBefore().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title={t('editor.add_column_left')}>
-                        <Plus className="w-3 h-3" /><Columns className="w-4 h-4 rotate-180" />
-                    </button>
-                    <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title={t('editor.add_column_right')}>
-                        <Columns className="w-4 h-4" /><Plus className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => editor.chain().focus().deleteColumn().run()} className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors" title={t('editor.delete_column')}>
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-                    <div className="w-px h-4 bg-stroke-divider mx-1" />
-                    <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title={t('editor.add_row_above')}>
-                        <Plus className="w-3 h-3" /><LayoutTemplate className="w-4 h-4 -rotate-90" />
-                    </button>
-                    <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1.5 rounded hover:bg-accent-light2 text-text-secondary hover:text-accent-default transition-colors flex items-center gap-0.5" title={t('editor.add_row_below')}>
-                        <LayoutTemplate className="w-4 h-4 rotate-90" /><Plus className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => editor.chain().focus().deleteRow().run()} className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors" title={t('editor.delete_row')}>
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-                    <div className="w-px h-4 bg-stroke-divider mx-1" />
-                    <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors" title={t('editor.merge_cells')}>
-                        <Merge className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1.5 rounded hover:bg-surface-subtle text-text-secondary transition-colors" title={t('editor.split_cell')}>
-                        <Split className="w-4 h-4" />
-                    </button>
-                    <div className="w-px h-4 bg-stroke-divider mx-1" />
-                    <button onClick={() => editor.chain().focus().deleteTable().run()} className="p-1.5 rounded hover:bg-status-error/10 text-status-error transition-colors" title={t('editor.delete_table')}>
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    {floatingTableActionGroups.map((group, groupIndex) => (
+                        <React.Fragment key={group.key}>
+                            {groupIndex > 0 && <div className="w-px h-4 bg-stroke-divider mx-1" />}
+                            {group.actions.map((action) => {
+                                const Icon = action.icon;
+                                return (
+                                    <button
+                                        key={action.key}
+                                        type="button"
+                                        onClick={action.onClick}
+                                        disabled={action.disabled}
+                                        className={`p-1.5 rounded transition-colors ${action.danger
+                                            ? 'text-status-error hover:bg-status-error/10'
+                                            : 'text-text-secondary hover:bg-accent-light2 hover:text-accent-default'
+                                            } ${action.disabled ? 'opacity-40 cursor-not-allowed hover:bg-transparent hover:text-text-secondary' : ''}`}
+                                        title={action.label}
+                                    >
+                                        <Icon className="w-4 h-4" />
+                                    </button>
+                                );
+                            })}
+                        </React.Fragment>
+                    ))}
                 </div>
             )}
 

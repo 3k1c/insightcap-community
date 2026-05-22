@@ -174,11 +174,18 @@
 }
 
 /* Tables */
+.ProseMirror .tableWrapper {
+    margin: 1.5rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 .ProseMirror table {
     border-collapse: collapse;
     table-layout: fixed;
     width: 100%;
-    margin: 1.5rem 0;
+    min-width: 540px;
+    margin: 0;
     overflow: hidden;
 }
 
@@ -186,7 +193,7 @@
 .ProseMirror th {
     min-width: 1em;
     border: 2px solid var(--stroke-divider);
-    padding: 3px 5px;
+    padding: 6px 8px;
     vertical-align: top;
     box-sizing: border-box;
     position: relative;
