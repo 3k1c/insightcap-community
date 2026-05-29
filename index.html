@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en" class="scroll-smooth dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +8,7 @@
     <meta name="keywords" content="InsightCAP, local-first knowledge base, Windows knowledge management, research capture, encrypted notes, Telegram capture, YouTube notes">
     <meta name="author" content="InsightCAP">
     <meta name="robots" content="index, follow, max-image-preview:large">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#030712">
     <link rel="canonical" href="https://3k1c.github.io/insightcap-community/">
     <link rel="icon" href="./assets/brand/insightcap-logo.png" type="image/png">
 
@@ -24,421 +24,338 @@
     <meta name="twitter:description" content="Free Windows knowledge system for capturing, searching, and exporting your local memory.">
     <meta name="twitter:image" content="https://3k1c.github.io/insightcap-community/assets/screenshots/knowledge.png">
 
-    <script type="application/ld+json">
-        {
-            "@context": "https://schema.org",
-            "@type": "SoftwareApplication",
-            "name": "InsightCAP",
-            "applicationCategory": "ProductivityApplication",
-            "operatingSystem": "Windows",
-            "description": "A free local-first knowledge system for capturing web pages, documents, YouTube videos, clipboard text, and Telegram messages into an encrypted searchable memory.",
-            "image": "https://3k1c.github.io/insightcap-community/assets/screenshots/knowledge.png",
-            "url": "https://3k1c.github.io/insightcap-community/",
-            "downloadUrl": "https://github.com/3k1c/insightcap-community/releases",
-            "softwareVersion": "Free Edition",
-            "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-            },
-            "sameAs": [
-                "https://github.com/3k1c/insightcap-community"
-            ]
-        }
-    </script>
-    <script type="application/ld+json">
-        {
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            "mainEntity": [
-                {
-                    "@type": "Question",
-                    "name": "Is InsightCAP free?",
-                    "acceptedAnswer": {
-                        "@type": "Answer",
-                        "text": "Yes. InsightCAP is free to download and use."
-                    }
-                },
-                {
-                    "@type": "Question",
-                    "name": "Where is my data stored?",
-                    "acceptedAnswer": {
-                        "@type": "Answer",
-                        "text": "InsightCAP keeps your knowledge base on your Windows device and encrypts it locally."
-                    }
-                },
-                {
-                    "@type": "Question",
-                    "name": "What can InsightCAP capture?",
-                    "acceptedAnswer": {
-                        "@type": "Answer",
-                        "text": "It can capture web pages, documents, YouTube videos, clipboard text, and Telegram messages."
-                    }
-                }
-            ]
-        }
-    </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="./style.css">
+    <script src="./i18n.js"></script>
     <script>
         window.tailwind = window.tailwind || {};
         window.tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        sans: ['"Inter"', 'sans-serif'],
+                        display: ['"Outfit"', 'sans-serif'],
                         mono: ['"JetBrains Mono"', 'monospace']
-                    },
-                    colors: {
-                        brand: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            500: '#2563eb',
-                            600: '#1d4ed8',
-                            700: '#1e40af',
-                            900: '#0f172a'
-                        },
-                        ink: '#101828',
-                        moss: '#3f6212',
-                        coral: '#dc2626'
-                    },
-                    boxShadow: {
-                        soft: '0 22px 70px rgba(15, 23, 42, 0.10)',
-                        card: '0 14px 45px rgba(15, 23, 42, 0.08)'
                     }
                 }
             }
         };
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./style.css">
-    <style>
-        .reveal { opacity: 1 !important; transform: none !important; }
-        .bg-brand-50 { background-color: #eff6ff; }
-        .bg-brand-100 { background-color: #dbeafe; }
-        .bg-brand-600 { background-color: #2563eb; }
-        .text-brand-600 { color: #2563eb; }
-        .text-brand-900 { color: #0f172a; }
-        .hover\:bg-brand-700:hover { background-color: #1d4ed8; }
-        .hover\:text-brand-600:hover { color: #2563eb; }
-        .text-moss { color: #3f6212; }
-        .text-coral { color: #dc2626; }
-        .shadow-soft { box-shadow: 0 22px 70px rgba(15, 23, 42, 0.10); }
-        .shadow-card { box-shadow: 0 14px 45px rgba(15, 23, 42, 0.08); }
-        @media (max-width: 900px) {
-            .mobile-safe-width {
-                width: 100%;
-                max-width: min(100%, 350px) !important;
-            }
-        }
-    </style>
 </head>
-<body class="font-sans antialiased text-slate-900 bg-slate-50 selection:bg-brand-100 selection:text-brand-900">
+<body class="antialiased selection:bg-blue-500/30 selection:text-blue-200">
+    <!-- Ambient Background -->
+    <div class="blob-container">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
     <div class="texture-grid"></div>
 
-    <nav id="navbar" class="fixed inset-x-0 top-0 z-50 border-b border-transparent px-4 py-4 transition-all duration-300 md:px-10">
-        <div class="mx-auto flex max-w-7xl items-center justify-between">
-            <a href="#" class="flex items-center gap-3" aria-label="InsightCAP home">
-                <span class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP logo" class="h-full w-full object-cover">
+    <nav id="navbar" class="fixed inset-x-0 top-0 z-50 px-4 py-4 transition-all duration-300 md:px-10">
+        <div class="mx-auto flex max-w-7xl items-center justify-between glass-card px-6 py-3 rounded-full border border-white/5 transition-all">
+            <a href="#" class="flex items-center gap-3">
+                <span class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white/10 shadow-sm ring-1 ring-white/20">
+                    <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP" class="h-full w-full object-cover">
                 </span>
-                <span class="text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">InsightCAP</span>
+                <span class="font-display text-lg font-bold tracking-wide text-white">InsightCAP</span>
             </a>
 
-            <ul class="hidden items-center gap-8 md:flex">
-                <li><a href="#features" class="text-sm font-bold text-slate-500 transition hover:text-brand-600">Features</a></li>
-                <li><a href="#workflow" class="text-sm font-bold text-slate-500 transition hover:text-brand-600">Workflow</a></li>
-                <li><a href="#privacy" class="text-sm font-bold text-slate-500 transition hover:text-brand-600">Privacy</a></li>
-                <li><a href="#faq" class="text-sm font-bold text-slate-500 transition hover:text-brand-600">FAQ</a></li>
+            <ul class="hidden items-center gap-6 md:flex">
+                <li><a href="#workflow" class="text-sm font-medium text-slate-300 transition hover:text-white" data-i18n="nav.workflow">Workflow</a></li>
+                <li><a href="#features" class="text-sm font-medium text-slate-300 transition hover:text-white" data-i18n="nav.features">Features</a></li>
+                <li><a href="#privacy" class="text-sm font-medium text-slate-300 transition hover:text-white" data-i18n="nav.privacy">Privacy</a></li>
+                <li><a href="#faq" class="text-sm font-medium text-slate-300 transition hover:text-white" data-i18n="nav.faq">FAQ</a></li>
             </ul>
 
-            <div class="flex items-center gap-3">
-                <a href="https://github.com/3k1c/insightcap-community" target="_blank" rel="noreferrer" class="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 lg:inline-flex">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <div class="flex items-center gap-4">
+                <!-- Custom Premium Language Dropdown -->
+                <div class="relative" id="lang-dropdown-container">
+                    <button id="lang-dropdown-btn" class="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full py-2 pl-3 pr-3 text-sm font-medium text-slate-300 focus:outline-none hover:bg-white/10 hover:text-white transition-colors cursor-pointer shadow-sm">
+                        <i data-lucide="globe" class="h-4 w-4"></i>
+                        <span id="current-lang-label">EN</span>
+                        <i data-lucide="chevron-down" class="h-3 w-3 ml-1 opacity-70"></i>
+                    </button>
+
+                    <div id="lang-dropdown-menu" class="absolute right-0 mt-2 w-36 rounded-xl bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 opacity-0 invisible transition-all transform scale-95 origin-top-right flex flex-col p-1.5 shadow-2xl z-50">
+                        <button class="lang-btn text-left px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors flex items-center justify-between" data-lang="en">
+                            English
+                            <i data-lucide="check" class="h-4 w-4 text-blue-400 opacity-0 check-icon"></i>
+                        </button>
+                        <button class="lang-btn text-left px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors flex items-center justify-between" data-lang="zh_tw">
+                            繁體中文
+                            <i data-lucide="check" class="h-4 w-4 text-blue-400 opacity-0 check-icon"></i>
+                        </button>
+                        <button class="lang-btn text-left px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors flex items-center justify-between" data-lang="zh_cn">
+                            简体中文
+                            <i data-lucide="check" class="h-4 w-4 text-blue-400 opacity-0 check-icon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Github Top Right Icon -->
+                <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="text-slate-300 hover:text-white transition p-2 rounded-full hover:bg-white/10" aria-label="GitHub Repository">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                         <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.01c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.35.95.1-.74.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18.92-.26 1.9-.38 2.88-.39.98.01 1.96.13 2.88.39 2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.73.8 1.18 1.82 1.18 3.08 0 4.42-2.69 5.39-5.25 5.67.41.35.78 1.05.78 2.12v3.05c0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
                     </svg>
-                    GitHub
                 </a>
-                <a href="https://github.com/3k1c/insightcap-community/releases" aria-label="Download InsightCAP for Windows" class="hidden items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-brand-700 sm:inline-flex">
+
+                <a href="https://github.com/3k1c/insightcap-community/releases" class="glow-btn hidden items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white transition sm:inline-flex ring-1 ring-white/20">
                     <i data-lucide="download" class="h-4 w-4"></i>
-                    <span class="hidden sm:inline">Download</span>
+                    <span data-i18n="nav.download">Download</span>
                 </a>
             </div>
         </div>
     </nav>
 
     <main>
-        <section class="relative overflow-hidden px-5 pb-16 pt-28 md:px-10 md:pb-20 md:pt-36">
-            <div class="absolute inset-x-0 top-0 h-[520px] bg-[linear-gradient(180deg,#ffffff_0%,#eef6ff_56%,rgba(248,250,252,0)_100%)]"></div>
-            <div class="absolute right-[-12rem] top-20 hidden h-[34rem] w-[34rem] rounded-full border border-blue-200/70 md:block"></div>
-            <div class="absolute left-[-9rem] top-44 hidden h-72 w-72 rounded-full border border-emerald-200/80 md:block"></div>
-
-            <div class="relative z-10 mx-auto grid max-w-7xl min-w-0 items-center gap-12 lg:grid-cols-[0.92fr_1.08fr]">
-                <div class="reveal min-w-0 mobile-safe-width">
-                    <h1 class="max-w-3xl mobile-safe-width text-[clamp(3rem,7vw,6.2rem)] font-extrabold leading-[0.95] tracking-tight text-slate-950">
-                        InsightCAP
-                    </h1>
-                    <p class="mt-7 max-w-2xl mobile-safe-width text-lg font-medium leading-8 text-slate-600 md:text-xl">
-                        A free local-first knowledge system for Windows. Capture web pages, documents, YouTube videos, clipboard text, and Telegram messages into one encrypted searchable memory.
-                    </p>
-                    <div class="mt-9 flex flex-col gap-3 sm:flex-row mobile-safe-width">
-                        <a href="https://github.com/3k1c/insightcap-community/releases" class="inline-flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-[15px] font-extrabold text-white shadow-xl shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-slate-800 sm:w-auto sm:px-7">
-                            <i data-lucide="download" class="h-5 w-5"></i>
-                            Download for Windows
-                        </a>
-                        <a href="https://github.com/3k1c/insightcap-community" target="_blank" rel="noreferrer" class="inline-flex w-full items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-6 py-4 text-[15px] font-extrabold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 sm:w-auto sm:px-7">
-                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.01c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.35.95.1-.74.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18.92-.26 1.9-.38 2.88-.39.98.01 1.96.13 2.88.39 2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.73.8 1.18 1.82 1.18 3.08 0 4.42-2.69 5.39-5.25 5.67.41.35.78 1.05.78 2.12v3.05c0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
-                            </svg>
-                            View source
-                        </a>
-                    </div>
-                    <div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3 font-mono text-xs font-semibold uppercase text-slate-500">
-                        <span class="inline-flex items-center gap-2"><i data-lucide="shield-check" class="h-4 w-4 text-moss"></i> Local encrypted data</span>
-                        <span class="inline-flex items-center gap-2"><i data-lucide="badge-check" class="h-4 w-4 text-brand-600"></i> Free Edition</span>
-                    </div>
-                </div>
-
-                <div class="reveal delay-100 min-w-0 mobile-safe-width">
-                    <div class="relative min-w-0 mobile-safe-width">
-                        <div class="absolute -inset-4 rounded-[2rem] border border-white/70 bg-white/50 shadow-soft"></div>
-                        <div class="relative overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-soft">
-                            <div class="flex h-12 items-center gap-2 border-b border-slate-100 bg-slate-50 px-4">
-                                <span class="h-3 w-3 rounded-full bg-rose-400"></span>
-                                <span class="h-3 w-3 rounded-full bg-amber-400"></span>
-                                <span class="h-3 w-3 rounded-full bg-emerald-400"></span>
-                                <span class="ml-auto flex items-center gap-2 font-mono text-[11px] font-semibold uppercase text-slate-400">
-                                    <i data-lucide="lock" class="h-3.5 w-3.5"></i>
-                                    Knowledge workspace
-                                </span>
-                            </div>
-                            <div class="relative aspect-[16/10] bg-slate-950">
-                                <img src="./assets/screenshots/knowledge.png" alt="InsightCAP knowledge workspace screenshot" class="h-full w-full object-cover object-top" loading="eager" decoding="async">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="border-y border-slate-200/70 bg-white/75 px-5 py-8 md:px-10">
-            <div class="reveal mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm font-extrabold text-slate-500">
-                <span class="flex items-center gap-2"><i data-lucide="book-open" class="h-4 w-4 text-brand-600"></i> Researchers</span>
-                <span class="flex items-center gap-2"><i data-lucide="code-2" class="h-4 w-4 text-brand-600"></i> Developers</span>
-                <span class="flex items-center gap-2"><i data-lucide="pen-tool" class="h-4 w-4 text-brand-600"></i> Writers</span>
-                <span class="flex items-center gap-2"><i data-lucide="briefcase-business" class="h-4 w-4 text-brand-600"></i> Operators</span>
-            </div>
-        </section>
-
-        <section id="features" class="px-5 py-24 md:px-10">
-            <div class="mx-auto max-w-7xl">
-                <div class="reveal max-w-3xl">
-                    <h2 class="text-4xl font-extrabold tracking-tight text-slate-950 md:text-5xl">Capture sources once. Reuse them everywhere.</h2>
-                    <p class="mt-5 text-lg leading-8 text-slate-600">
-                        InsightCAP turns scattered research inputs into a durable local base you can search, connect, draft from, and export.
-                    </p>
-                </div>
-
-                <div class="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                    <article class="reveal rounded-2xl border border-slate-200 bg-white p-7 shadow-card">
-                        <div class="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-brand-600"><i data-lucide="magnet" class="h-6 w-6"></i></div>
-                        <h3 class="text-xl font-extrabold text-slate-950">Multi-source capture</h3>
-                        <p class="mt-3 leading-7 text-slate-600">Save web pages, local documents, YouTube videos, clipboard text, and Telegram messages into a single knowledge base.</p>
-                    </article>
-
-                    <article class="reveal delay-100 rounded-2xl border border-slate-200 bg-white p-7 shadow-card">
-                        <div class="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-moss"><i data-lucide="database-zap" class="h-6 w-6"></i></div>
-                        <h3 class="text-xl font-extrabold text-slate-950">Local long-term memory</h3>
-                        <p class="mt-3 leading-7 text-slate-600">Keep your captures encrypted on your Windows device, with fast search across everything you have stored.</p>
-                    </article>
-
-                    <article class="reveal delay-200 rounded-2xl border border-slate-200 bg-white p-7 shadow-card">
-                        <div class="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><i data-lucide="git-merge" class="h-6 w-6"></i></div>
-                        <h3 class="text-xl font-extrabold text-slate-950">Projects and context</h3>
-                        <p class="mt-3 leading-7 text-slate-600">Group related materials by project so notes, sources, and AI discussions stay tied to the original evidence.</p>
-                    </article>
-
-                    <article class="reveal rounded-2xl border border-slate-200 bg-white p-7 shadow-card">
-                        <div class="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-rose-50 text-coral"><i data-lucide="bot-message-square" class="h-6 w-6"></i></div>
-                        <h3 class="text-xl font-extrabold text-slate-950">Telegram bot intake</h3>
-                        <p class="mt-3 leading-7 text-slate-600">Forward links or quick notes while away from your desk, then continue processing them inside InsightCAP.</p>
-                    </article>
-
-                    <article class="reveal delay-100 rounded-2xl border border-slate-200 bg-white p-7 shadow-card">
-                        <div class="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50 text-sky-600"><i data-lucide="file-output" class="h-6 w-6"></i></div>
-                        <h3 class="text-xl font-extrabold text-slate-950">Editor and export</h3>
-                        <p class="mt-3 leading-7 text-slate-600">Draft from captured knowledge and export work in practical formats including Markdown, HTML, DOCX, and PDF.</p>
-                    </article>
-
-                    <article class="reveal delay-200 rounded-2xl border border-slate-200 bg-white p-7 shadow-card">
-                        <div class="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><i data-lucide="alarm-clock-check" class="h-6 w-6"></i></div>
-                        <h3 class="text-xl font-extrabold text-slate-950">Reminders and follow-up</h3>
-                        <p class="mt-3 leading-7 text-slate-600">Bring important captures back at the right time so useful references do not disappear into a passive archive.</p>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section id="workflow" class="mx-4 overflow-hidden rounded-[2rem] bg-slate-950 px-5 py-24 text-white shadow-2xl md:mx-10 md:px-10">
-            <div class="mx-auto max-w-7xl">
-                <div class="reveal grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
-                    <div>
-                        <h2 class="text-4xl font-extrabold tracking-tight md:text-5xl">A workflow for people who collect evidence before writing.</h2>
-                        <p class="mt-5 text-lg leading-8 text-slate-300">
-                            Capture first, organize locally, connect sources to projects, then produce work with the full context still available.
-                        </p>
-                    </div>
-
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <div class="rounded-2xl border border-white/10 bg-white/[0.06] p-6">
-                            <span class="font-mono text-xs font-semibold uppercase text-blue-300">01</span>
-                            <h3 class="mt-4 text-xl font-extrabold">Capture</h3>
-                            <p class="mt-3 leading-7 text-slate-300">Send web, document, video, clipboard, or Telegram material into your inbox.</p>
-                        </div>
-                        <div class="rounded-2xl border border-white/10 bg-white/[0.06] p-6">
-                            <span class="font-mono text-xs font-semibold uppercase text-emerald-300">02</span>
-                            <h3 class="mt-4 text-xl font-extrabold">Index</h3>
-                            <p class="mt-3 leading-7 text-slate-300">Extract text, keep it local, and make it searchable inside your encrypted base.</p>
-                        </div>
-                        <div class="rounded-2xl border border-white/10 bg-white/[0.06] p-6">
-                            <span class="font-mono text-xs font-semibold uppercase text-amber-300">03</span>
-                            <h3 class="mt-4 text-xl font-extrabold">Connect</h3>
-                            <p class="mt-3 leading-7 text-slate-300">Attach relevant knowledge to a project so future discussions keep their source context.</p>
-                        </div>
-                        <div class="rounded-2xl border border-white/10 bg-white/[0.06] p-6">
-                            <span class="font-mono text-xs font-semibold uppercase text-rose-300">04</span>
-                            <h3 class="mt-4 text-xl font-extrabold">Create</h3>
-                            <p class="mt-3 leading-7 text-slate-300">Draft, refine, and export reports or notes without rebuilding the research trail.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="privacy" class="px-5 py-24 md:px-10">
-            <div class="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-2">
-                <div class="reveal">
-                    <h2 class="text-4xl font-extrabold tracking-tight text-slate-950 md:text-5xl">Your knowledge stays on your device.</h2>
-                    <p class="mt-5 text-lg leading-8 text-slate-600">
-                        InsightCAP is built around local ownership. Your captures are stored on your Windows computer and protected with encryption instead of being pushed into a hosted workspace.
-                    </p>
-                    <div class="mt-8 grid gap-4 sm:grid-cols-2">
-                        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-                            <i data-lucide="shield-check" class="h-7 w-7 text-moss"></i>
-                            <h3 class="mt-4 font-extrabold text-slate-950">Encrypted base</h3>
-                            <p class="mt-2 text-sm leading-6 text-slate-600">Designed for private personal and work research.</p>
-                        </div>
-                        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-                            <i data-lucide="hard-drive" class="h-7 w-7 text-brand-600"></i>
-                            <h3 class="mt-4 font-extrabold text-slate-950">Local control</h3>
-                            <p class="mt-2 text-sm leading-6 text-slate-600">Move, back up, and restore your own knowledge base.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="reveal delay-100 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-soft">
-                    <div class="rounded-[1.45rem] bg-slate-950 p-6 text-white">
-                        <div class="flex items-center justify-between border-b border-white/10 pb-5">
-                            <div>
-                                <p class="font-mono text-xs font-semibold uppercase text-slate-400">Local vault</p>
-                                <h3 class="mt-1 text-2xl font-extrabold">Knowledge Base</h3>
-                            </div>
-                            <i data-lucide="lock-keyhole" class="h-8 w-8 text-blue-300"></i>
-                        </div>
-                        <div class="mt-6 space-y-4">
-                            <div class="flex items-center justify-between rounded-xl bg-white/[0.06] px-4 py-3">
-                                <span class="text-sm font-bold text-slate-200">Web captures</span>
-                                <span class="font-mono text-xs text-emerald-300">encrypted</span>
-                            </div>
-                            <div class="flex items-center justify-between rounded-xl bg-white/[0.06] px-4 py-3">
-                                <span class="text-sm font-bold text-slate-200">Documents</span>
-                                <span class="font-mono text-xs text-emerald-300">indexed</span>
-                            </div>
-                            <div class="flex items-center justify-between rounded-xl bg-white/[0.06] px-4 py-3">
-                                <span class="text-sm font-bold text-slate-200">Telegram notes</span>
-                                <span class="font-mono text-xs text-emerald-300">synced locally</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="faq" class="border-y border-slate-200 bg-white px-5 py-24 md:px-10">
-            <div class="mx-auto max-w-4xl">
-                <div class="reveal text-center">
-                    <h2 class="text-4xl font-extrabold tracking-tight text-slate-950 md:text-5xl">Frequently asked questions</h2>
-                </div>
-                <div class="mt-12 space-y-4">
-                    <details class="reveal group rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-extrabold text-slate-950">
-                            Is InsightCAP free?
-                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
-                        </summary>
-                        <p class="mt-4 leading-7 text-slate-600">Yes. InsightCAP is free to download and use from the GitHub releases page.</p>
-                    </details>
-
-                    <details class="reveal group rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-extrabold text-slate-950">
-                            Does it support Mac or Linux?
-                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
-                        </summary>
-                        <p class="mt-4 leading-7 text-slate-600">InsightCAP is currently focused on Windows.</p>
-                    </details>
-
-                    <details class="reveal group rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-extrabold text-slate-950">
-                            How is it different from cloud note apps?
-                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
-                        </summary>
-                        <p class="mt-4 leading-7 text-slate-600">InsightCAP is local-first and focused on automated capture, extraction, search, and export instead of hosting your workspace in the cloud.</p>
-                    </details>
-
-                    <details class="reveal group rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-extrabold text-slate-950">
-                            What can I export?
-                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
-                        </summary>
-                        <p class="mt-4 leading-7 text-slate-600">InsightCAP supports practical document workflows, including Markdown, HTML, DOCX, and PDF output.</p>
-                    </details>
-                </div>
-            </div>
-        </section>
-
-        <section class="px-5 py-24 text-center md:px-10">
-            <div class="reveal mx-auto max-w-4xl">
-                <h2 class="text-4xl font-extrabold tracking-tight text-slate-950 md:text-6xl">Build a memory you can actually keep.</h2>
-                <p class="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-                    Download InsightCAP for Windows and start turning scattered captures into a searchable local knowledge base.
+        <!-- Hero Section -->
+        <section class="relative px-5 pb-16 pt-36 md:px-10 md:pb-24 md:pt-48">
+            <div class="mx-auto max-w-4xl text-center">
+                <h1 class="reveal font-display text-[clamp(2.5rem,6vw,5.5rem)] font-bold leading-[1.1] tracking-tight text-white">
+                    <span data-i18n="hero.title1">Build a memory you can</span> <br class="hidden sm:block"/> <span class="text-gradient" data-i18n="hero.title2">actually keep.</span>
+                </h1>
+                <p class="reveal delay-100 mx-auto mt-6 max-w-2xl text-lg text-slate-400" data-i18n="hero.subtitle">
+                    A free local-first knowledge system for Windows. Capture web pages, documents, YouTube videos, and Telegram messages into one encrypted searchable memory.
                 </p>
-                <div class="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-                    <a href="https://github.com/3k1c/insightcap-community/releases" class="inline-flex items-center justify-center gap-3 rounded-full bg-brand-600 px-8 py-4 text-[15px] font-extrabold text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-brand-700">
+                <div class="reveal delay-200 mt-10 flex flex-col justify-center gap-4 sm:flex-row">
+                    <a href="https://github.com/3k1c/insightcap-community/releases" class="glow-btn inline-flex items-center justify-center gap-3 rounded-full px-8 py-4 text-base font-semibold text-white ring-1 ring-white/20 transition-transform hover:scale-105">
                         <i data-lucide="download" class="h-5 w-5"></i>
-                        Download free
+                        <span data-i18n="btn.download">Download for Windows</span>
                     </a>
-                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" rel="noreferrer" class="inline-flex items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-8 py-4 text-[15px] font-extrabold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50">
-                        <i data-lucide="star" class="h-5 w-5"></i>
-                        Star on GitHub
+                    <a href="https://github.com/3k1c/insightcap-community" target="_blank" class="inline-flex items-center justify-center gap-3 rounded-full glass-card px-8 py-4 text-base font-medium text-slate-200 hover:bg-white/10 transition-colors">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.01c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.35.95.1-.74.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18.92-.26 1.9-.38 2.88-.39.98.01 1.96.13 2.88.39 2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.73.8 1.18 1.82 1.18 3.08 0 4.42-2.69 5.39-5.25 5.67.41.35.78 1.05.78 2.12v3.05c0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
+                        </svg>
+                        <span data-i18n="btn.source">View Source</span>
                     </a>
+                </div>
+            </div>
+
+            <!-- Dashboard Preview -->
+            <div class="reveal delay-300 mx-auto mt-20 max-w-5xl">
+                <div class="glass-card overflow-hidden p-2 ring-1 ring-white/10 shadow-2xl shadow-blue-900/20">
+                    <div class="flex h-10 items-center gap-2 border-b border-white/5 bg-white/5 px-4 rounded-t-xl">
+                        <span class="h-3 w-3 rounded-full bg-rose-500/80"></span>
+                        <span class="h-3 w-3 rounded-full bg-amber-500/80"></span>
+                        <span class="h-3 w-3 rounded-full bg-emerald-500/80"></span>
+                    </div>
+                    <div class="bg-[#0f172a] rounded-b-lg overflow-hidden">
+                        <img src="./assets/screenshots/knowledge.png" alt="InsightCAP Interface" class="w-full object-cover" loading="lazy">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workflow Architecture Diagram Section -->
+        <section id="workflow" class="relative px-5 py-24 md:px-10">
+            <div class="mx-auto max-w-7xl">
+                <div class="text-center mb-20 reveal">
+                    <h2 class="font-display text-4xl font-bold text-white md:text-5xl" data-i18n="flow.title">How Knowledge Flows</h2>
+                    <p class="mt-4 text-slate-400 text-lg" data-i18n="flow.subtitle">Capture from anywhere. Store locally. Output beautifully.</p>
+                </div>
+
+                <div class="relative flex flex-col items-center justify-between gap-12 lg:flex-row reveal delay-100">
+                    <!-- Flow Lines (Visible on large screens) -->
+                    <svg class="absolute inset-0 hidden h-full w-full lg:block pointer-events-none" preserveAspectRatio="none">
+                        <path class="flow-line" d="M 28% 50% C 38% 50%, 38% 50%, 48% 50%" stroke="url(#gradient-blue)"></path>
+                        <path class="flow-line" d="M 52% 50% C 62% 50%, 62% 50%, 72% 50%" stroke="url(#gradient-purple)"></path>
+                        <defs>
+                            <linearGradient id="gradient-blue" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.2"></stop>
+                                <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.9"></stop>
+                            </linearGradient>
+                            <linearGradient id="gradient-purple" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.9"></stop>
+                                <stop offset="100%" stop-color="#10b981" stop-opacity="0.2"></stop>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+
+                    <!-- Step 1: Input Sources -->
+                    <div class="z-10 w-full lg:w-[28%] space-y-4">
+                        <div class="text-center font-display text-lg font-semibold text-blue-400 mb-6" data-i18n="flow.step1">1. Input Sources</div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-blue-500/50 transition-colors">
+                            <div class="rounded-lg bg-blue-500/10 p-3 text-blue-400 ring-1 ring-blue-500/30"><i data-lucide="globe" class="h-6 w-6"></i></div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.web">Web Pages</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.web.desc">Articles & blogs</p>
+                            </div>
+                        </div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-blue-500/50 transition-colors">
+                            <div class="rounded-lg bg-blue-500/10 p-3 text-blue-400 ring-1 ring-blue-500/30">
+                                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2.5 7.1C2.6 5.8 3.5 4.8 4.8 4.7 6.9 4.5 12 4.5 12 4.5s5.1 0 7.2.2c1.3.1 2.2 1.1 2.3 2.4.2 1.6.2 4.9.2 4.9s0 3.3-.2 4.9c-.1 1.3-1 2.3-2.3 2.4-2.1.2-7.2.2-7.2.2s-5.1 0-7.2-.2c-1.3-.1-2.2-1.1-2.3-2.4-.2-1.6-.2-4.9-.2-4.9s0-3.3.2-4.9z"/>
+                                    <path d="m10 15 5-3-5-3v6z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.yt">YouTube</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.yt.desc">Video transcripts</p>
+                            </div>
+                        </div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-blue-500/50 transition-colors">
+                            <div class="rounded-lg bg-blue-500/10 p-3 text-blue-400 ring-1 ring-blue-500/30"><i data-lucide="message-circle" class="h-6 w-6"></i></div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.tg">Telegram</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.tg.desc">On-the-go notes</p>
+                            </div>
+                        </div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-blue-500/50 transition-colors">
+                            <div class="rounded-lg bg-blue-500/10 p-3 text-blue-400 ring-1 ring-blue-500/30"><i data-lucide="file-text" class="h-6 w-6"></i></div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.files">Local Documents</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.files.desc">PDF, Word, Markdown, EPUB</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Core Processing -->
+                    <div class="z-10 w-full lg:w-[35%] transform hover:scale-[1.02] transition-transform duration-500">
+                        <div class="text-center font-display text-lg font-semibold text-purple-400 mb-6" data-i18n="flow.step2">2. Local Workspace</div>
+                        <div class="glass-card relative overflow-hidden border-purple-500/30 p-10 text-center shadow-[0_0_50px_rgba(139,92,246,0.15)]">
+                            <div class="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent"></div>
+                            <div class="relative z-10">
+                                <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP" class="mx-auto h-20 w-20 rounded-2xl ring-2 ring-white/20 mb-6 shadow-xl">
+                                <h3 class="font-display text-3xl font-bold text-white" data-i18n="flow.core">InsightCAP Core</h3>
+                                <p class="mt-3 text-sm text-slate-300" data-i18n="flow.core.desc">Your local-first indexer & vector database</p>
+                                <div class="mt-6 flex flex-wrap justify-center gap-2">
+                                    <span class="rounded-full bg-white/5 px-3 py-1 text-xs text-purple-300 ring-1 ring-purple-500/30">
+                                        <i data-lucide="lock" class="inline h-3 w-3 mr-1"></i><span data-i18n="flow.encrypted">Encrypted</span>
+                                    </span>
+                                    <span class="rounded-full bg-white/5 px-3 py-1 text-xs text-purple-300 ring-1 ring-purple-500/30">
+                                        <i data-lucide="search" class="inline h-3 w-3 mr-1"></i><span data-i18n="flow.searchable">Searchable</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Outputs -->
+                    <div class="z-10 w-full lg:w-[28%] space-y-4">
+                        <div class="text-center font-display text-lg font-semibold text-emerald-400 mb-6" data-i18n="flow.step3">3. Smart Output</div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-emerald-500/50 transition-colors">
+                            <div class="rounded-lg bg-emerald-500/10 p-3 text-emerald-400 ring-1 ring-emerald-500/30"><i data-lucide="file-output" class="h-6 w-6"></i></div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.export">Multi-format Export</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.export.desc">Markdown, PDF, Word</p>
+                            </div>
+                        </div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-emerald-500/50 transition-colors">
+                            <div class="rounded-lg bg-emerald-500/10 p-3 text-emerald-400 ring-1 ring-emerald-500/30"><i data-lucide="brain-circuit" class="h-6 w-6"></i></div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.critical">Critical Thinking</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.critical.desc">AI-assisted analysis</p>
+                            </div>
+                        </div>
+                        <div class="glass-card flex items-center gap-4 p-4 hover:border-emerald-500/50 transition-colors">
+                            <div class="rounded-lg bg-emerald-500/10 p-3 text-emerald-400 ring-1 ring-emerald-500/30"><i data-lucide="bell-ring" class="h-6 w-6"></i></div>
+                            <div>
+                                <h4 class="font-medium text-white" data-i18n="flow.reminders">Smart Reminders</h4>
+                                <p class="text-xs text-slate-400" data-i18n="flow.reminders.desc">Spaced repetition</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bento Box Features -->
+        <section id="features" class="px-5 py-24 md:px-10 border-t border-white/5 bg-white/[0.02]">
+            <div class="mx-auto max-w-7xl">
+                <div class="mb-16 reveal">
+                    <h2 class="font-display text-4xl font-bold text-white md:text-5xl" data-i18n="feat.title">Designed for Deep Work</h2>
+                    <p class="mt-4 text-slate-400 text-lg" data-i18n="feat.subtitle">Powerful features wrapped in a minimal, distraction-free interface.</p>
+                </div>
+
+                <div class="grid gap-6 md:grid-cols-3 lg:grid-cols-4 reveal delay-100">
+                    <!-- Feature 1 -->
+                    <div class="glass-card md:col-span-2 lg:col-span-2 p-8 group">
+                        <i data-lucide="database-zap" class="h-8 w-8 text-blue-400 mb-6 transition-transform group-hover:scale-110"></i>
+                        <h3 class="font-display text-2xl font-bold text-white mb-3" data-i18n="feat.1.title">Local Long-term Memory</h3>
+                        <p class="text-slate-400 leading-relaxed" data-i18n="feat.1.desc">Keep your captures encrypted on your Windows device, with lightning-fast search across everything you've ever stored. No cloud subscriptions required.</p>
+                    </div>
+                    <!-- Feature 5: AI Smart Text Editor -->
+                    <div class="glass-card md:col-span-2 lg:col-span-2 p-8 group">
+                        <i data-lucide="pen-tool" class="h-8 w-8 text-rose-400 mb-6 transition-transform group-hover:scale-110"></i>
+                        <h3 class="font-display text-2xl font-bold text-white mb-3" data-i18n="feat.5.title">AI Smart Text Editor</h3>
+                        <p class="text-slate-400 leading-relaxed" data-i18n="feat.5.desc">Draft alongside your knowledge base. Highlight any text to instantly improve phrasing, expand ideas, or translate with our built-in AI writing assistant.</p>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div class="glass-card md:col-span-1 lg:col-span-2 p-8 group">
+                        <i data-lucide="bot-message-square" class="h-8 w-8 text-purple-400 mb-6 transition-transform group-hover:scale-110"></i>
+                        <h3 class="font-display text-xl font-bold text-white mb-3" data-i18n="feat.2.title">Telegram Bot</h3>
+                        <p class="text-slate-400 text-sm" data-i18n="feat.2.desc">Forward links and messages on-the-go directly to your local Inbox.</p>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div class="glass-card md:col-span-1 lg:col-span-2 p-8 group">
+                        <i data-lucide="git-merge" class="h-8 w-8 text-emerald-400 mb-6 transition-transform group-hover:scale-110"></i>
+                        <h3 class="font-display text-xl font-bold text-white mb-3" data-i18n="feat.3.title">Project Context</h3>
+                        <p class="text-slate-400 text-sm" data-i18n="feat.3.desc">Group notes and sources together securely without losing the original context.</p>
+                    </div>
+
+                    <!-- Feature 4 (Full Width) -->
+                    <div id="privacy" class="glass-card md:col-span-3 lg:col-span-4 p-8 lg:p-12 flex flex-col md:flex-row items-center gap-10 border-t-2 border-t-blue-500/30">
+                        <div class="flex-1">
+                            <span class="text-blue-400 text-xs font-bold tracking-widest uppercase mb-2 block" data-i18n="feat.4.tag">Privacy First</span>
+                            <h3 class="font-display text-3xl font-bold text-white mb-4" data-i18n="feat.4.title">Your knowledge stays on your device.</h3>
+                            <p class="text-slate-400 text-lg" data-i18n="feat.4.desc">InsightCAP is built around local ownership. Your captures are stored on your Windows computer and protected with encryption instead of being pushed into a hosted workspace.</p>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10 shadow-lg"><i data-lucide="shield-check" class="h-10 w-10 text-blue-400"></i></div>
+                            <div class="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10 shadow-lg"><i data-lucide="hard-drive" class="h-10 w-10 text-purple-400"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ -->
+        <section id="faq" class="px-5 py-24 md:px-10">
+            <div class="mx-auto max-w-4xl">
+                <div class="text-center mb-16 reveal">
+                    <h2 class="font-display text-3xl font-bold text-white md:text-4xl" data-i18n="faq.title">Frequently Asked Questions</h2>
+                </div>
+                <div class="space-y-4 reveal delay-100">
+                    <details class="glass-card group p-6 cursor-pointer">
+                        <summary class="flex list-none items-center justify-between font-display text-lg font-semibold text-white">
+                            <span data-i18n="faq.1.q">Is InsightCAP free?</span>
+                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
+                        </summary>
+                        <p class="mt-4 text-slate-400 leading-relaxed" data-i18n="faq.1.a">Yes. InsightCAP is completely free to download and use from the GitHub releases page.</p>
+                    </details>
+                    <details class="glass-card group p-6 cursor-pointer">
+                        <summary class="flex list-none items-center justify-between font-display text-lg font-semibold text-white">
+                            <span data-i18n="faq.2.q">Does it support Mac or Linux?</span>
+                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
+                        </summary>
+                        <p class="mt-4 text-slate-400 leading-relaxed" data-i18n="faq.2.a">InsightCAP is currently focused on providing the best possible native experience for Windows.</p>
+                    </details>
+                    <details class="glass-card group p-6 cursor-pointer">
+                        <summary class="flex list-none items-center justify-between font-display text-lg font-semibold text-white">
+                            <span data-i18n="faq.3.q">How is it different from cloud note apps?</span>
+                            <i data-lucide="chevron-down" class="h-5 w-5 text-slate-400 transition group-open:rotate-180"></i>
+                        </summary>
+                        <p class="mt-4 text-slate-400 leading-relaxed" data-i18n="faq.3.a">InsightCAP is local-first. We focus on automated capture, extraction, search, and export, completely independent of hosted cloud workspaces.</p>
+                    </details>
                 </div>
             </div>
         </section>
     </main>
 
-    <footer class="border-t border-slate-200 bg-white px-5 py-8 md:px-10">
-        <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 md:flex-row">
+    <!-- Footer -->
+    <footer class="border-t border-white/5 bg-[#030712]/50 px-5 py-12 md:px-10 backdrop-blur-md">
+        <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 md:flex-row">
             <a href="#" class="flex items-center gap-3">
-                <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP logo" class="h-8 w-8 rounded-lg shadow-sm">
-                <span class="font-extrabold text-slate-600">InsightCAP</span>
+                <img src="./assets/brand/insightcap-logo.png" alt="InsightCAP logo" class="h-8 w-8 rounded-lg opacity-80 mix-blend-screen">
+                <span class="font-display font-bold text-slate-300">InsightCAP</span>
             </a>
-            <div class="flex items-center gap-7 text-xs font-extrabold uppercase tracking-widest text-slate-400">
-                <a href="https://github.com/3k1c/insightcap-community" class="transition hover:text-slate-800">Repository</a>
-                <a href="https://github.com/3k1c/insightcap-community/releases" class="transition hover:text-slate-800">Releases</a>
+            <div class="flex items-center gap-7 text-sm font-medium text-slate-500">
+                <a href="https://github.com/3k1c/insightcap-community" class="hover:text-white transition" data-i18n="footer.repo">Repository</a>
+                <a href="https://github.com/3k1c/insightcap-community/releases" class="hover:text-white transition" data-i18n="footer.releases">Releases</a>
             </div>
-            <p class="text-xs font-bold uppercase tracking-widest text-slate-400">© 2026 InsightCAP</p>
+            <p class="text-xs text-slate-600" data-i18n="footer.built">© 2026 InsightCAP. Built for Windows.</p>
         </div>
     </footer>
 
@@ -455,16 +372,20 @@
                         entry.target.classList.add('active');
                     }
                 });
-            }, { threshold: 0.12 });
+            }, { threshold: 0.1 });
             reveals.forEach((element) => observer.observe(element));
 
             const navbar = document.getElementById('navbar');
             const setNavbarState = () => {
                 if (!navbar) return;
-                navbar.classList.toggle('bg-white/85', window.scrollY > 20);
-                navbar.classList.toggle('backdrop-blur-xl', window.scrollY > 20);
-                navbar.classList.toggle('border-slate-200', window.scrollY > 20);
-                navbar.classList.toggle('shadow-sm', window.scrollY > 20);
+                const inner = navbar.firstElementChild;
+                if(window.scrollY > 20) {
+                    inner.classList.add('bg-white/5', 'backdrop-blur-xl', 'border-white/10');
+                    inner.classList.remove('border-transparent');
+                } else {
+                    inner.classList.remove('bg-white/5', 'backdrop-blur-xl', 'border-white/10');
+                    inner.classList.add('border-transparent');
+                }
             };
             setNavbarState();
             window.addEventListener('scroll', setNavbarState, { passive: true });
