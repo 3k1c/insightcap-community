@@ -1,6 +1,6 @@
 # Known Limitations
 
-InsightCAP Community v0.9.1-beta.1 is a beta release. Capture, extraction, AI,
+InsightCAP Community v0.9.1-beta.2 is a beta release. Capture, extraction, AI,
 and automation workflows may depend on the source format, local environment,
 network availability, configured services, and third party platform behavior.
 

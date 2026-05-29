@@ -2,7 +2,7 @@
 
 This guide lists common InsightCAP Community beta issues and practical checks.
 
-InsightCAP Community v0.9.1-beta.1 is a beta release. Behavior may depend on the
+InsightCAP Community v0.9.1-beta.2 is a beta release. Behavior may depend on the
 local Windows environment, available services, network access, configured AI
 settings, and third party platform behavior.
 
