@@ -183,6 +183,7 @@ Selected community-facing source code may be added later after review.
 - [Known Limitations](docs/known-limitations.md)
 - [Privacy and Data](docs/privacy-and-data.md)
 - [Open Source Scope](docs/open-source-scope.md)
+- [Latest Release Notes](docs/releases/v0.9.1-beta.3.md)
 - [Release Checklist](docs/release-checklist.md)
 
 ## Licensing
