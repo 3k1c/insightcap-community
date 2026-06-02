@@ -26,7 +26,8 @@ InsightCAP Community focuses on local-first personal knowledge workflows:
 - Edit AI-generated or AI-assisted text in a structured editor.
 - Use the AI text editor to export edited content as TXT, Markdown, HTML, DOCX,
   or PDF.
-- Use Telegram bot capture, reminder, and knowledge Q&A workflows.
+- Use multi-platform bot capture, reminder, and knowledge Q&A workflows across
+  Telegram, WhatsApp, Weixin, and WeCom.
 - Keep user data local by default, with explicit controls for knowledge base
   location and local app data.
 
@@ -60,6 +61,8 @@ flowchart TD
     A3[Supported Video URLs] --> B
     A4[Clipboard and Notes] --> B
     A5[Telegram Bot Capture] --> B
+    A6[WhatsApp Bot Capture] --> B
+    A7[Weixin and WeCom Capture] --> B
 
     B --> C[Review and AI Editing]
     C --> D1[Projects]
@@ -98,7 +101,7 @@ InsightCAP is designed to process different kinds of content, including:
 - Supported video URLs such as YouTube and Bilibili.
 - Clipboard captures.
 - Notes and structured text.
-- Telegram bot prompt inputs.
+- Messaging platform inputs from Telegram, WhatsApp, Weixin, and WeCom.
 
 The goal is to reduce manual copying and reorganizing, so users can move from
 raw content to searchable knowledge faster.
@@ -129,11 +132,13 @@ follow-up work connected to the original source material.
 InsightCAP includes AI-assisted text editing workflows for turning captured
 content into more useful written output, summaries, notes, or structured drafts.
 
-### Telegram Bot Capture, Reminder, and Q&A Workflows
+### Multi-platform Bot Capture, Reminder, and Q&A Workflows
 
-Telegram bot workflows can be used for lightweight capture, reminder requests,
+Bot workflows can be used for lightweight capture, reminder requests,
 knowledge-base questions, and project or conversation commands outside the main
-desktop window.
+desktop window. InsightCAP Community now includes support for Telegram,
+WhatsApp, Weixin, and WeCom, so users can choose the communication channel that
+matches their daily workflow.
 
 ### AI Text Editor Export
 
@@ -183,7 +188,7 @@ Selected community-facing source code may be added later after review.
 - [Known Limitations](docs/known-limitations.md)
 - [Privacy and Data](docs/privacy-and-data.md)
 - [Open Source Scope](docs/open-source-scope.md)
-- [Latest Release Notes](docs/releases/v0.9.1-beta.3.md)
+- [Latest Release Notes](docs/releases/v0.9.2-beta.1.md)
 - [Release Checklist](docs/release-checklist.md)
 
 ## Licensing

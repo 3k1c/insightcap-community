@@ -14,8 +14,9 @@ and exported over time as part of a long-term personal memory system.
 5. Select or create the local knowledge folder.
 6. Save the 24-word recovery phrase in a secure place.
 7. Configure optional AI service settings if AI-assisted workflows are needed.
-8. Configure optional Telegram Bot workflows if capture, reminder, or knowledge
-   Q&A flows are needed outside the desktop window.
+8. Configure optional bot workflows for Telegram, WhatsApp, Weixin, or WeCom if
+   capture, reminder, or knowledge Q&A flows are needed outside the desktop
+   window.
 
 The 24-word recovery phrase is important. If the local decryption key is removed
 or unavailable, the recovery phrase is required to unlock the existing encrypted
@@ -52,7 +53,7 @@ Supported workflow categories include:
 - Supported video URLs such as YouTube and Bilibili.
 - Clipboard captures.
 - Notes and structured text.
-- Telegram Bot capture inputs.
+- Messaging platform capture inputs from Telegram, WhatsApp, Weixin, and WeCom.
 
 After capture, extracted content can be reviewed before it becomes reusable
 knowledge.
@@ -95,14 +96,17 @@ It is intended for workflows such as:
 - Keeping source material connected to follow-up work.
 - Building a long-term personal knowledge base.
 
-## Telegram Bot Capture, Reminder, and Q&A Workflows
+## Multi-platform Bot Capture, Reminder, and Q&A Workflows
 
-Telegram Bot workflows can support lightweight capture, reminder requests,
-knowledge-base questions, and project or conversation commands outside the main
-desktop window.
+Bot workflows can support lightweight capture, reminder requests, knowledge-base
+questions, and project or conversation commands outside the main desktop window.
+InsightCAP Community supports Telegram, WhatsApp, Weixin, and WeCom as
+communication entry points.
 
 These workflows are useful when a user wants to capture input, ask questions, or
-manage follow-up actions without opening the full desktop interface.
+manage follow-up actions without opening the full desktop interface. WhatsApp
+uses a local Bridge process, while Weixin uses the iLink protocol and WeCom
+uses the enterprise WeCom integration.
 
 ## AI Text Editor Export
 

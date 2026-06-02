@@ -175,6 +175,30 @@ const translations = {
     }
 };
 
+Object.assign(translations.en, {
+    "hero.subtitle": "InsightCAP is the ultimate local-first knowledge vault for Windows. Effortlessly capture web pages, docs, videos, and messages from Telegram, WhatsApp, Weixin, and WeCom into a blazing-fast, encrypted memory base. No cloud subscriptions required.",
+    "flow.tg": "Messaging Platforms",
+    "flow.tg.desc": "Telegram, WhatsApp, Weixin, WeCom",
+    "feat.2.title": "Multi-platform Bot Capture",
+    "feat.2.desc": "Capture, ask, and manage follow-up through Telegram, WhatsApp, Weixin, and WeCom."
+});
+
+Object.assign(translations.zh_tw, {
+    "hero.subtitle": "InsightCAP 是 Windows 上的本地優先知識庫。你可以擷取網頁、文件、影片，以及來自 Telegram、WhatsApp、微信與企業微信的訊息，整理成快速、加密、可搜尋的長期記憶。",
+    "flow.tg": "多通訊平台",
+    "flow.tg.desc": "Telegram、WhatsApp、微信、企業微信",
+    "feat.2.title": "多平台 Bot 擷取",
+    "feat.2.desc": "透過 Telegram、WhatsApp、微信與企業微信進行擷取、提問與後續追蹤。"
+});
+
+Object.assign(translations.zh_cn, {
+    "hero.subtitle": "InsightCAP 是 Windows 上的本地优先知识库。你可以采集网页、文档、视频，以及来自 Telegram、WhatsApp、微信与企业微信的消息，整理成快速、加密、可搜索的长期记忆。",
+    "flow.tg": "多通讯平台",
+    "flow.tg.desc": "Telegram、WhatsApp、微信、企业微信",
+    "feat.2.title": "多平台 Bot 采集",
+    "feat.2.desc": "通过 Telegram、WhatsApp、微信与企业微信进行采集、提问与后续追踪。"
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     const savedLang = localStorage.getItem('lang') || 'en';
     setLanguage(savedLang);
