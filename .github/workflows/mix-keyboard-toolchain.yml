@@ -11,7 +11,7 @@ permissions:
 jobs:
   toolchain:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -24,12 +24,76 @@ jobs:
           sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
           test -f "$ANDROID_SDK_ROOT/platforms/android-37/android.jar"
           test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+      - name: Build public Quick5 mixed dictionary
+        shell: bash
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/JACKCHAN000/Rime-Quick5-Setup.git /tmp/quick5
+          cd /tmp/quick5
+          git sparse-checkout init --no-cone
+          printf '%s\n'             cn_dicts/quick5.dict.yaml             cn_dicts/base.dict.yaml             cn_dicts/cantonese.dict.yaml             cn_dicts/correlation.dict.yaml             cn_dicts/people.dict.yaml             cn_dicts/place.dict.yaml             cn_dicts/wiki.dict.yaml             cn_dicts/user.dict.yaml             en_dicts/cn_en.txt             en_dicts/en.dict.yaml             en_dicts/en_ext.dict.yaml > .git/info/sparse-checkout
+          git checkout f84d3d34575fd585c967011eac4ec347c66ed0cf
+          python3 - <<'PY'
+          import pathlib, sqlite3
+          root=pathlib.Path('/tmp/quick5')
+          out=pathlib.Path('/tmp/mixkbd.db')
+          sources=[
+            ('cn_dicts/quick5.dict.yaml',0,9000000),
+            ('cn_dicts/base.dict.yaml',0,8000000),
+            ('cn_dicts/cantonese.dict.yaml',0,8500000),
+            ('cn_dicts/correlation.dict.yaml',0,6500000),
+            ('cn_dicts/people.dict.yaml',0,5000000),
+            ('cn_dicts/place.dict.yaml',0,5000000),
+            ('cn_dicts/wiki.dict.yaml',0,4500000),
+            ('cn_dicts/user.dict.yaml',0,9500000),
+            ('en_dicts/cn_en.txt',2,9000000),
+            ('en_dicts/en.dict.yaml',1,7000000),
+            ('en_dicts/en_ext.dict.yaml',1,5500000),
+          ]
+          db=sqlite3.connect(out)
+          db.executescript('''
+          PRAGMA journal_mode=OFF;
+          PRAGMA synchronous=OFF;
+          PRAGMA temp_store=MEMORY;
+          CREATE TABLE entries(code TEXT COLLATE NOCASE NOT NULL,text TEXT NOT NULL,kind INTEGER NOT NULL,weight INTEGER NOT NULL);
+          CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+          ''')
+          total=0
+          for rel,kind,priority in sources:
+              batch=[]; ordinal=0
+              text=(root/rel).read_text(encoding='utf-8-sig')
+              for raw in text.splitlines():
+                  line=raw.strip()
+                  if not line or line.startswith('#') or line in ('---','...') or '\t' not in line: continue
+                  parts=line.split('\t')
+                  if len(parts)<2: continue
+                  value=parts[0].strip(); code=parts[1].strip().lower().replace(' ','')
+                  if not value or not code or len(code)>64: continue
+                  ordinal+=1; weight=priority-ordinal
+                  if len(parts)>=3:
+                      try: weight+=int(float(parts[2]))
+                      except ValueError: pass
+                  batch.append((code,value,kind,weight))
+                  if len(batch)>=10000:
+                      db.executemany('INSERT INTO entries VALUES(?,?,?,?)',batch); total+=len(batch); batch=[]
+              if batch:
+                  db.executemany('INSERT INTO entries VALUES(?,?,?,?)',batch); total+=len(batch)
+              db.commit()
+          db.executescript('''
+          CREATE INDEX entries_code_kind_weight ON entries(code,kind,weight DESC);
+          CREATE INDEX entries_kind_code_weight ON entries(kind,code,weight DESC);
+          ''')
+          db.executemany('INSERT INTO metadata VALUES(?,?)',[('quick5_commit','f84d3d34575fd585c967011eac4ec347c66ed0cf'),('entry_count',str(total))])
+          db.commit(); db.execute('ANALYZE'); db.commit(); db.close()
+          print('dictionary entries', total, 'bytes', out.stat().st_size)
+          PY
       - name: Package minimal Android toolchain
         run: |
           mkdir -p /tmp/mix-toolchain/platforms/android-37
           mkdir -p /tmp/mix-toolchain/build-tools
+          mkdir -p /tmp/mix-toolchain/assets
           cp "$ANDROID_SDK_ROOT/platforms/android-37/android.jar" /tmp/mix-toolchain/platforms/android-37/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" /tmp/mix-toolchain/build-tools/
+          cp /tmp/mixkbd.db /tmp/mix-toolchain/assets/
           tar -C /tmp -czf /tmp/mix-android-toolchain.tgz mix-toolchain
           ls -lh /tmp/mix-android-toolchain.tgz
       - uses: actions/upload-artifact@v4
