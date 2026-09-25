@@ -1,0 +1,40 @@
+name: Mix Keyboard toolchain bootstrap
+
+on:
+  push:
+    branches:
+      - mix-keyboard-toolchain-temp
+
+permissions:
+  contents: read
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-37/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+      - name: Package minimal Android toolchain
+        run: |
+          mkdir -p /tmp/mix-toolchain/platforms/android-37
+          mkdir -p /tmp/mix-toolchain/build-tools
+          cp "$ANDROID_SDK_ROOT/platforms/android-37/android.jar" /tmp/mix-toolchain/platforms/android-37/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" /tmp/mix-toolchain/build-tools/
+          tar -C /tmp -czf /tmp/mix-android-toolchain.tgz mix-toolchain
+          ls -lh /tmp/mix-android-toolchain.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mix-android-toolchain
+          path: /tmp/mix-android-toolchain.tgz
+          compression-level: 0
+          retention-days: 1
